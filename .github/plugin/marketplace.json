@@ -5,20 +5,20 @@
   },
   "metadata": {
     "description": "ReMCP plugin marketplace for GitHub Copilot CLI and VS Code Agent Plugins.",
-    "version": "0.2.114"
+    "version": "0.2.115"
   },
   "plugins": [
     {
       "name": "remcp",
       "source": "./",
       "description": "Securely operate explicitly paired computers through semantic desktop UI, browser DOM/CDP, files, terminal, diagnostics, screenshots, and structured document tools.",
-      "version": "0.2.114",
+      "version": "0.2.115",
       "author": {
         "name": "Anton Baider",
         "url": "https://remcp.site"
       },
       "homepage": "https://remcp.site/plugins",
-      "repository": "https://github.com/getremcp/remcp",
+      "repository": "https://github.com/antonbaider/remcp",
       "license": "MIT",
       "keywords": [
         "mcp",

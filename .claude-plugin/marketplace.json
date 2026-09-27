@@ -17,7 +17,7 @@
         "url": "https://remcp.site"
       },
       "homepage": "https://remcp.site/install/claude",
-      "repository": "https://github.com/getremcp/remcp",
+      "repository": "https://github.com/antonbaider/remcp",
       "license": "MIT",
       "keywords": [
         "mcp",

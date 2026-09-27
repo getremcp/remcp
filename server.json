@@ -3,9 +3,9 @@
   "name": "io.github.getremcp/remcp",
   "title": "ReMCP",
   "description": "Securely control paired computers with ReMCP.",
-  "version": "0.2.114",
+  "version": "0.2.115",
   "repository": {
-    "url": "https://github.com/getremcp/remcp",
+    "url": "https://github.com/antonbaider/remcp",
     "source": "github"
   },
   "websiteUrl": "https://remcp.site",

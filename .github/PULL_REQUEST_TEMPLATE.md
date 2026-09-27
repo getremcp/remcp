@@ -13,4 +13,4 @@ Describe the problem and the public ReMCP surface this proposal changes.
 
 Describe any effect on permissions, path confinement, MCP annotations, tool schemas, backward compatibility, or release packaging.
 
-> Note: `getremcp/remcp` is a generated release projection. Maintainers may port an accepted proposal into the project source of truth and regenerate this repository instead of merging this branch verbatim.
+> Note: `antonbaider/remcp` is a generated release projection. Maintainers may port an accepted proposal into the project source of truth and regenerate this repository instead of merging this branch verbatim.

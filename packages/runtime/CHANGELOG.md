@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.115 — 2026-09-28
+
+- Reconnect timer scheduling now exposes the existing finite upper bound as an explicit control-flow guard at the `setTimeout` sink, satisfying CodeQL without changing reconnect delay semantics.
+- Runtime package repository metadata now uses the project release URL `https://github.com/antonbaider/remcp`. Tool names, schemas, annotations, and runtime behavior are otherwise unchanged from 0.2.114.
+
 ## 0.2.114 — 2026-09-27
 
 - `extract_archive` writes each regular-file overlay into an exclusive no-follow temporary inode beside the destination and commits it with atomic `rename()`, removing the check-then-truncate filesystem race while preserving existing-file overlay semantics and unrelated destination contents.

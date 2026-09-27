@@ -21,7 +21,7 @@ requireValue(claudePlugin.name === 'remcp', 'Claude plugin name must be remcp');
 requireValue(claudePlugin.displayName === 'ReMCP', 'Claude displayName must be ReMCP');
 requireValue(claudePlugin.version === pkg.version, 'Claude plugin version must match package.json');
 requireValue(openAiPlugin.version === pkg.version, 'OpenAI plugin version must still match package.json');
-requireValue(claudePlugin.repository === 'https://github.com/getremcp/remcp', 'Claude repository must point at the public repository');
+requireValue(claudePlugin.repository === 'https://github.com/antonbaider/remcp', 'Claude repository must point at the public repository');
 requireValue(claudePlugin.homepage === 'https://remcp.site', 'Claude homepage must point at remcp.site');
 requireValue(claudePlugin.license === 'MIT', 'Claude plugin license must be MIT');
 

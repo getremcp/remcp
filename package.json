@@ -1,6 +1,6 @@
 {
   "name": "remcp",
-  "version": "0.2.114",
+  "version": "0.2.115",
   "private": true,
   "description": "ReMCP: secure remote MCP bridge. Device client and first-party local runtime.",
   "type": "module",
@@ -21,6 +21,6 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/getremcp/remcp.git"
+    "url": "git+https://github.com/antonbaider/remcp.git"
   }
 }

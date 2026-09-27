@@ -1,6 +1,6 @@
 {
   "name": "@remcp/remcp",
-  "version": "0.2.114",
+  "version": "0.2.115",
   "description": "ReMCP device client: pair a computer with ReMCP and run the outbound-only agent that hosts the local MCP runtime.",
   "type": "module",
   "license": "MIT",
@@ -27,11 +27,11 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/getremcp/remcp.git",
+    "url": "git+https://github.com/antonbaider/remcp.git",
     "directory": "packages/client"
   },
   "bugs": {
-    "url": "https://github.com/getremcp/remcp/issues"
+    "url": "https://github.com/antonbaider/remcp/issues"
   },
   "publishConfig": {
     "access": "public"

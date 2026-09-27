@@ -4,7 +4,7 @@ Thanks for helping improve ReMCP. This public repository contains the distributa
 
 ## Before you start
 
-`getremcp/remcp` is a generated release projection. Changes are reviewed in the project source of truth and then exported here for releases. Public pull requests are still useful as concrete proposals, but maintainers may port an accepted change into the source repository and regenerate this repository rather than merging the public branch verbatim.
+`antonbaider/remcp` is a generated release projection. Changes are reviewed in the project source of truth and then exported here for releases. Public pull requests are still useful as concrete proposals, but maintainers may port an accepted change into the source repository and regenerate this repository rather than merging the public branch verbatim.
 
 For bugs and feature requests, open a GitHub issue. For security vulnerabilities, use GitHub private vulnerability reporting instead of a public issue.
 

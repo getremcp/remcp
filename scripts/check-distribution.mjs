@@ -32,7 +32,7 @@ check(cursorPlugin.displayName === 'ReMCP', 'Cursor plugin displayName must stay
 check(cursorPlugin.version === version, 'Cursor plugin version must match package.json');
 check(cursorPlugin.publisher === 'ReMCP', 'Cursor plugin publisher must stay ReMCP');
 check(cursorPlugin.homepage === 'https://remcp.site', 'Cursor plugin homepage must point at remcp.site');
-check(cursorPlugin.repository === 'https://github.com/getremcp/remcp', 'Cursor plugin repository must point at the canonical public repo');
+check(cursorPlugin.repository === 'https://github.com/antonbaider/remcp', 'Cursor plugin repository must point at the canonical public repo');
 check(cursorPlugin.logo === 'assets/remcp-marketplace-400.png', 'Cursor plugin must use the committed marketplace logo');
 check(cursorPlugin.skills === './skills/', 'Cursor plugin must expose the bundled skills');
 check(cursorPlugin.mcpServers === './mcp.json', 'Cursor plugin must expose the production MCP config');
@@ -49,7 +49,7 @@ check(gemini?.mcpServers?.remcp?.authProviderType === 'dynamic_discovery', 'Gemi
 
 check(registry.name === 'io.github.getremcp/remcp', 'MCP Registry name must stay in the GitHub-authenticated namespace');
 check(registry.version === version, 'MCP Registry server version must match package.json');
-check(registry?.repository?.url === 'https://github.com/getremcp/remcp', 'MCP Registry repository must point at the public repo');
+check(registry?.repository?.url === 'https://github.com/antonbaider/remcp', 'MCP Registry repository must point at the public repo');
 check(registry?.remotes?.length === 1, 'MCP Registry record must expose exactly one production remote');
 check(registry?.remotes?.[0]?.type === 'streamable-http', 'MCP Registry remote must use Streamable HTTP');
 check(registry?.remotes?.[0]?.url === endpoint, 'MCP Registry remote must point at the production MCP endpoint');

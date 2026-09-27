@@ -1,14 +1,14 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "remcp",
-  "version": "0.2.114",
+  "version": "0.2.115",
   "description": "Securely operate computers you explicitly pair with ReMCP using semantic desktop UI, browser DOM/CDP, files, terminal, diagnostics, and structured document tools.",
   "author": {
     "name": "Anton Baider",
     "url": "https://remcp.site"
   },
   "homepage": "https://remcp.site",
-  "repository": "https://github.com/getremcp/remcp",
+  "repository": "https://github.com/antonbaider/remcp",
   "license": "MIT",
   "keywords": [
     "mcp",

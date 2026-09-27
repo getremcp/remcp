@@ -1,14 +1,14 @@
 {
   "name": "remcp",
   "displayName": "ReMCP",
-  "version": "0.2.114",
+  "version": "0.2.115",
   "description": "Securely control computers you explicitly pair using semantic desktop UI, browser DOM/CDP, files, terminals, screenshots, diagnostics, and PDF/DOCX/XLSX tools.",
   "author": {
     "name": "Anton Baider"
   },
   "publisher": "ReMCP",
   "homepage": "https://remcp.site",
-  "repository": "https://github.com/getremcp/remcp",
+  "repository": "https://github.com/antonbaider/remcp",
   "license": "MIT",
   "logo": "assets/remcp-marketplace-400.png",
   "keywords": [
