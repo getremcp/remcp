@@ -366,10 +366,23 @@ export async function runAgent(options) {
 
   function scheduleReconnect(delay) {
     if (stopping || revoked || reconnectTimer) return;
+    // Keep the upper-bound guard in control flow immediately before the timer sink. CodeQL's
+    // resource-exhaustion model treats this as a barrier, and future callers cannot retain the
+    // agent with an attacker-controlled timer lifetime.
+    const numericDelay = Number(delay);
+    if (!Number.isFinite(numericDelay)) {
+      scheduleReconnect(RECONNECT_BASE_MS);
+      return;
+    }
+    if (numericDelay > RECONNECT_MAX_MS) {
+      scheduleReconnect(RECONNECT_MAX_MS);
+      return;
+    }
+    const safeDelay = Math.max(100, Math.floor(numericDelay));
     reconnectTimer = setTimeout(() => {
       reconnectTimer = null;
       connect();
-    }, delay);
+    }, safeDelay);
     reconnectTimer.unref?.();
   }
 

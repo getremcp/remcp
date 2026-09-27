@@ -1542,16 +1542,17 @@ async function copyOpenRegularFile(sourceHandle, sourceInfo, destinationPath, st
   if (state.maxBytes !== undefined && sourceInfo.size > state.maxBytes - currentBytes) {
     fail(`Archive contents exceed the ${state.maxBytes}-byte extraction limit`);
   }
-  const existing = await lstat(destinationPath).catch(() => null);
-  if (existing && (!existing.isFile() || existing.isSymbolicLink())) fail('Archive contains a link or special file; archive destination is unsafe');
+  // Never validate a pathname and then truncate it: another local process could replace that entry
+  // between the check and open. Build a brand-new inode beside the destination and commit it with
+  // rename(), which replaces the directory entry atomically without following a raced symlink or
+  // truncating a hard-linked file.
+  const temporary = path.join(
+    path.dirname(destinationPath),
+    `.${path.basename(destinationPath)}.remcp-${randomUUID()}.tmp`,
+  );
   let output;
   try {
-    try {
-      output = await open(destinationPath, WRITE_TRUNCATE_NOFOLLOW, mode);
-    } catch (error) {
-      if (['ELOOP', 'ENOTDIR', 'EISDIR'].includes(error?.code)) fail('Archive contains a link or special file; archive destination is unsafe');
-      throw error;
-    }
+    output = await open(temporary, WRITE_CREATE_NOFOLLOW, mode);
     const outputInfo = await output.stat();
     if (!outputInfo.isFile()) fail('Archive contains a link or special file; archive destination is unsafe');
     const buffer = Buffer.allocUnsafe(1024 * 1024);
@@ -1570,12 +1571,15 @@ async function copyOpenRegularFile(sourceHandle, sourceInfo, destinationPath, st
       }
       offset += bytesRead;
     }
-    await output.truncate(offset);
     await output.sync();
     await output.chmod(mode);
+    await output.close();
+    output = null;
+    await rename(temporary, destinationPath);
     state.bytes = currentBytes + offset;
   } finally {
     if (output) await output.close().catch(() => {});
+    await unlink(temporary).catch(() => {});
   }
 }
 
