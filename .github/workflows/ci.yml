@@ -282,9 +282,10 @@ jobs:
           REPAIR_VERSION: ${{ inputs.repair_release }}
         run: |
           set -Eeuo pipefail
-          node - "$REPAIR_VERSION" <<'NODE'
+          node --input-type=module - "$REPAIR_VERSION" <<'NODE'
+          import { readFileSync } from 'node:fs';
           const version = process.argv[2];
-          const expected = require('./server.json');
+          const expected = JSON.parse(readFileSync('server.json', 'utf8'));
           const url = 'https://registry.modelcontextprotocol.io/v0/servers/'
             + encodeURIComponent(expected.name) + '/versions/' + encodeURIComponent(version);
           const response = await fetch(url);
