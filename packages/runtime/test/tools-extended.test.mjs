@@ -195,6 +195,37 @@ exit $status
   }
 });
 
+test('archive file overlay is committed atomically instead of truncating a checked pathname', () => {
+  const source = readFileSync(new URL('../src/tools/files.mjs', import.meta.url), 'utf8');
+  const match = source.match(/async function copyOpenRegularFile\([\s\S]*?\n\}\n\nasync function copyTreeContents/);
+  assert.ok(match, 'archive copy implementation is present');
+  const copy = match[0];
+  assert.doesNotMatch(copy, /lstat\(destinationPath\)/, 'no check/use race is used to decide whether a destination is safe');
+  assert.match(copy, /WRITE_CREATE_NOFOLLOW/, 'archive contents are first written to an exclusive no-follow temporary file');
+  assert.match(copy, /rename\(temporary, destinationPath\)/, 'the completed file replaces the destination atomically');
+});
+
+test('archive extraction still overlays an existing regular file while preserving unrelated files', {
+  skip: spawnSync('tar', ['--version'], { stdio: 'ignore' }).status !== 0,
+}, async () => {
+  const source = join(root, 'archive-overlay-source');
+  mkdirSync(source, { recursive: true });
+  writeFileSync(join(source, 'replace.txt'), 'new payload\n');
+  const archive = join(root, 'archive-overlay.tar');
+  const packed = spawnSync('tar', ['-cf', archive, '-C', source, 'replace.txt'], { encoding: 'utf8' });
+  assert.equal(packed.status, 0, packed.stderr);
+
+  const destination = join(root, 'archive-overlay-destination');
+  mkdirSync(destination, { recursive: true });
+  writeFileSync(join(destination, 'replace.txt'), 'old payload\n');
+  writeFileSync(join(destination, 'keep.txt'), 'keep me\n');
+
+  const extracted = await invokeTool('extract_archive', { archive, destination });
+  assert.equal(isError(extracted), false, body(extracted));
+  assert.equal(readFileSync(join(destination, 'replace.txt'), 'utf8'), 'new payload\n');
+  assert.equal(readFileSync(join(destination, 'keep.txt'), 'utf8'), 'keep me\n');
+});
+
 test('zip archives use the Info-ZIP compatible unzip probe', {
   skip: spawnSync('zip', ['--version'], { stdio:'ignore' }).status !== 0
     || spawnSync('unzip', ['-v'], { stdio:'ignore' }).status !== 0,

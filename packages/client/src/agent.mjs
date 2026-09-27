@@ -366,10 +366,18 @@ export async function runAgent(options) {
 
   function scheduleReconnect(delay) {
     if (stopping || revoked || reconnectTimer) return;
+    // Keep the resource bound at the timer sink itself. Server reconnect hints are already
+    // normalized when received, but a future caller must not be able to register an effectively
+    // unbounded timer and retain this agent indefinitely.
+    let safeDelay = Number(delay);
+    if (!Number.isFinite(safeDelay)) safeDelay = RECONNECT_BASE_MS;
+    safeDelay = Math.floor(safeDelay);
+    if (safeDelay < 100) safeDelay = 100;
+    if (safeDelay > RECONNECT_MAX_MS) safeDelay = RECONNECT_MAX_MS;
     reconnectTimer = setTimeout(() => {
       reconnectTimer = null;
       connect();
-    }, delay);
+    }, safeDelay);
     reconnectTimer.unref?.();
   }
 

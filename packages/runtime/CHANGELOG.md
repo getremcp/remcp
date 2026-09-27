@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.114 — 2026-09-27
+
+- `extract_archive` writes each regular-file overlay into an exclusive no-follow temporary inode beside the destination and commits it with atomic `rename()`, removing the check-then-truncate filesystem race while preserving existing-file overlay semantics and unrelated destination contents.
+- Runtime tool names, input schemas, and output schemas are unchanged from 0.2.113.
+
 ## 0.2.113 — 2026-09-26
 
 - No runtime tool names, schemas, or device-side tool implementations change in this release. The runtime package version remains in lockstep with the hosted/client release while relay heartbeat, reconnect admission, telemetry cadence, gateway capacity, and production load-safety are hardened.
