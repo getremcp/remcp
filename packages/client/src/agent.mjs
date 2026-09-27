@@ -366,14 +366,19 @@ export async function runAgent(options) {
 
   function scheduleReconnect(delay) {
     if (stopping || revoked || reconnectTimer) return;
-    // Keep the resource bound at the timer sink itself. Server reconnect hints are already
-    // normalized when received, but a future caller must not be able to register an effectively
-    // unbounded timer and retain this agent indefinitely.
-    let safeDelay = Number(delay);
-    if (!Number.isFinite(safeDelay)) safeDelay = RECONNECT_BASE_MS;
-    safeDelay = Math.floor(safeDelay);
-    if (safeDelay < 100) safeDelay = 100;
-    if (safeDelay > RECONNECT_MAX_MS) safeDelay = RECONNECT_MAX_MS;
+    // Keep the upper-bound guard in control flow immediately before the timer sink. CodeQL's
+    // resource-exhaustion model treats this as a barrier, and future callers cannot retain the
+    // agent with an attacker-controlled timer lifetime.
+    const numericDelay = Number(delay);
+    if (!Number.isFinite(numericDelay)) {
+      scheduleReconnect(RECONNECT_BASE_MS);
+      return;
+    }
+    if (numericDelay > RECONNECT_MAX_MS) {
+      scheduleReconnect(RECONNECT_MAX_MS);
+      return;
+    }
+    const safeDelay = Math.max(100, Math.floor(numericDelay));
     reconnectTimer = setTimeout(() => {
       reconnectTimer = null;
       connect();
