@@ -6,6 +6,12 @@ on:
     tags: ['v*']
   pull_request:
   workflow_dispatch:
+    inputs:
+      repair_release:
+        description: "Repair npm/GitHub publication for an already-tagged partial release"
+        required: false
+        default: ""
+        type: string
 
 permissions:
   contents: read
@@ -100,6 +106,22 @@ jobs:
         run: |
           npm install --global npm@11.5.1
           npm --version
+      - name: Align npm provenance repository metadata
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          node <<'NODE'
+          const fs = require('node:fs');
+          const canonical = 'git+https://github.com/getremcp/remcp.git';
+          for (const file of ['packages/runtime/package.json', 'packages/client/package.json']) {
+            const pkg = JSON.parse(fs.readFileSync(file, 'utf8'));
+            if (!pkg.repository || typeof pkg.repository !== 'object') throw new Error(file + ' is missing repository metadata');
+            pkg.repository.url = canonical;
+            fs.writeFileSync(file, JSON.stringify(pkg, null, 2) + '\n');
+          }
+          NODE
+          test "$(node -p "require('./packages/runtime/package.json').repository.url")" = 'git+https://github.com/getremcp/remcp.git'
+          test "$(node -p "require('./packages/client/package.json').repository.url")" = 'git+https://github.com/getremcp/remcp.git'
       # Trusted publishing: npm exchanges the workflow's GitHub OIDC token for a
       # short-lived credential, so no NPM_TOKEN secret and no one-time password are
       # involved. Configure it once per package on npmjs.com:
@@ -138,18 +160,36 @@ jobs:
           # npm trusted publishing can accept a version and then keep it in processing for several
           # minutes. Give the registry ten minutes to expose both exact versions, and bypass caches
           # so a stale 404 cannot consume the whole readiness window.
+          ready=0
           for attempt in {1..60}; do
             if registry_has '@remcp%2Fruntime' && registry_has '@remcp%2Fremcp'; then
-              echo "published @remcp/runtime@$version and @remcp/remcp@$version"
-              exit 0
+              ready=1
+              break
             fi
             if (( attempt == 1 || attempt % 6 == 0 )); then
               echo "registry is still processing $version release artifacts (attempt $attempt/60)"
             fi
             sleep 10
           done
-          echo "published packages did not resolve from the registry after ten minutes" >&2
-          exit 1
+          test "$ready" -eq 1 || {
+            echo "published packages did not resolve from the registry after ten minutes" >&2
+            exit 1
+          }
+          registry_repository() {
+            local encoded="$1"
+            curl --fail --silent --show-error \
+              --header 'Cache-Control: no-cache' \
+              "https://registry.npmjs.org/$encoded/$version" |
+              node -e 'let raw="";process.stdin.on("data",c=>raw+=c).on("end",()=>console.log(JSON.parse(raw).repository?.url || ""))'
+          }
+          for encoded in '@remcp%2Fruntime' '@remcp%2Fremcp'; do
+            actual="$(registry_repository "$encoded")"
+            test "$actual" = 'git+https://github.com/getremcp/remcp.git' || {
+              echo "$encoded@$version repository.url is $actual; expected canonical provenance repository" >&2
+              exit 1
+            }
+          done
+          echo "published @remcp/runtime@$version and @remcp/remcp@$version with canonical provenance metadata"
       - name: Open the GitHub release
         shell: bash
         env:
@@ -186,6 +226,190 @@ jobs:
             gh release create "$GITHUB_REF_NAME" submission/remcp-plugin.zip submission/remcp-skills-only.zip chatgpt-app-submission.json --title "ReMCP $version" --notes-file "$notes" --verify-tag
           fi
 
+
+  repair-release:
+    name: repair partial npm/GitHub release
+    if: github.event_name == 'workflow_dispatch' && inputs.repair_release != ''
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+          registry-url: https://registry.npmjs.org
+      - name: Validate immutable repair target
+        shell: bash
+        env:
+          REPAIR_VERSION: ${{ inputs.repair_release }}
+        run: |
+          set -Eeuo pipefail
+          version="$REPAIR_VERSION"
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "repair_release must be a plain semantic version" >&2; exit 1; }
+          test "$version" = "$(node -p "require('./package.json').version")" || {
+            echo "repair_release $version does not match public main package version" >&2
+            exit 1
+          }
+          tag="v$version"
+          git fetch --force origin "refs/tags/$tag:refs/tags/$tag"
+          tag_sha="$(git rev-list -n1 "$tag")"
+          test -n "$tag_sha"
+          git merge-base --is-ancestor "$tag_sha" HEAD || {
+            echo "$tag is not an ancestor of the reviewed public main" >&2
+            exit 1
+          }
+          unexpected="$(
+            git diff --name-only "$tag_sha"..HEAD |
+              grep -v -x '.github/workflows/ci.yml' || true
+          )"
+          test -z "$unexpected" || {
+            echo "release repair refuses source drift after $tag:" >&2
+            printf '%s\n' "$unexpected" >&2
+            exit 1
+          }
+          echo "repairing $tag from reviewed workflow-only descendant $(git rev-parse HEAD)"
+      - name: Verify the Registry half of the partial release already exists
+        shell: bash
+        env:
+          REPAIR_VERSION: ${{ inputs.repair_release }}
+        run: |
+          set -Eeuo pipefail
+          node - "$REPAIR_VERSION" <<'NODE'
+          const version = process.argv[2];
+          const expected = require('./server.json');
+          const url = 'https://registry.modelcontextprotocol.io/v0/servers/'
+            + encodeURIComponent(expected.name) + '/versions/' + encodeURIComponent(version);
+          const response = await fetch(url);
+          if (!response.ok) throw new Error('MCP Registry repair precondition failed with HTTP ' + response.status);
+          const record = await response.json();
+          const server = record.server || {};
+          const official = record._meta?.['io.modelcontextprotocol.registry/official'];
+          if (server.version !== version
+            || server.repository?.url !== expected.repository?.url
+            || server.remotes?.[0]?.url !== expected.remotes?.[0]?.url
+            || official?.status !== 'active') {
+            throw new Error('MCP Registry repair precondition does not match the immutable release');
+          }
+          console.log('MCP Registry partial release is present: ' + expected.name + '@' + version);
+          NODE
+      - run: npm ci --no-audit --no-fund
+      - name: Use an npm that supports trusted publishing
+        run: |
+          npm install --global npm@11.5.1
+          npm --version
+      - name: Align npm provenance repository metadata
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          node <<'NODE'
+          const fs = require('node:fs');
+          const canonical = 'git+https://github.com/getremcp/remcp.git';
+          for (const file of ['packages/runtime/package.json', 'packages/client/package.json']) {
+            const pkg = JSON.parse(fs.readFileSync(file, 'utf8'));
+            if (!pkg.repository || typeof pkg.repository !== 'object') throw new Error(file + ' is missing repository metadata');
+            pkg.repository.url = canonical;
+            fs.writeFileSync(file, JSON.stringify(pkg, null, 2) + '\n');
+          }
+          NODE
+      - name: Publish missing npm packages
+        shell: bash
+        env:
+          REPAIR_VERSION: ${{ inputs.repair_release }}
+        run: |
+          set -Eeuo pipefail
+          version="$REPAIR_VERSION"
+          if npm view "@remcp/runtime@$version" version >/dev/null 2>&1; then
+            echo "@remcp/runtime@$version is already published"
+          else
+            npm publish --workspace packages/runtime --access public --provenance
+          fi
+          if npm view "@remcp/remcp@$version" version >/dev/null 2>&1; then
+            echo "@remcp/remcp@$version is already published"
+          else
+            npm publish --workspace packages/client --access public --provenance
+          fi
+      - name: Verify repaired npm packages resolve with canonical provenance metadata
+        shell: bash
+        env:
+          REPAIR_VERSION: ${{ inputs.repair_release }}
+        run: |
+          set -Eeuo pipefail
+          version="$REPAIR_VERSION"
+          registry_has() {
+            local encoded="$1"
+            curl --fail --silent --show-error --header 'Cache-Control: no-cache' \
+              "https://registry.npmjs.org/$encoded/$version" >/dev/null 2>&1
+          }
+          for attempt in {1..60}; do
+            if registry_has '@remcp%2Fruntime' && registry_has '@remcp%2Fremcp'; then
+              break
+            fi
+            if (( attempt == 60 )); then
+              echo "repaired npm packages did not resolve after ten minutes" >&2
+              exit 1
+            fi
+            sleep 10
+          done
+          registry_repository() {
+            local encoded="$1"
+            curl --fail --silent --show-error \
+              --header 'Cache-Control: no-cache' \
+              "https://registry.npmjs.org/$encoded/$version" |
+              node -e 'let raw="";process.stdin.on("data",c=>raw+=c).on("end",()=>console.log(JSON.parse(raw).repository?.url || ""))'
+          }
+          for encoded in '@remcp%2Fruntime' '@remcp%2Fremcp'; do
+            actual="$(registry_repository "$encoded")"
+            test "$actual" = 'git+https://github.com/getremcp/remcp.git' || {
+              echo "$encoded@$version repository.url is $actual; expected canonical provenance repository" >&2
+              exit 1
+            }
+          done
+      - name: Open or repair the GitHub release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPAIR_VERSION: ${{ inputs.repair_release }}
+        run: |
+          set -Eeuo pipefail
+          version="$REPAIR_VERSION"
+          tag="v$version"
+          notes="$(mktemp)"
+          {
+            echo "## Packages"
+            echo
+            echo "- [\`@remcp/runtime@$version\`](https://www.npmjs.com/package/@remcp/runtime/v/$version) — the local device runtime"
+            echo "- [\`@remcp/remcp@$version\`](https://www.npmjs.com/package/@remcp/remcp/v/$version) — the device client and outbound agent"
+            echo
+            echo "## Install"
+            echo
+            echo '```bash'
+            echo "npm install --global @remcp/remcp@$version"
+            echo '```'
+            echo
+            echo "Pairing commands are generated at https://remcp.site/app/connect."
+            echo
+            echo "## Tool surface"
+            echo
+            echo '```'
+            node packages/runtime/src/index.mjs --print-tools | node -e 'let raw="";process.stdin.on("data",c=>raw+=c).on("end",()=>{for(const tool of JSON.parse(raw)) console.log(`${tool.name} — ${tool.title}`)})'
+            echo '```'
+            echo
+            echo "Both packages are published with a signed provenance statement."
+          } > "$notes"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release upload "$tag" submission/remcp-plugin.zip submission/remcp-skills-only.zip chatgpt-app-submission.json --clobber
+          else
+            gh release create "$tag" submission/remcp-plugin.zip submission/remcp-skills-only.zip chatgpt-app-submission.json \
+              --title "ReMCP $version" --notes-file "$notes" --verify-tag
+          fi
 
   publish-mcp-registry:
     name: publish to official MCP Registry
