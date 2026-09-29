@@ -8,6 +8,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
+$officialOrigin = 'https://remcp.site'
 
 if ($env:OS -ne 'Windows_NT') {
   throw 'This installer is for Windows PowerShell only.'
@@ -26,6 +27,8 @@ $root = Join-Path $localAppData 'ReMCP'
 $runtimeDir = Join-Path $root 'runtime'
 $binDir = Join-Path $root 'bin'
 $wrapper = Join-Path $binDir 'remcp.cmd'
+$staged = "$runtimeDir.new"
+$backup = "$runtimeDir.old"
 
 function Get-ReMCPArchitecture {
   $value = [string]$env:PROCESSOR_ARCHITEW6432
@@ -38,27 +41,104 @@ function Get-ReMCPArchitecture {
   }
 }
 
-function Test-ReMCPRuntime {
-  $node = Join-Path $runtimeDir 'node.exe'
-  $npm = Join-Path $runtimeDir 'npm.cmd'
-  if (!(Test-Path -LiteralPath $node -PathType Leaf) -or !(Test-Path -LiteralPath $npm -PathType Leaf)) {
-    return $false
+function Get-ReMCPRelease {
+  # The bootstrap itself always comes from remcp.site, so bootstrap code is never delegated to a
+  # custom relay. The official version endpoint also prevents an npm @latest race during rollout:
+  # Windows installs the exact client/runtime pair production currently advertises.
+  $versionUrl = "$officialOrigin/api/agent/version"
+  $response = Invoke-WebRequest -UseBasicParsing -Uri $versionUrl -Headers @{ 'Cache-Control' = 'no-cache' }
+  $release = $response.Content | ConvertFrom-Json
+  $version = [string]$release.cliVersion
+  $clientSpec = [string]$release.cli
+  $runtimeSpec = [string]$release.runtime
+  $runtimePackageName = [string]$release.runtimePackageName
+
+  if ($version -notmatch '^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$') {
+    throw 'ReMCP release metadata contains an invalid client version.'
   }
+  if ($clientSpec -ne "@remcp/remcp@$version") {
+    throw 'ReMCP release metadata does not contain the expected exact client package.'
+  }
+  if ($runtimePackageName -ne '@remcp/runtime' -or $runtimeSpec -ne "@remcp/runtime@$version") {
+    throw 'ReMCP release metadata does not contain the expected exact first-party runtime package.'
+  }
+  return $release
+}
+
+function Test-ReMCPRelease {
+  param(
+    [Parameter(Mandatory=$true)][string]$Directory,
+    [Parameter(Mandatory=$true)]$Release,
+    [switch]$Explain
+  )
+
+  $node = Join-Path $Directory 'node.exe'
+  $npm = Join-Path $Directory 'npm.cmd'
+  $cli = Join-Path $Directory 'remcp.cmd'
+  $cliEntry = Join-Path $Directory 'node_modules\@remcp\remcp\bin\remcp.mjs'
+  $clientManifest = Join-Path $Directory 'node_modules\@remcp\remcp\package.json'
+  $runtimeManifest = Join-Path $Directory 'node_modules\@remcp\runtime\package.json'
+  foreach ($file in @($node, $npm, $cli, $cliEntry, $clientManifest, $runtimeManifest)) {
+    if (!(Test-Path -LiteralPath $file -PathType Leaf)) {
+      if ($Explain) { Write-Host "ReMCP verification failed: missing $file" }
+      return $false
+    }
+  }
+
   try {
-    $version = (& $node -p "process.versions.node" 2>$null).Trim()
-    if ($LASTEXITCODE -ne 0 -or $version -notmatch '^(\d+)\.(\d+)\.(\d+)$') { return $false }
+    $nodeVersion = (& $node -p "process.versions.node" 2>$null).Trim()
+    if ($LASTEXITCODE -ne 0 -or $nodeVersion -notmatch '^(\d+)\.(\d+)\.(\d+)$') {
+      if ($Explain) { Write-Host "ReMCP verification failed: node version '$nodeVersion' is invalid." }
+      return $false
+    }
     $major = [int]$Matches[1]
     $minor = [int]$Matches[2]
-    return ($major -gt 22) -or ($major -eq 22 -and $minor -ge 5)
+    if ($major -lt 22 -or ($major -eq 22 -and $minor -lt 5)) {
+      if ($Explain) { Write-Host "ReMCP verification failed: node $nodeVersion is too old." }
+      return $false
+    }
+
+    $client = Get-Content -LiteralPath $clientManifest -Raw | ConvertFrom-Json
+    $runtime = Get-Content -LiteralPath $runtimeManifest -Raw | ConvertFrom-Json
+    $expectedVersion = [string]$Release.cliVersion
+    $clientVersion = [string]$client.version
+    $runtimeVersion = [string]$runtime.version
+    if ($clientVersion -ne $expectedVersion) {
+      if ($Explain) { Write-Host "ReMCP verification failed: client version expected=$expectedVersion actual=$clientVersion." }
+      return $false
+    }
+    if ($runtimeVersion -ne $expectedVersion) {
+      if ($Explain) { Write-Host "ReMCP verification failed: runtime version expected=$expectedVersion actual=$runtimeVersion." }
+      return $false
+    }
+
+    # Windows PowerShell 5.1 can report LASTEXITCODE=-1 for an npm-generated .cmd shim even when
+    # the shim successfully prints the version. Verify the actual CLI entry with the private Node
+    # executable instead; the public Windows E2E separately executes both remcp.cmd and our wrapper.
+    # Do not pipe a native process through Select-Object in Windows PowerShell 5.1: stopping the
+    # pipeline after the first object can leave LASTEXITCODE=-1 even when Node completed successfully.
+    $reported = [string](& $node $cliEntry --version 2>$null)
+    $cliExit = $LASTEXITCODE
+    if ($cliExit -ne 0 -or $reported.Trim() -ne $expectedVersion) {
+      if ($Explain) { Write-Host "ReMCP verification failed: CLI version expected=$expectedVersion actual='$reported' exit=$cliExit." }
+      return $false
+    }
+    return $true
   } catch {
+    if ($Explain) { Write-Host ("ReMCP verification failed: " + [string]$_.Exception.Message) }
     return $false
   }
 }
 
-function Install-ReMCPRuntime {
+function Initialize-ReMCPStage {
+  param(
+    [Parameter(Mandatory=$true)][string]$Destination,
+    [Parameter(Mandatory=$true)]$Release
+  )
+
   $arch = Get-ReMCPArchitecture
   $manifestUrl = 'https://nodejs.org/dist/latest-v22.x/SHASUMS256.txt'
-  Write-Host 'Preparing the private ReMCP runtime...'
+  Write-Host 'Preparing ReMCP...'
   $manifest = (Invoke-WebRequest -UseBasicParsing -Uri $manifestUrl).Content
   $escapedArch = [Regex]::Escape($arch)
   $pattern = '(?m)^([a-fA-F0-9]{64})\s+(node-v([0-9]+\.[0-9]+\.[0-9]+)-win-' + $escapedArch + '\.zip)$'
@@ -69,14 +149,13 @@ function Install-ReMCPRuntime {
 
   $sha256 = $match.Groups[1].Value.ToLowerInvariant()
   $archiveName = $match.Groups[2].Value
-  $version = $match.Groups[3].Value
-  $downloadUrl = "https://nodejs.org/dist/v$version/$archiveName"
+  $nodeVersion = $match.Groups[3].Value
+  $downloadUrl = "https://nodejs.org/dist/v$nodeVersion/$archiveName"
   $tempRoot = Join-Path ([IO.Path]::GetTempPath()) ("remcp-install-" + [Guid]::NewGuid().ToString('N'))
   $archive = Join-Path $tempRoot $archiveName
   $expanded = Join-Path $tempRoot 'expanded'
-  $staged = "$runtimeDir.new"
-  $backup = "$runtimeDir.old"
 
+  Remove-Item -LiteralPath $Destination -Recurse -Force -ErrorAction SilentlyContinue
   New-Item -ItemType Directory -Force -Path $tempRoot, $expanded | Out-Null
   try {
     Invoke-WebRequest -UseBasicParsing -Uri $downloadUrl -OutFile $archive
@@ -84,31 +163,41 @@ function Install-ReMCPRuntime {
     if ($actual -ne $sha256) {
       throw 'The downloaded ReMCP runtime failed its SHA-256 integrity check.'
     }
+
     Expand-Archive -LiteralPath $archive -DestinationPath $expanded -Force
     $source = Get-ChildItem -LiteralPath $expanded -Directory | Select-Object -First 1
     if ($null -eq $source -or !(Test-Path -LiteralPath (Join-Path $source.FullName 'node.exe'))) {
       throw 'The downloaded ReMCP runtime archive has an unexpected layout.'
     }
 
-    if (Test-Path -LiteralPath $staged) { Remove-Item -LiteralPath $staged -Recurse -Force }
-    New-Item -ItemType Directory -Force -Path $staged | Out-Null
-    Copy-Item -Path (Join-Path $source.FullName '*') -Destination $staged -Recurse -Force
+    New-Item -ItemType Directory -Force -Path $Destination | Out-Null
+    Copy-Item -Path (Join-Path $source.FullName '*') -Destination $Destination -Recurse -Force
 
-    try { schtasks.exe /End /TN 'ReMCP Agent' 2>$null | Out-Null } catch {}
-    if (Test-Path -LiteralPath $backup) { Remove-Item -LiteralPath $backup -Recurse -Force }
-    if (Test-Path -LiteralPath $runtimeDir) { Move-Item -LiteralPath $runtimeDir -Destination $backup -Force }
+    $oldPrefix = $env:NPM_CONFIG_PREFIX
+    $oldPath = $env:Path
     try {
-      # Keep the previous runtime until npm has installed and verified the ReMCP command below.
-      # A registry outage must not turn an already connected machine into a broken installation.
-      Move-Item -LiteralPath $staged -Destination $runtimeDir -Force
-    } catch {
-      if (Test-Path -LiteralPath $runtimeDir) { Remove-Item -LiteralPath $runtimeDir -Recurse -Force }
-      if (Test-Path -LiteralPath $backup) { Move-Item -LiteralPath $backup -Destination $runtimeDir -Force }
-      throw
+      $env:NPM_CONFIG_PREFIX = $Destination
+      $env:Path = "$Destination;$oldPath"
+      $npm = Join-Path $Destination 'npm.cmd'
+      $clientSpec = [string]$Release.cli
+      $runtimeSpec = [string]$Release.runtime
+      & $npm install --global $clientSpec $runtimeSpec --no-audit --no-fund --ignore-scripts --loglevel=error
+      if ($LASTEXITCODE -ne 0) {
+        throw "ReMCP installation failed with exit code $LASTEXITCODE."
+      }
+    } finally {
+      $env:NPM_CONFIG_PREFIX = $oldPrefix
+      $env:Path = $oldPath
     }
+
+    if (!(Test-ReMCPRelease -Directory $Destination -Release $Release -Explain)) {
+      throw 'The staged ReMCP release failed verification.'
+    }
+  } catch {
+    Remove-Item -LiteralPath $Destination -Recurse -Force -ErrorAction SilentlyContinue
+    throw
   } finally {
     Remove-Item -LiteralPath $tempRoot -Recurse -Force -ErrorAction SilentlyContinue
-    Remove-Item -LiteralPath $staged -Recurse -Force -ErrorAction SilentlyContinue
   }
 }
 
@@ -130,9 +219,18 @@ function Write-ReMCPWrapper {
   $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
   $entries = @($userPath -split ';' | Where-Object { ![string]::IsNullOrWhiteSpace($_) })
   if (!($entries | Where-Object { $_.TrimEnd('\') -ieq $binDir.TrimEnd('\') })) {
-    $next = (($entries + $binDir) -join ';')
-    [Environment]::SetEnvironmentVariable('Path', $next, 'User')
+    [Environment]::SetEnvironmentVariable('Path', (($entries + $binDir) -join ';'), 'User')
   }
+}
+
+function Restore-ReMCPBackup {
+  if (!(Test-Path -LiteralPath $backup -PathType Container)) { return $false }
+  try { schtasks.exe /End /TN 'ReMCP Agent' 2>$null | Out-Null } catch {}
+  Remove-Item -LiteralPath $runtimeDir -Recurse -Force -ErrorAction SilentlyContinue
+  Move-Item -LiteralPath $backup -Destination $runtimeDir -Force
+  Write-ReMCPWrapper
+  try { schtasks.exe /Run /TN 'ReMCP Agent' 2>$null | Out-Null } catch {}
+  return $true
 }
 
 if ($ValidateOnly) {
@@ -140,41 +238,49 @@ if ($ValidateOnly) {
   exit 0
 }
 
+# If a previous process died between the directory swap and its final cleanup, prefer the active
+# runtime when it exists; otherwise restore the rollback copy before attempting another install.
 New-Item -ItemType Directory -Force -Path $root | Out-Null
-if (!(Test-ReMCPRuntime)) {
-  Install-ReMCPRuntime
+if (!(Test-Path -LiteralPath $runtimeDir -PathType Container) -and (Test-Path -LiteralPath $backup -PathType Container)) {
+  Move-Item -LiteralPath $backup -Destination $runtimeDir -Force
 }
 
-$env:NPM_CONFIG_PREFIX = $runtimeDir
-$env:Path = "$runtimeDir;$env:Path"
-$npm = Join-Path $runtimeDir 'npm.cmd'
+$release = Get-ReMCPRelease
+$swapped = $false
+if (!(Test-ReMCPRelease -Directory $runtimeDir -Release $release)) {
+  Initialize-ReMCPStage -Destination $staged -Release $release
 
-$backup = "$runtimeDir.old"
-$cli = Join-Path $runtimeDir 'remcp.cmd'
-try {
-  Write-Host 'Installing ReMCP...'
-  & $npm install --global '@remcp/remcp@latest' --no-audit --no-fund --ignore-scripts --loglevel=error
-  if ($LASTEXITCODE -ne 0) {
-    throw "ReMCP installation failed with exit code $LASTEXITCODE."
+  # Only stop a running agent after the complete replacement has downloaded, installed and passed
+  # verification. The offline window is therefore just two local directory moves.
+  try { schtasks.exe /End /TN 'ReMCP Agent' 2>$null | Out-Null } catch {}
+  Remove-Item -LiteralPath $backup -Recurse -Force -ErrorAction SilentlyContinue
+  if (Test-Path -LiteralPath $runtimeDir -PathType Container) {
+    Move-Item -LiteralPath $runtimeDir -Destination $backup -Force
   }
-  if (!(Test-Path -LiteralPath $cli -PathType Leaf)) {
-    throw 'ReMCP command was not created by the package installation.'
+
+  try {
+    Move-Item -LiteralPath $staged -Destination $runtimeDir -Force
+    if (!(Test-ReMCPRelease -Directory $runtimeDir -Release $release)) {
+      throw 'The promoted ReMCP release failed verification.'
+    }
+    $swapped = $true
+  } catch {
+    Restore-ReMCPBackup | Out-Null
+    throw
   }
-} catch {
-  if (Test-Path -LiteralPath $backup) {
-    Remove-Item -LiteralPath $runtimeDir -Recurse -Force -ErrorAction SilentlyContinue
-    Move-Item -LiteralPath $backup -Destination $runtimeDir -Force
-    try { schtasks.exe /Run /TN 'ReMCP Agent' 2>$null | Out-Null } catch {}
-  }
-  throw
+} else {
+  # A verified current release makes any leftover rollback directory stale.
+  Remove-Item -LiteralPath $backup -Recurse -Force -ErrorAction SilentlyContinue
 }
-if (Test-Path -LiteralPath $backup) { Remove-Item -LiteralPath $backup -Recurse -Force }
 
 Write-ReMCPWrapper
+$env:NPM_CONFIG_PREFIX = $runtimeDir
 $env:Path = "$binDir;$runtimeDir;$env:Path"
+$node = Join-Path $runtimeDir 'node.exe'
+$cliEntry = Join-Path $runtimeDir 'node_modules\@remcp\remcp\bin\remcp.mjs'
 
 $arguments = @('connect')
-if (![string]::IsNullOrWhiteSpace($Server) -and $Server.TrimEnd('/') -ne 'https://remcp.site') {
+if (![string]::IsNullOrWhiteSpace($Server) -and $Server.TrimEnd('/') -ne $officialOrigin) {
   $arguments += @('--server', $Server.TrimEnd('/'))
 }
 if (![string]::IsNullOrWhiteSpace($Code)) {
@@ -183,7 +289,16 @@ if (![string]::IsNullOrWhiteSpace($Code)) {
 if ($TrustRuntime) { $arguments += '--trust-runtime' }
 
 Write-Host 'Starting ReMCP pairing...'
-& $cli @arguments
-if ($LASTEXITCODE -ne 0) {
-  throw "ReMCP pairing failed with exit code $LASTEXITCODE."
+& $node $cliEntry @arguments
+$pairingExit = $LASTEXITCODE
+if ($pairingExit -ne 0) {
+  # Keep a fresh first install available for a simple retry. On an upgrade, however, restore the
+  # already-working agent if pairing/service setup failed after the atomic swap.
+  if ($swapped -and (Test-Path -LiteralPath $backup -PathType Container)) {
+    Restore-ReMCPBackup | Out-Null
+  }
+  throw "ReMCP pairing failed with exit code $pairingExit."
 }
+
+Remove-Item -LiteralPath $backup -Recurse -Force -ErrorAction SilentlyContinue
+Write-Host ("ReMCP {0} is ready." -f [string]$release.cliVersion)
