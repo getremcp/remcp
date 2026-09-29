@@ -115,9 +115,12 @@ function Test-ReMCPRelease {
     # Windows PowerShell 5.1 can report LASTEXITCODE=-1 for an npm-generated .cmd shim even when
     # the shim successfully prints the version. Verify the actual CLI entry with the private Node
     # executable instead; the public Windows E2E separately executes both remcp.cmd and our wrapper.
-    $reported = [string](& $node $cliEntry --version 2>$null | Select-Object -First 1)
-    if ($LASTEXITCODE -ne 0 -or $reported.Trim() -ne $expectedVersion) {
-      if ($Explain) { Write-Host "ReMCP verification failed: CLI version expected=$expectedVersion actual='$reported' exit=$LASTEXITCODE." }
+    # Do not pipe a native process through Select-Object in Windows PowerShell 5.1: stopping the
+    # pipeline after the first object can leave LASTEXITCODE=-1 even when Node completed successfully.
+    $reported = [string](& $node $cliEntry --version 2>$null)
+    $cliExit = $LASTEXITCODE
+    if ($cliExit -ne 0 -or $reported.Trim() -ne $expectedVersion) {
+      if ($Explain) { Write-Host "ReMCP verification failed: CLI version expected=$expectedVersion actual='$reported' exit=$cliExit." }
       return $false
     }
     return $true
