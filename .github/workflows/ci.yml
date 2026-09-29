@@ -108,10 +108,10 @@ jobs:
           $live = Join-Path $env:RUNNER_TEMP 'remcp-live-install.ps1'
           Invoke-WebRequest -UseBasicParsing -Uri 'https://remcp.site/install.ps1' -OutFile $live
 
-          $repoHash = (Get-FileHash -Algorithm SHA256 -LiteralPath .\install.ps1).Hash
-          $liveHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $live).Hash
-          if ($repoHash -ne $liveHash) {
-            throw "Live installer does not match the tested release installer. repo=$repoHash live=$liveHash"
+          $repoText = [IO.File]::ReadAllText((Resolve-Path .\install.ps1)).Replace("`r`n", "`n")
+          $liveText = [IO.File]::ReadAllText($live).Replace("`r`n", "`n")
+          if ($repoText -ne $liveText) {
+            throw 'Live installer does not match the tested release installer after line-ending normalization.'
           }
 
           $system32 = Join-Path $env:SystemRoot 'System32'
