@@ -276,7 +276,8 @@ if (!(Test-ReMCPRelease -Directory $runtimeDir -Release $release)) {
 Write-ReMCPWrapper
 $env:NPM_CONFIG_PREFIX = $runtimeDir
 $env:Path = "$binDir;$runtimeDir;$env:Path"
-$cli = Join-Path $runtimeDir 'remcp.cmd'
+$node = Join-Path $runtimeDir 'node.exe'
+$cliEntry = Join-Path $runtimeDir 'node_modules\@remcp\remcp\bin\remcp.mjs'
 
 $arguments = @('connect')
 if (![string]::IsNullOrWhiteSpace($Server) -and $Server.TrimEnd('/') -ne $officialOrigin) {
@@ -288,14 +289,15 @@ if (![string]::IsNullOrWhiteSpace($Code)) {
 if ($TrustRuntime) { $arguments += '--trust-runtime' }
 
 Write-Host 'Starting ReMCP pairing...'
-& $cli @arguments
-if ($LASTEXITCODE -ne 0) {
+& $node $cliEntry @arguments
+$pairingExit = $LASTEXITCODE
+if ($pairingExit -ne 0) {
   # Keep a fresh first install available for a simple retry. On an upgrade, however, restore the
   # already-working agent if pairing/service setup failed after the atomic swap.
   if ($swapped -and (Test-Path -LiteralPath $backup -PathType Container)) {
     Restore-ReMCPBackup | Out-Null
   }
-  throw "ReMCP pairing failed with exit code $LASTEXITCODE."
+  throw "ReMCP pairing failed with exit code $pairingExit."
 }
 
 Remove-Item -LiteralPath $backup -Recurse -Force -ErrorAction SilentlyContinue
