@@ -82,7 +82,7 @@ jobs:
   windows-installer:
     name: Windows PowerShell installer
     runs-on: windows-latest
-    timeout-minutes: 5
+    timeout-minutes: 8
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -101,6 +101,149 @@ jobs:
       - name: Validate with PowerShell 7
         shell: pwsh
         run: .\install.ps1 -ValidateOnly
+      - name: Smoke-test private Windows bootstrap and Scheduled Task
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $system32 = Join-Path $env:SystemRoot 'System32'
+          $powershellDir = Join-Path $system32 'WindowsPowerShell\v1.0'
+          $env:Path = "$system32;$env:SystemRoot;$powershellDir"
+          foreach ($command in @('node.exe', 'npm.cmd', 'npx.cmd', 'winget.exe')) {
+            if (Get-Command $command -ErrorAction SilentlyContinue) {
+              throw "$command unexpectedly remains available before the bootstrap"
+            }
+          }
+
+          $root = Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'ReMCP'
+          Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
+          $env:REMCP_CONFIG_DIR = Join-Path $env:RUNNER_TEMP 'remcp-windows-service-test'
+          Remove-Item -LiteralPath $env:REMCP_CONFIG_DIR -Recurse -Force -ErrorAction SilentlyContinue
+
+          function Invoke-ExpectedPairingFailure {
+            $failedAtPairing = $false
+            try {
+              & .\install.ps1 -Code 'REMCP-CI-INVALID-CODE'
+            } catch {
+              $message = [string]$_.Exception.Message
+              Write-Host "Expected post-install pairing failure: $message"
+              if ($message -match 'Pairing failed') { $failedAtPairing = $true }
+              $global:LASTEXITCODE = 0
+            }
+            if (!$failedAtPairing) {
+              throw 'The bootstrap did not reach the expected pairing boundary after installation.'
+            }
+          }
+
+          try {
+            Invoke-ExpectedPairingFailure
+
+            $runtimeDir = Join-Path $root 'runtime'
+            $binDir = Join-Path $root 'bin'
+            $node = Join-Path $runtimeDir 'node.exe'
+            $npm = Join-Path $runtimeDir 'npm.cmd'
+            $runtimeCli = Join-Path $runtimeDir 'remcp.cmd'
+            $wrapper = Join-Path $binDir 'remcp.cmd'
+            foreach ($path in @($node, $npm, $runtimeCli, $wrapper)) {
+              if (!(Test-Path -LiteralPath $path -PathType Leaf)) {
+                throw "Expected bootstrap artifact is missing: $path"
+              }
+            }
+
+            $nodeVersion = (& $node -p 'process.versions.node').Trim()
+            if ($LASTEXITCODE -ne 0 -or $nodeVersion -notmatch '^(\d+)\.(\d+)\.(\d+)$') {
+              throw "Private Node runtime is not executable: $nodeVersion"
+            }
+            $major = [int]$Matches[1]
+            $minor = [int]$Matches[2]
+            if ($major -lt 22 -or ($major -eq 22 -and $minor -lt 5)) {
+              throw "Private Node runtime is too old: $nodeVersion"
+            }
+
+            $expectedVersion = (Invoke-RestMethod -Uri 'https://remcp.site/api/agent/version').cliVersion
+            $runtimeVersion = (& $runtimeCli --version).Trim()
+            $wrapperVersion = (& $wrapper --version).Trim()
+            if ($runtimeVersion -ne $expectedVersion) {
+              throw "Private CLI version mismatch: expected=$expectedVersion actual=$runtimeVersion"
+            }
+            if ($wrapperVersion -ne $expectedVersion) {
+              throw "Wrapper CLI version mismatch: expected=$expectedVersion actual=$wrapperVersion"
+            }
+
+            $firstNodeHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $node).Hash
+            Invoke-ExpectedPairingFailure
+            $secondNodeHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $node).Hash
+            if ($firstNodeHash -ne $secondNodeHash) {
+              throw 'A second bootstrap unexpectedly replaced an already-valid private Node runtime.'
+            }
+            if (Test-Path -LiteralPath "$runtimeDir.old") {
+              throw 'A successful bootstrap left a stale runtime rollback directory.'
+            }
+
+            $serviceModule = (Resolve-Path '.\packages\client\src\cli\service.mjs').Path
+            if (!(Test-Path -LiteralPath $serviceModule -PathType Leaf)) {
+              throw "Candidate service module is missing: $serviceModule"
+            }
+            $serviceModuleUri = ([Uri]$serviceModule).AbsoluteUri
+            $probe = Join-Path $env:RUNNER_TEMP 'remcp-windows-service-probe.mjs'
+            @"
+          import {
+            configureWindowsWriteAccess,
+            installWindowsService,
+            persistentServiceState
+          } from '$serviceModuleUri';
+
+          const cliPath = process.argv[2];
+          const nodePath = process.argv[3];
+          installWindowsService(cliPath, { nodePath });
+          configureWindowsWriteAccess();
+          const state = persistentServiceState({
+            serviceInstalled: true,
+            serviceCliPath: cliPath,
+            serviceNodePath: nodePath
+          });
+          console.log(JSON.stringify(state));
+          if (!state.installed || state.manager !== 'schtasks' || state.name !== 'ReMCP Agent') {
+            throw new Error('Scheduled Task state is not installed as expected: ' + JSON.stringify(state));
+          }
+          "@ | Set-Content -LiteralPath $probe -Encoding UTF8
+
+            & $node $probe $runtimeCli $node
+            if ($LASTEXITCODE -ne 0) {
+              throw "Scheduled Task probe failed with exit code $LASTEXITCODE."
+            }
+
+            $taskXml = (& schtasks.exe /Query /TN 'ReMCP Agent' /XML | Out-String)
+            if ($LASTEXITCODE -ne 0) { throw 'ReMCP Agent Scheduled Task was not queryable.' }
+            if ($taskXml -notmatch '<RunLevel>HighestAvailable</RunLevel>') {
+              throw 'ReMCP Agent Scheduled Task is not configured at HighestAvailable run level.'
+            }
+            if ($taskXml -notmatch '<LogonType>InteractiveToken</LogonType>') {
+              throw 'ReMCP Agent Scheduled Task is not configured for the interactive user session.'
+            }
+
+            $launcher = Join-Path $env:REMCP_CONFIG_DIR 'remcp-agent.cmd'
+            if (!(Test-Path -LiteralPath $launcher -PathType Leaf)) {
+              throw "Scheduled Task launcher is missing: $launcher"
+            }
+            $launcherText = Get-Content -LiteralPath $launcher -Raw
+            $expectedPrefixLine = 'set "NPM_CONFIG_PREFIX={0}"' -f $runtimeDir
+            $expectedPathLine = 'set "PATH={0};%PATH%"' -f $runtimeDir
+            $expectedCallLine = 'call "{0}" start --service' -f $runtimeCli
+            if (!$launcherText.Contains($expectedPrefixLine)) {
+              throw 'Scheduled Task launcher does not pin the private npm prefix.'
+            }
+            if (!$launcherText.Contains($expectedPathLine)) {
+              throw 'Scheduled Task launcher does not pin the private Node runtime directory.'
+            }
+            if (!$launcherText.Contains($expectedCallLine)) {
+              throw 'Scheduled Task launcher does not invoke the private ReMCP CLI as a service.'
+            }
+
+            Write-Host "Windows bootstrap E2E OK: private Node $nodeVersion, ReMCP $runtimeVersion, Scheduled Task uses the private runtime; no system Node/npm/npx/winget required."
+          } finally {
+            try { schtasks.exe /End /TN 'ReMCP Agent' 2>$null | Out-Null } catch {}
+            try { schtasks.exe /Delete /TN 'ReMCP Agent' /F 2>$null | Out-Null } catch {}
+          }
 
   publish:
     name: publish to npm and open a release
