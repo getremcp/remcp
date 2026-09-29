@@ -61,7 +61,7 @@ operating system and shows the correct one-command flow.
 **Windows PowerShell — no preinstalled Node.js, npm, npx, or winget required:**
 
 ```powershell
-irm https://remcp.site/install.ps1 | iex
+irm https://remcp.site/i | iex
 ```
 
 ReMCP keeps its Windows runtime privately under `%LOCALAPPDATA%\ReMCP`; it does not install Node.js

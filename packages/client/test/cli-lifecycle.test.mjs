@@ -4,6 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import test from 'node:test';
+import { releasePairPresentAtCli } from '../src/cli/service.mjs';
 import { VERSION } from '../src/version.mjs';
 
 const bin = path.resolve('bin/remcp.mjs');
@@ -12,6 +13,28 @@ function fakeExecutable(file, body) {
   writeFileSync(file, `#!/bin/sh\n${body}\n`);
   chmodSync(file, 0o755);
 }
+
+test('persistent install reuses an already complete exact client/runtime pair', () => {
+  const root = mkdtempSync(path.join(os.tmpdir(), 'remcp-release-pair-'));
+  const modules = path.join(root, 'node_modules');
+  const clientDir = path.join(modules, '@remcp', 'remcp');
+  const runtimeDir = path.join(modules, '@remcp', 'runtime');
+  const cliPath = path.join(clientDir, 'bin', 'remcp.mjs');
+  mkdirSync(path.dirname(cliPath), { recursive:true });
+  mkdirSync(runtimeDir, { recursive:true });
+  writeFileSync(cliPath, '#!/usr/bin/env node\n');
+  writeFileSync(path.join(clientDir, 'package.json'), JSON.stringify({ name:'@remcp/remcp', version:VERSION }));
+  writeFileSync(path.join(runtimeDir, 'package.json'), JSON.stringify({ name:'@remcp/runtime', version:VERSION }));
+
+  const config = {
+    runtime:{ kind:'npm', packageName:'@remcp/runtime', packageSpec:`@remcp/runtime@${VERSION}`, entry:'src/index.mjs' },
+  };
+  assert.equal(releasePairPresentAtCli(cliPath, config), true);
+
+  writeFileSync(path.join(runtimeDir, 'package.json'), JSON.stringify({ name:'@remcp/runtime', version:'0.0.1' }));
+  assert.equal(releasePairPresentAtCli(cliPath, config), false,
+    'a stale runtime must force the normal install path instead of reusing a partial pair');
+});
 
 test('install uses a stable global CLI path and update refreshes/restarts it', () => {
   const root = mkdtempSync(path.join(os.tmpdir(), 'remcp-cli-'));

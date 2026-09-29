@@ -572,6 +572,23 @@ function packageVersionForCli(cliPath, packageName) {
   return versionFromPackageJson(path.join(prefix, 'node_modules', ...String(packageName).split('/'), 'package.json'));
 }
 
+function exactPackageSpecVersion(packageName, packageSpec) {
+  const prefix = `${String(packageName || '')}@`;
+  const spec = String(packageSpec || '');
+  return prefix !== '@' && spec.startsWith(prefix) ? spec.slice(prefix.length) : '';
+}
+
+// A PowerShell bootstrap already installs the exact client/runtime pair before it starts pairing.
+// Reusing that verified pair avoids a second registry mutation during `connect --install` while
+// preserving the normal npm path for partial, stale, custom-runtime and non-bootstrap installs.
+export function releasePairPresentAtCli(cliPath, config) {
+  const runtimePackageName = String(config?.runtime?.packageName || '');
+  const expectedRuntimeVersion = exactPackageSpecVersion(runtimePackageName, config?.runtime?.packageSpec);
+  if (!cliPath || !runtimePackageName || !expectedRuntimeVersion) return false;
+  return packageVersionForCli(cliPath, PACKAGE_NAME) === VERSION
+    && packageVersionForCli(cliPath, runtimePackageName) === expectedRuntimeVersion;
+}
+
 export function installationVersionsAtCliPath(cliPath, runtimePackageName) {
   if (!cliPath) return { cliVersion:null, runtimeVersion:null, cliPath:null };
   let resolvedCliPath = cliPath;
@@ -714,7 +731,10 @@ export function installPersistentAgent(config) {
   const platform = servicePlatform();
   if (!['linux', 'darwin', 'win32'].includes(platform)) throw new Error(`Automatic background service installation is not supported on ${platform}`);
   console.log(`Installing ReMCP ${VERSION}…`);
-  npmGlobalInstall(`${PACKAGE_NAME}@${VERSION}`, config.runtime.packageSpec);
+  const runningCli = process.argv[1] || '';
+  if (!releasePairPresentAtCli(runningCli, config)) {
+    npmGlobalInstall(`${PACKAGE_NAME}@${VERSION}`, config.runtime.packageSpec);
+  }
   const cliPath = globalCliPath();
   const cliScript = resolvedCliScript(cliPath);
   const nodePath = process.execPath;
