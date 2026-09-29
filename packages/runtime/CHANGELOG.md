@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.116 — 2026-09-29
+
+- Linux Wayland `list_windows` stops its AT-SPI inventory traversal at top-level windows instead of walking descendant controls. On the verified ASUS desktop this kept the same 13 stable window records while cutting the call from roughly 7.2 seconds to roughly 2.1 seconds; `computer_snapshot` first-look latency fell from 7.50 seconds to 2.45 seconds in the same state.
+- XWayland refresh/merge behavior, bounds, stable IDs and window actions are unchanged. Runtime tool names, schemas and annotations are unchanged from 0.2.115.
+
 ## 0.2.115 — 2026-09-28
 
 - Reconnect timer scheduling now exposes the existing finite upper bound as an explicit control-flow guard at the `setTimeout` sink, satisfying CodeQL without changing reconnect delay semantics.

@@ -71,7 +71,7 @@ export async function listWindows() {
 
   let uiRows = [];
   try {
-    const snapshot = await uiSnapshot({ max_nodes: 2500, max_depth: 3 });
+    const snapshot = await uiSnapshot({ max_nodes: 2500, max_depth: 1 });
     const payload = JSON.parse(snapshot.content?.[0]?.text || '{}');
     const nodes = Array.isArray(payload) ? payload : payload.nodes || [];
     uiRows = nodes.filter(node => {

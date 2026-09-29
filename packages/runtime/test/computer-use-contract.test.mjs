@@ -139,8 +139,18 @@ test('Linux Wayland inventory refreshes X11 rows after AT-SPI and XWayland focus
   const listBody = listStart >= 0 && listEnd > listStart ? linuxSource.slice(listStart, listEnd) : '';
   assert.match(
     listBody,
+    /uiSnapshot\(\{ max_nodes: 2500, max_depth: 1 \}\)/,
+    'Wayland window inventory must stop at top-level AT-SPI windows instead of traversing descendant controls',
+  );
+  assert.doesNotMatch(
+    listBody,
+    /uiSnapshot\(\{ max_nodes: 2500, max_depth: [2-9]/,
+    'Wayland window inventory must not rebuild deeper accessibility subtrees just to discover top-level windows',
+  );
+  assert.match(
+    listBody,
     /window inventory refresh[\s\S]{0,240}if \(refreshedWmRows\.length\) wmRows = refreshedWmRows/,
-    'Wayland inventory must refresh wmctrl after the slower AT-SPI walk so late XWayland windows are not misclassified',
+    'Wayland inventory must refresh wmctrl after the AT-SPI top-level scan so late XWayland windows are not misclassified',
   );
 
   const focusStart = linuxSource.indexOf("if (action === 'focus') {");
