@@ -75,9 +75,10 @@ function Test-ReMCPRelease {
   $node = Join-Path $Directory 'node.exe'
   $npm = Join-Path $Directory 'npm.cmd'
   $cli = Join-Path $Directory 'remcp.cmd'
+  $cliEntry = Join-Path $Directory 'node_modules\@remcp\remcp\bin\remcp.mjs'
   $clientManifest = Join-Path $Directory 'node_modules\@remcp\remcp\package.json'
   $runtimeManifest = Join-Path $Directory 'node_modules\@remcp\runtime\package.json'
-  foreach ($file in @($node, $npm, $cli, $clientManifest, $runtimeManifest)) {
+  foreach ($file in @($node, $npm, $cli, $cliEntry, $clientManifest, $runtimeManifest)) {
     if (!(Test-Path -LiteralPath $file -PathType Leaf)) {
       if ($Explain) { Write-Host "ReMCP verification failed: missing $file" }
       return $false
@@ -111,7 +112,10 @@ function Test-ReMCPRelease {
       return $false
     }
 
-    $reported = [string](& $cli --version 2>$null | Select-Object -First 1)
+    # Windows PowerShell 5.1 can report LASTEXITCODE=-1 for an npm-generated .cmd shim even when
+    # the shim successfully prints the version. Verify the actual CLI entry with the private Node
+    # executable instead; the public Windows E2E separately executes both remcp.cmd and our wrapper.
+    $reported = [string](& $node $cliEntry --version 2>$null | Select-Object -First 1)
     if ($LASTEXITCODE -ne 0 -or $reported.Trim() -ne $expectedVersion) {
       if ($Explain) { Write-Host "ReMCP verification failed: CLI version expected=$expectedVersion actual='$reported' exit=$LASTEXITCODE." }
       return $false
