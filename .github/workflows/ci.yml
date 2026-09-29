@@ -101,6 +101,88 @@ jobs:
       - name: Validate with PowerShell 7
         shell: pwsh
         run: .\install.ps1 -ValidateOnly
+      - name: Smoke-test the live Windows bootstrap without system Node
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $live = Join-Path $env:RUNNER_TEMP 'remcp-live-install.ps1'
+          Invoke-WebRequest -UseBasicParsing -Uri 'https://remcp.site/install.ps1' -OutFile $live
+
+          $repoHash = (Get-FileHash -Algorithm SHA256 -LiteralPath .\install.ps1).Hash
+          $liveHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $live).Hash
+          if ($repoHash -ne $liveHash) {
+            throw "Live installer does not match the tested release installer. repo=$repoHash live=$liveHash"
+          }
+
+          $system32 = Join-Path $env:SystemRoot 'System32'
+          $powershellDir = Join-Path $system32 'WindowsPowerShell\v1.0'
+          $env:Path = "$system32;$env:SystemRoot;$powershellDir"
+          foreach ($command in @('node.exe', 'npm.cmd', 'npx.cmd', 'winget.exe')) {
+            if (Get-Command $command -ErrorAction SilentlyContinue) {
+              throw "$command unexpectedly remains available before the bootstrap"
+            }
+          }
+
+          $root = Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'ReMCP'
+          Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
+
+          function Invoke-ExpectedPairingFailure {
+            $failedAtPairing = $false
+            try {
+              & $live -Code 'REMCP-CI-INVALID-CODE'
+            } catch {
+              $message = [string]$_.Exception.Message
+              Write-Host "Expected post-install pairing failure: $message"
+              if ($message -match 'Pairing failed') { $failedAtPairing = $true }
+            }
+            if (!$failedAtPairing) {
+              throw 'The bootstrap did not reach the expected pairing boundary after installation.'
+            }
+          }
+
+          Invoke-ExpectedPairingFailure
+
+          $runtimeDir = Join-Path $root 'runtime'
+          $binDir = Join-Path $root 'bin'
+          $node = Join-Path $runtimeDir 'node.exe'
+          $npm = Join-Path $runtimeDir 'npm.cmd'
+          $runtimeCli = Join-Path $runtimeDir 'remcp.cmd'
+          $wrapper = Join-Path $binDir 'remcp.cmd'
+          foreach ($path in @($node, $npm, $runtimeCli, $wrapper)) {
+            if (!(Test-Path -LiteralPath $path -PathType Leaf)) {
+              throw "Expected bootstrap artifact is missing: $path"
+            }
+          }
+
+          $nodeVersion = (& $node -p 'process.versions.node').Trim()
+          if ($LASTEXITCODE -ne 0 -or $nodeVersion -notmatch '^(\d+)\.(\d+)\.(\d+)$') {
+            throw "Private Node runtime is not executable: $nodeVersion"
+          }
+          if ([int]$Matches[1] -lt 22 -or ([int]$Matches[1] -eq 22 -and [int]$Matches[2] -lt 5)) {
+            throw "Private Node runtime is too old: $nodeVersion"
+          }
+
+          $expectedVersion = (Invoke-RestMethod -Uri 'https://remcp.site/api/agent/version').cliVersion
+          $runtimeVersion = (& $runtimeCli --version).Trim()
+          $wrapperVersion = (& $wrapper --version).Trim()
+          if ($runtimeVersion -ne $expectedVersion) {
+            throw "Private CLI version mismatch: expected=$expectedVersion actual=$runtimeVersion"
+          }
+          if ($wrapperVersion -ne $expectedVersion) {
+            throw "Wrapper CLI version mismatch: expected=$expectedVersion actual=$wrapperVersion"
+          }
+
+          $firstNodeHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $node).Hash
+          Invoke-ExpectedPairingFailure
+          $secondNodeHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $node).Hash
+          if ($firstNodeHash -ne $secondNodeHash) {
+            throw 'A second bootstrap unexpectedly replaced an already-valid private Node runtime.'
+          }
+          if (Test-Path -LiteralPath "$runtimeDir.old") {
+            throw 'A successful bootstrap left a stale runtime rollback directory.'
+          }
+
+          Write-Host "Windows bootstrap E2E OK: private Node $nodeVersion, ReMCP $runtimeVersion, no system Node/npm/npx/winget required."
 
   publish:
     name: publish to npm and open a release
