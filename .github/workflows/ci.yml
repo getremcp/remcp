@@ -134,6 +134,7 @@ jobs:
               $message = [string]$_.Exception.Message
               Write-Host "Expected post-install pairing failure: $message"
               if ($message -match 'Pairing failed') { $failedAtPairing = $true }
+              $global:LASTEXITCODE = 0
             }
             if (!$failedAtPairing) {
               throw 'The bootstrap did not reach the expected pairing boundary after installation.'
