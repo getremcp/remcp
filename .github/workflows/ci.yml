@@ -255,7 +255,7 @@ jobs:
     if: github.event_name == 'workflow_dispatch' && inputs.repair_release != ''
     needs: test
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
     permissions:
       contents: write
       id-token: write
@@ -299,31 +299,105 @@ jobs:
             exit 1
           }
           echo "repairing $tag from reviewed workflow-only descendant $(git rev-parse HEAD)"
-      - name: Verify the Registry half of the partial release already exists
+      - name: Install verified mcp-publisher 1.8.1 for recovery
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          curl --fail --silent --show-error --location \
+            --output /tmp/mcp-publisher.tar.gz \
+            https://github.com/modelcontextprotocol/registry/releases/download/v1.8.1/mcp-publisher_linux_amd64.tar.gz
+          echo 'a06c9096dcb9727c13555b6be26c7effa707b01f06a4c561ba7a3635443cf2cc  /tmp/mcp-publisher.tar.gz' | sha256sum --check
+          tar -xzf /tmp/mcp-publisher.tar.gz -C /tmp mcp-publisher
+          chmod +x /tmp/mcp-publisher
+          /tmp/mcp-publisher --version
+      - name: Validate Registry metadata for recovery
+        run: /tmp/mcp-publisher validate server.json
+      - name: Ensure the Registry half of the release exists
         shell: bash
         env:
           REPAIR_VERSION: ${{ inputs.repair_release }}
         run: |
           set -Eeuo pipefail
-          node --input-type=module - "$REPAIR_VERSION" <<'NODE'
-          import { readFileSync } from 'node:fs';
-          const version = process.argv[2];
-          const expected = JSON.parse(readFileSync('server.json', 'utf8'));
-          const url = 'https://registry.modelcontextprotocol.io/v0/servers/'
-            + encodeURIComponent(expected.name) + '/versions/' + encodeURIComponent(version);
-          const response = await fetch(url);
-          if (!response.ok) throw new Error('MCP Registry repair precondition failed with HTTP ' + response.status);
-          const record = await response.json();
+          name="$(node -p "require('./server.json').name")"
+          version="$REPAIR_VERSION"
+          title="$(node -p "require('./server.json').title")"
+          description="$(node -p "require('./server.json').description")"
+          website="$(node -p "require('./server.json').websiteUrl)"
+          repository="$(node -p "require('./server.json').repository.url)"
+          repository_source="$(node -p "require('./server.json').repository.source")"
+          remote="$(node -p "require('./server.json').remotes[0].url")"
+          remote_type="$(node -p "require('./server.json').remotes[0].type")"
+          encoded="$(node -e 'process.stdout.write(encodeURIComponent(process.argv[1]))' "$name")"
+          url="https://registry.modelcontextprotocol.io/v0/servers/$encoded/versions/$version"
+
+          verify_registry() {
+            local status
+            status="$(curl --connect-timeout 5 --max-time 20 --silent --show-error \
+              --output /tmp/remcp-registry-repair.json --write-out '%{http_code}' "$url")" || status=000
+            if [[ "$status" == 200 ]]; then
+              node - "$name" "$version" "$title" "$description" "$website" "$repository" "$repository_source" "$remote" "$remote_type" <<'NODE'
+          const fs = require('node:fs');
+          const [name, version, title, description, website, repository, repositorySource, remote, remoteType] = process.argv.slice(2);
+          const record = JSON.parse(fs.readFileSync('/tmp/remcp-registry-repair.json', 'utf8'));
           const server = record.server || {};
           const official = record._meta?.['io.modelcontextprotocol.registry/official'];
-          if (server.version !== version
-            || server.repository?.url !== expected.repository?.url
-            || server.remotes?.[0]?.url !== expected.remotes?.[0]?.url
-            || official?.status !== 'active') {
-            throw new Error('MCP Registry repair precondition does not match the immutable release');
+          if (server.name !== name || server.version !== version || server.title !== title || server.description !== description
+            || server.websiteUrl !== website || server.repository?.url !== repository || server.repository?.source !== repositorySource
+            || !Array.isArray(server.remotes) || server.remotes.length !== 1
+            || server.remotes[0]?.url !== remote || server.remotes[0]?.type !== remoteType
+            || official?.status !== 'active' || official?.isLatest !== true) {
+            throw new Error('Registry recovery record does not exactly match the immutable release: ' + JSON.stringify(record));
           }
-          console.log('MCP Registry partial release is present: ' + expected.name + '@' + version);
           NODE
+              return $?
+            fi
+            if [[ "$status" == 404 || "$status" == 000 || "$status" =~ ^5 ]]; then
+              return 1
+            fi
+            cat /tmp/remcp-registry-repair.json >&2 || true
+            echo "Registry recovery probe failed with HTTP $status" >&2
+            return 2
+          }
+
+          set +e
+          verify_registry
+          verify_status=$?
+          set -e
+          if (( verify_status == 0 )); then
+            echo "MCP Registry release already exists and matches: $name@$version"
+            exit 0
+          fi
+          if (( verify_status == 2 )); then exit 1; fi
+
+          for attempt in 1 2 3; do
+            echo "Registry publish recovery attempt $attempt/3 for $name@$version"
+            /tmp/mcp-publisher login github-oidc
+            set +e
+            /tmp/mcp-publisher publish server.json
+            publish_status=$?
+            set -e
+
+            for visibility in {1..12}; do
+              set +e
+              verify_registry
+              verify_status=$?
+              set -e
+              if (( verify_status == 0 )); then
+                if (( publish_status != 0 )); then
+                  echo "Registry publish returned an error, but the exact release became visible and valid."
+                fi
+                exit 0
+              fi
+              if (( verify_status == 2 )); then exit 1; fi
+              sleep 5
+            done
+
+            if (( attempt < 3 )); then
+              sleep $((attempt * 10))
+            fi
+          done
+          echo "MCP Registry release is still absent after bounded recovery attempts" >&2
+          exit 1
       - run: npm ci --no-audit --no-fund
       - name: Use an npm that supports trusted publishing
         run: |
@@ -539,9 +613,48 @@ jobs:
       - name: Authenticate with GitHub Actions OIDC
         if: steps.registry-preflight.outputs.publish == 'true'
         run: /tmp/mcp-publisher login github-oidc
-      - name: Publish current ReMCP version
+      - name: Publish current ReMCP version with bounded retry
         if: steps.registry-preflight.outputs.publish == 'true'
-        run: /tmp/mcp-publisher publish server.json
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          name="$(node -p "require('./server.json').name")"
+          version="$(node -p "require('./server.json').version")"
+          encoded="$(node -e 'process.stdout.write(encodeURIComponent(process.argv[1]))' "$name")"
+          url="https://registry.modelcontextprotocol.io/v0/servers/$encoded/versions/$version"
+
+          for attempt in 1 2 3; do
+            echo "Registry publish attempt $attempt/3 for $name@$version"
+            if (( attempt > 1 )); then
+              /tmp/mcp-publisher login github-oidc
+            fi
+            set +e
+            /tmp/mcp-publisher publish server.json
+            publish_status=$?
+            set -e
+            if (( publish_status == 0 )); then
+              exit 0
+            fi
+
+            # A Registry write can succeed server-side even when the client sees a timeout.
+            # Probe the immutable version before retrying so a 504 cannot create a duplicate publish.
+            status="$(curl --connect-timeout 5 --max-time 20 --silent --show-error \
+              --output /tmp/remcp-registry-after-publish.json --write-out '%{http_code}' "$url")" || status=000
+            if [[ "$status" == 200 ]]; then
+              echo "Registry publish returned an error, but $name@$version is visible; continuing to the exact metadata verifier."
+              exit 0
+            fi
+            if [[ "$status" != 404 && "$status" != 000 && ! "$status" =~ ^5 ]]; then
+              cat /tmp/remcp-registry-after-publish.json >&2 || true
+              echo "Registry post-publish probe failed with HTTP $status" >&2
+              exit 1
+            fi
+            if (( attempt < 3 )); then
+              sleep $((attempt * 10))
+            fi
+          done
+          echo "MCP Registry publish failed after 3 bounded attempts" >&2
+          exit 1
       - name: Verify published MCP Registry version
         if: steps.registry-preflight.outputs.publish == 'true'
         shell: bash
