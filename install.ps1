@@ -98,8 +98,9 @@ function Install-ReMCPRuntime {
     if (Test-Path -LiteralPath $backup) { Remove-Item -LiteralPath $backup -Recurse -Force }
     if (Test-Path -LiteralPath $runtimeDir) { Move-Item -LiteralPath $runtimeDir -Destination $backup -Force }
     try {
+      # Keep the previous runtime until npm has installed and verified the ReMCP command below.
+      # A registry outage must not turn an already connected machine into a broken installation.
       Move-Item -LiteralPath $staged -Destination $runtimeDir -Force
-      if (Test-Path -LiteralPath $backup) { Remove-Item -LiteralPath $backup -Recurse -Force }
     } catch {
       if (Test-Path -LiteralPath $runtimeDir) { Remove-Item -LiteralPath $runtimeDir -Recurse -Force }
       if (Test-Path -LiteralPath $backup) { Move-Item -LiteralPath $backup -Destination $runtimeDir -Force }
@@ -148,18 +149,29 @@ $env:NPM_CONFIG_PREFIX = $runtimeDir
 $env:Path = "$runtimeDir;$env:Path"
 $npm = Join-Path $runtimeDir 'npm.cmd'
 
-Write-Host 'Installing ReMCP...'
-& $npm install --global '@remcp/remcp@latest' --no-audit --no-fund --ignore-scripts --loglevel=error
-if ($LASTEXITCODE -ne 0) {
-  throw "ReMCP installation failed with exit code $LASTEXITCODE."
+$backup = "$runtimeDir.old"
+$cli = Join-Path $runtimeDir 'remcp.cmd'
+try {
+  Write-Host 'Installing ReMCP...'
+  & $npm install --global '@remcp/remcp@latest' --no-audit --no-fund --ignore-scripts --loglevel=error
+  if ($LASTEXITCODE -ne 0) {
+    throw "ReMCP installation failed with exit code $LASTEXITCODE."
+  }
+  if (!(Test-Path -LiteralPath $cli -PathType Leaf)) {
+    throw 'ReMCP command was not created by the package installation.'
+  }
+} catch {
+  if (Test-Path -LiteralPath $backup) {
+    Remove-Item -LiteralPath $runtimeDir -Recurse -Force -ErrorAction SilentlyContinue
+    Move-Item -LiteralPath $backup -Destination $runtimeDir -Force
+    try { schtasks.exe /Run /TN 'ReMCP Agent' 2>$null | Out-Null } catch {}
+  }
+  throw
 }
+if (Test-Path -LiteralPath $backup) { Remove-Item -LiteralPath $backup -Recurse -Force }
 
 Write-ReMCPWrapper
 $env:Path = "$binDir;$runtimeDir;$env:Path"
-$cli = Join-Path $runtimeDir 'remcp.cmd'
-if (!(Test-Path -LiteralPath $cli -PathType Leaf)) {
-  throw 'ReMCP command was not created by the package installation.'
-}
 
 $arguments = @('connect')
 if (![string]::IsNullOrWhiteSpace($Server) -and $Server.TrimEnd('/') -ne 'https://remcp.site') {
