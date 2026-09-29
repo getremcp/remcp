@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.121 — 2026-09-29
+
+- record_screen gains a GNOME Shell Screencast backend for GNOME Wayland, so a native GNOME desktop no longer needs wf-recorder merely to advertise and perform bounded screen recording. The backend keeps start/stop on one D-Bus connection and produces WebM.
+- Capability discovery probes ScreencastSupported fail-closed, caches the result for 15 seconds, and coalesces concurrent probes before tools/list_changed can expose the capability. Existing wf-recorder, X11 ffmpeg, AVFoundation and gdigrab paths remain available.
+- Explicit recording destinations must use an extension matching the actual container (.webm for native GNOME Wayland, .mp4 for the other current backends).
+
 ## 0.2.116 — 2026-09-29
 
 - Linux Wayland `list_windows` stops its AT-SPI inventory traversal at top-level windows instead of walking descendant controls. On the verified ASUS desktop this kept the same 13 stable window records while cutting the call from roughly 7.2 seconds to roughly 2.1 seconds; `computer_snapshot` first-look latency fell from 7.50 seconds to 2.45 seconds in the same state.
