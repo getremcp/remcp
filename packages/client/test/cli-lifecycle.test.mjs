@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -448,6 +448,76 @@ test('a legacy Windows scheduled task is inferred and refreshed during update', 
   const saved = JSON.parse(readFileSync(path.join(configDir, 'config.json'), 'utf8'));
   assert.equal(saved.serviceInstalled, true);
   assert.equal(saved.configSchemaVersion, 1);
+});
+
+test('managed Windows private-prefix update restores packages and shims when npm fails', () => {
+  const root = mkdtempSync(path.join(os.tmpdir(), 'remcp-cli-win-rollback-'));
+  const home = path.join(root, 'home');
+  const localAppData = path.join(root, 'local');
+  const prefix = path.join(localAppData, 'ReMCP', 'runtime');
+  const fakeBin = path.join(root, 'bin');
+  const configDir = path.join(root, 'config');
+  const clientDir = path.join(prefix, 'node_modules', '@remcp', 'remcp');
+  const runtimeDir = path.join(prefix, 'node_modules', '@remcp', 'runtime');
+  mkdirSync(clientDir, { recursive:true });
+  mkdirSync(runtimeDir, { recursive:true });
+  mkdirSync(fakeBin, { recursive:true });
+  mkdirSync(configDir, { recursive:true });
+  writeFileSync(path.join(clientDir, 'marker.txt'), 'old-client');
+  writeFileSync(path.join(runtimeDir, 'marker.txt'), 'old-runtime');
+  for (const [name, contents] of [
+    ['remcp', 'old-shim'],
+    ['remcp.cmd', 'old-cmd'],
+    ['remcp.ps1', 'old-ps1'],
+  ]) writeFileSync(path.join(prefix, name), contents);
+
+  fakeExecutable(path.join(fakeBin, 'npm'), `
+if [ "$1" = "prefix" ]; then
+  echo "$REMCP_TEST_PREFIX"
+  exit 0
+fi
+if [ "$1" = "install" ]; then
+  mkdir -p "$REMCP_TEST_PREFIX/node_modules/@remcp/remcp" "$REMCP_TEST_PREFIX/node_modules/@remcp/runtime"
+  echo corrupt-client > "$REMCP_TEST_PREFIX/node_modules/@remcp/remcp/marker.txt"
+  echo corrupt-runtime > "$REMCP_TEST_PREFIX/node_modules/@remcp/runtime/marker.txt"
+  echo corrupt-shim > "$REMCP_TEST_PREFIX/remcp"
+  echo corrupt-cmd > "$REMCP_TEST_PREFIX/remcp.cmd"
+  echo corrupt-ps1 > "$REMCP_TEST_PREFIX/remcp.ps1"
+  exit 7
+fi
+exit 0
+`);
+
+  const script = [
+    "const { npmGlobalUpdate } = await import('./src/cli/service.mjs');",
+    "npmGlobalUpdate(['@remcp/remcp','@remcp/runtime'], '@remcp/remcp@9.9.9', '@remcp/runtime@9.9.9');",
+  ].join('\n');
+  const result = spawnSync(process.execPath, ['--input-type=module', '-e', script], {
+    cwd: path.resolve('.'),
+    encoding: 'utf8',
+    env: {
+      ...process.env,
+      HOME: home,
+      LOCALAPPDATA: localAppData,
+      REMCP_CONFIG_DIR: configDir,
+      REMCP_TEST_PREFIX: prefix,
+      NODE_ENV: 'test',
+      REMCP_TEST_PLATFORM: 'win32',
+      REMCP_NPM: path.join(fakeBin, 'npm'),
+      PATH: `${fakeBin}:${process.env.PATH}`,
+    },
+  });
+  assert.notEqual(result.status, 0, 'the injected npm failure must propagate');
+  assert.equal(readFileSync(path.join(clientDir, 'marker.txt'), 'utf8'), 'old-client');
+  assert.equal(readFileSync(path.join(runtimeDir, 'marker.txt'), 'utf8'), 'old-runtime');
+  assert.equal(readFileSync(path.join(prefix, 'remcp'), 'utf8'), 'old-shim');
+  assert.equal(readFileSync(path.join(prefix, 'remcp.cmd'), 'utf8'), 'old-cmd');
+  assert.equal(readFileSync(path.join(prefix, 'remcp.ps1'), 'utf8'), 'old-ps1');
+  assert.deepEqual(
+    readdirSync(prefix).filter(name => name.startsWith('.remcp-update-backup-')),
+    [],
+    'rollback backup must be consumed after restoration',
+  );
 });
 
 test('Windows npm shims report installed client and runtime versions from the prefix root', () => {
