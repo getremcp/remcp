@@ -435,7 +435,10 @@ test('a legacy Windows scheduled task is inferred and refreshed during update', 
   assert.equal(update.status, 0, update.stderr || update.stdout);
   const calls = readFileSync(log, 'utf8');
   assert.match(calls, /schtasks \/Query \/TN ReMCP Agent/);
-  assert.match(calls, /schtasks \/Create \/TN ReMCP Agent/);
+  assert.match(calls, /schtasks \/Create \/TN ReMCP Agent .* \/SC ONLOGON \/RL HIGHEST \/IT \/F/,
+    'Windows service creation must be interactive from the first Task Scheduler write');
+  assert.doesNotMatch(calls, /schtasks \/Change \/TN ReMCP Agent/,
+    'fresh/update repair must not use schtasks /Change, which can prompt for the Windows account password');
   const launcherFile = path.join(configDir, 'remcp-agent.cmd');
   const launcher = readFileSync(launcherFile, 'utf8');
   assert.ok(calls.includes(launcherFile),

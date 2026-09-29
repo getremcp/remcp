@@ -460,7 +460,10 @@ export function writeWindowsServiceLauncher(cliPath = globalCliPath(), nodePath 
 export function installWindowsService(cliPath = globalCliPath(), { nodePath = process.execPath } = {}) {
   const launcherFile = writeWindowsServiceLauncher(cliPath, nodePath);
   const command = `"${launcherFile}"`;
-  run('schtasks.exe', ['/Create', '/TN', windowsTaskName, '/TR', command, '/SC', 'ONLOGON', '/RL', 'HIGHEST', '/F']);
+  // Computer-use needs the signed-in interactive desktop. Create the task with /IT from the start
+  // instead of changing it afterwards: schtasks /Change can request the account password even when
+  // the task already belongs to the current user, which turns a one-command install into a prompt.
+  run('schtasks.exe', ['/Create', '/TN', windowsTaskName, '/TR', command, '/SC', 'ONLOGON', '/RL', 'HIGHEST', '/IT', '/F']);
   run('schtasks.exe', ['/Run', '/TN', windowsTaskName]);
 }
 
@@ -685,12 +688,13 @@ export function configureMacWriteAccess() {
 }
 
 export function configureWindowsWriteAccess() {
-  try { run('schtasks.exe', ['/Change', '/TN', windowsTaskName, '/RL', 'HIGHEST', '/IT']); } catch {}
+  // installWindowsService already creates the task as HighestAvailable + InteractiveToken. Keep
+  // post-install access setup non-interactive so a fresh install never asks for the Windows password.
   try {
     const workspaceDir = path.join(process.env.LOCALAPPDATA || path.join(home, 'AppData', 'Local'), 'ReMCP');
     fs.mkdirSync(workspaceDir, { recursive: true });
   } catch {}
-  console.log('ReMCP configured with elevated privileges for full write access.');
+  console.log('ReMCP configured with the highest available user privileges for interactive desktop access.');
 }
 
 export function configureLinuxWriteAccess() {
