@@ -9,7 +9,7 @@ import {
   extendedToolHandlers,
 } from '../src/extended/catalog.mjs';
 import { browserActionInputValue, browserAutoLaunchAvailable, browserEvaluate, browserNavigate, browserRemoteEnabled, browserSnapshot, browserTabs, browserWait } from '../src/extended/browser.mjs';
-import { parseAvfoundationScreenInput, recordScreen, recordScreenAvailable, resolveRecordScreenFfmpeg } from '../src/extended/diagnostics.mjs';
+import { gnomeScreencastSupported, parseAvfoundationScreenInput, recordScreen, recordScreenAvailable, recordScreenBackend, resolveRecordScreenFfmpeg, validateRecordingDestinationFormat } from '../src/extended/diagnostics.mjs';
 import { hasTool, invokeTool } from '../src/invoke.mjs';
 
 const EXPECTED = [
@@ -205,6 +205,7 @@ test('record_screen capability is advertised only when a real recorder backend e
   const none = () => false;
   const ffmpegOnly = name => name === 'ffmpeg';
   const waylandOnly = name => name === 'wf-recorder' || name === 'timeout';
+  const gnomeOnly = name => name === 'gjs';
 
   assert.equal(recordScreenAvailable({ platform:'darwin', commandExistsFn:none }), false);
   assert.equal(recordScreenAvailable({ platform:'darwin', commandExistsFn:ffmpegOnly }), true);
@@ -212,10 +213,135 @@ test('record_screen capability is advertised only when a real recorder backend e
   assert.equal(recordScreenAvailable({ platform:'win32', commandExistsFn:ffmpegOnly }), true);
   assert.equal(recordScreenAvailable({ platform:'linux', wayland:true, commandExistsFn:none }), false);
   assert.equal(recordScreenAvailable({ platform:'linux', wayland:true, commandExistsFn:waylandOnly }), true);
+  assert.equal(recordScreenAvailable({
+    platform:'linux',
+    wayland:true,
+    desktop:'ubuntu:GNOME',
+    sessionBus:'unix:path=/run/user/1000/bus',
+    gnomeSupported:true,
+    commandExistsFn:gnomeOnly,
+  }), true, 'GNOME Wayland should advertise its native screencast backend without wf-recorder');
+  assert.equal(recordScreenBackend({
+    platform:'linux',
+    wayland:true,
+    desktop:'ubuntu:GNOME',
+    sessionBus:'unix:path=/run/user/1000/bus',
+    gnomeSupported:false,
+    commandExistsFn:gnomeOnly,
+  }), null, 'GNOME candidate detection alone must not advertise a recorder before ScreencastSupported is confirmed');
+  assert.equal(recordScreenBackend({
+    platform:'linux',
+    wayland:true,
+    desktop:'ubuntu:GNOME',
+    sessionBus:'unix:path=/run/user/1000/bus',
+    gnomeSupported:true,
+    commandExistsFn:gnomeOnly,
+  }), 'gnome-shell');
+  assert.equal(recordScreenBackend({
+    platform:'linux',
+    wayland:true,
+    desktop:'ubuntu:GNOME',
+    sessionBus:'',
+    gnomeSupported:true,
+    commandExistsFn:gnomeOnly,
+  }), null, 'GNOME detection without the user session bus must fail closed');
+  assert.equal(recordScreenBackend({
+    platform:'linux',
+    wayland:true,
+    desktop:'KDE',
+    gnomeSessionMode:'',
+    sessionBus:'unix:path=/run/user/1000/bus',
+    commandExistsFn:gnomeOnly,
+  }), null, 'gjs alone must not make non-GNOME Wayland sessions advertise the GNOME backend');
+  assert.equal(recordScreenBackend({
+    platform:'linux',
+    wayland:true,
+    desktop:'KDE',
+    gnomeSessionMode:'',
+    sessionBus:'unix:path=/run/user/1000/bus',
+    commandExistsFn:waylandOnly,
+  }), 'wf-recorder', 'non-GNOME Wayland keeps the existing wf-recorder fallback');
   assert.equal(recordScreenAvailable({ platform:'linux', wayland:true, commandExistsFn:ffmpegOnly }), false);
   assert.equal(recordScreenAvailable({ platform:'linux', wayland:false, display:'', commandExistsFn:none }), false);
   assert.equal(recordScreenAvailable({ platform:'linux', wayland:false, display:'', commandExistsFn:ffmpegOnly }), false);
   assert.equal(recordScreenAvailable({ platform:'linux', wayland:false, display:':0', commandExistsFn:ffmpegOnly }), true);
+});
+
+test('GNOME record_screen support probe checks ScreencastSupported and fails closed', async () => {
+  const gjsOnly = name => name === 'gjs';
+  let calls = 0;
+  const base = {
+    platform:'linux',
+    wayland:true,
+    desktop:'GNOME',
+    gnomeSessionMode:'',
+    sessionBus:'unix:path=/run/user/1000/bus',
+    commandExistsFn:gjsOnly,
+    cacheMs:0,
+  };
+  assert.equal(await gnomeScreencastSupported({
+    ...base,
+    runFileFn:async () => {
+      calls += 1;
+      return { code:0, stdout:'true\n', stderr:'' };
+    },
+  }), true);
+  assert.equal(await gnomeScreencastSupported({
+    ...base,
+    runFileFn:async () => {
+      calls += 1;
+      return { code:0, stdout:'false\n', stderr:'' };
+    },
+  }), false);
+  assert.equal(await gnomeScreencastSupported({
+    ...base,
+    runFileFn:async () => {
+      calls += 1;
+      return { code:1, stdout:'', stderr:'no service' };
+    },
+  }), false);
+  const before = calls;
+  assert.equal(await gnomeScreencastSupported({
+    ...base,
+    sessionBus:'',
+    runFileFn:async () => {
+      calls += 1;
+      return { code:0, stdout:'true\n', stderr:'' };
+    },
+  }), false);
+  assert.equal(calls, before, 'no D-Bus probe should run when the GNOME session candidate is absent');
+
+  let releaseProbe;
+  let concurrentCalls = 0;
+  const pendingProbe = new Promise(resolve => { releaseProbe = resolve; });
+  const concurrentOptions = {
+    ...base,
+    desktop:'GNOME-Concurrent-Probe',
+    cacheMs:15_000,
+    nowFn:() => 123_456,
+    runFileFn:async () => {
+      concurrentCalls += 1;
+      await pendingProbe;
+      return { code:0, stdout:'true\n', stderr:'' };
+    },
+  };
+  const first = gnomeScreencastSupported(concurrentOptions);
+  const second = gnomeScreencastSupported(concurrentOptions);
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(concurrentCalls, 1, 'concurrent capability polls must share one GNOME D-Bus probe');
+  releaseProbe();
+  assert.deepEqual(await Promise.all([first, second]), [true, true]);
+});
+
+test('record_screen destination extension must match the actual container', () => {
+  assert.doesNotThrow(() => validateRecordingDestinationFormat('', 'webm'));
+  assert.doesNotThrow(() => validateRecordingDestinationFormat('/tmp/capture', 'webm'));
+  assert.doesNotThrow(() => validateRecordingDestinationFormat('/tmp/capture.WEBM', 'webm'));
+  assert.doesNotThrow(() => validateRecordingDestinationFormat('/tmp/capture.mp4', 'mp4'));
+  assert.throws(
+    () => validateRecordingDestinationFormat('/tmp/capture.mp4', 'webm'),
+    /produces \.webm; destination must use \.webm/
+  );
 });
 
 test('record_screen never invents an X11 display for a headless Linux host', async () => {

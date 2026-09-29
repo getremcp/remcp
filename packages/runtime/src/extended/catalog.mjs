@@ -9,7 +9,7 @@ import { isWaylandSession } from '../screenshot-portal.mjs';
 import { waylandPortalCandidate } from '../wayland-remote-desktop.mjs';
 import { commandExists, runFile } from './common.mjs';
 import { desktopHandlers } from './desktop.mjs';
-import { diagnosticHandlers, recordScreenAvailable } from './diagnostics.mjs';
+import { diagnosticHandlers, gnomeScreencastSupported, recordScreenAvailable } from './diagnostics.mjs';
 import { documentHandlers } from './documents.mjs';
 
 const readOnly = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false };
@@ -566,7 +566,7 @@ export const extendedToolDefinitions = [
   define('environment', 'Runtime environment', 'Report platform, architecture, Node version, working/home/temp paths, shell, PATH, and optionally environment variables. Environment variables are opt-in and secret-looking or credential-bearing values are masked.', o({ include_env:b('Include sanitized environment variables; default false.') }), readOnly, diagnosticHandlers.environment),
   define('audio', 'Audio control', 'Read or change default output volume or mute state using native operating-system audio controls when available.', o({ action:e(['status','set_volume','mute','unmute']), volume:n('0..100 for set_volume.') }, ['action']), mutatingNonDestructive, diagnosticHandlers.audio, ['audio']),
   define('power_action', 'Power action', 'Lock, sleep, restart, or shut down the paired computer using native operating-system power facilities. The action passes through ReMCP command policy.', o({ action:e(['lock','sleep','restart','shutdown']), delay_seconds:n('Optional delay, maximum 3600 seconds.') }, ['action']), mutating, diagnosticHandlers.power_action, ['power']),
-  define('record_screen', 'Record screen', 'Record a short bounded desktop video to a permitted local file for debugging and return its path and size. Uses native/available recording helpers.', o({ duration_seconds:n('1..120 seconds.'), fps:n('1..60.'), destination:s('Permitted output path.') }), mutating, diagnosticHandlers.record_screen, ['record']),
+  define('record_screen', 'Record screen', 'Record a short bounded desktop video to a permitted local file for debugging and return its path and size. Uses native/available recording helpers.', o({ duration_seconds:n('1..120 seconds.'), fps:n('1..60.'), destination:s('Permitted output path. If an extension is supplied, use .webm for native GNOME Wayland recording and .mp4 for the other recorder backends.') }), mutating, diagnosticHandlers.record_screen, ['record']),
 
   define('read_document', 'Read document', 'Read PDF, DOCX, XLSX, TXT, Markdown, CSV, JSON, or XML. PDF/DOCX extraction is built in and XLSX is parsed from its OOXML worksheet cells.', o({ path:s('Document path.'), sheet:s('Worksheet name for XLSX.'), max_cells:n() }, ['path']), readOnly, documentHandlers.read_document, ['documents']),
   define('edit_spreadsheet', 'Edit spreadsheet', 'Create a new XLSX workbook or edit up to 500 expanded XLSX cells directly in OOXML without launching Excel. For creation set create=true and use path as a new destination; existing files are never overwritten by create mode. Each edit may target one cell or a rectangular range, with a scalar fill, a values matrix, or a formula.', o({ path:s('Existing .xlsx path, or the new workbook destination when create=true.'), create:b('Create a new XLSX at path. Fails if path already exists; do not combine with output.'), output:s('Optional output .xlsx when editing an existing workbook; defaults to replacing input.'), sheet:s('Worksheet name. For create=true, defaults to Sheet1 and becomes the new workbook sheet name.'), edits:{ type:'array', maxItems:500, items:o({ cell:s('Single A1 cell reference.'), range:s('Rectangular range such as A1:C3.'), value:{ description:'Scalar value for one cell or to fill a range.' }, values:{ type:'array', items:{ type:'array', items:{} }, description:'2D matrix matching the range dimensions.' }, formula:s('Optional formula; for a range it is written to each expanded cell.') }) } }, ['path','edits']), mutating, documentHandlers.edit_spreadsheet, ['documents']),
@@ -604,6 +604,7 @@ export async function capabilitySnapshot() {
   const linux = process.platform === 'linux';
   const pyAtSpi = linux ? await linuxHasPyAtSpi() : false;
   const wayland = linux && isWaylandSession();
+  const gnomeRecord = wayland ? await gnomeScreencastSupported() : false;
   const portalInput = wayland && waylandPortalCandidate();
   const x11Input = linux && !wayland && (commandExists('wdotool') || commandExists('xdotool'));
   const browserCdp = browserRemoteEnabled() && await browserControlAvailable(undefined, 500);
@@ -626,7 +627,7 @@ export async function capabilitySnapshot() {
     apps: win || mac || commandExists('dpkg-query') || commandExists('rpm'),
     audio: win || mac || commandExists('wpctl') || commandExists('pactl') || commandExists('amixer'),
     power: win || mac || commandExists('systemctl') || commandExists('loginctl'),
-    record: recordScreenAvailable({ platform:process.platform, wayland }),
+    record: recordScreenAvailable({ platform:process.platform, wayland, gnomeSupported:gnomeRecord }),
     ooxml: linux && (commandExists('zip') && commandExists('unzip')),
   };
 }
