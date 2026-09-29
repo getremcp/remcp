@@ -55,15 +55,26 @@ Registry metadata, and the host-specific OpenAI and Anthropic plugin packaging.
 
 ## Install
 
-**Requires Node.js 22.5 or newer.**
+Open **[ReMCP → Connect a machine](https://remcp.site/app/connect)**. The page detects the computer's
+operating system and shows the correct one-command flow.
 
-```bash
-npm install --global @remcp/remcp@latest
+**Windows PowerShell — no preinstalled Node.js, npm, npx, or winget required:**
+
+```powershell
+irm https://remcp.site/install.ps1 | iex
 ```
 
-Then open **[ReMCP → Connect a machine](https://remcp.site/app/connect)** and generate a
-one-time pairing command. Run that exact command on the computer you want to connect; it installs the
-runtime and registers the background service.
+ReMCP keeps its Windows runtime privately under `%LOCALAPPDATA%\ReMCP`; it does not install Node.js
+globally or add the private runtime directory to the system PATH.
+
+**macOS / Linux:** Node.js 22.5 or newer provides the current npm/npx distribution path.
+
+```bash
+npx --yes @remcp/remcp@latest connect
+```
+
+The browser can also generate a one-time pairing command. Run that exact command on the computer you
+want to connect; it installs the runtime and registers the background service.
 
 > Pairing codes are generated in the authenticated workspace, expire automatically, and are
 > single-use. Do not invent or reuse a code from documentation.

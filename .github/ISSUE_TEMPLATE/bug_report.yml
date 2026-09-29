@@ -34,7 +34,7 @@ body:
     attributes:
       label: Environment
       description: OS, architecture, Node.js version, and host application if relevant.
-      placeholder: "Windows 11 x64, Node 22.x, ChatGPT"
+      placeholder: "Windows 11 x64, PowerShell 5.1, ChatGPT"
   - type: textarea
     id: steps
     attributes:

@@ -436,9 +436,53 @@ test('a legacy Windows scheduled task is inferred and refreshed during update', 
   const calls = readFileSync(log, 'utf8');
   assert.match(calls, /schtasks \/Query \/TN ReMCP Agent/);
   assert.match(calls, /schtasks \/Create \/TN ReMCP Agent/);
+  const launcherFile = path.join(configDir, 'remcp-agent.cmd');
+  const launcher = readFileSync(launcherFile, 'utf8');
+  assert.ok(calls.includes(launcherFile),
+    'the scheduled task points at the stable ReMCP launcher rather than an npm-generated shim');
+  assert.ok(launcher.includes(`set \"NPM_CONFIG_PREFIX=${prefix}\"`),
+    'the launcher preserves the private npm prefix for background updates');
+  assert.ok(launcher.includes(`set \"PATH=${path.dirname(process.execPath)};%PATH%\"`),
+    'the launcher pins the runtime directory without adding it to the system PATH');
+  assert.ok(launcher.includes(`call \"${path.join(prefix, 'remcp.cmd')}\" start --service`));
   const saved = JSON.parse(readFileSync(path.join(configDir, 'config.json'), 'utf8'));
   assert.equal(saved.serviceInstalled, true);
   assert.equal(saved.configSchemaVersion, 1);
+});
+
+test('Windows npm shims report installed client and runtime versions from the prefix root', () => {
+  const root = mkdtempSync(path.join(os.tmpdir(), 'remcp-cli-win-prefix-'));
+  const prefix = path.join(root, 'runtime');
+  const configDir = path.join(root, 'config');
+  const cliPath = path.join(prefix, 'remcp.cmd');
+  mkdirSync(path.join(prefix, 'node_modules', '@remcp', 'remcp'), { recursive: true });
+  mkdirSync(path.join(prefix, 'node_modules', '@remcp', 'runtime'), { recursive: true });
+  mkdirSync(configDir, { recursive: true });
+  writeFileSync(cliPath, '@echo off\r\n');
+  writeFileSync(path.join(prefix, 'node_modules', '@remcp', 'remcp', 'package.json'), JSON.stringify({ version: '7.8.9' }));
+  writeFileSync(path.join(prefix, 'node_modules', '@remcp', 'runtime', 'package.json'), JSON.stringify({ version: '7.8.9' }));
+
+  const script = [
+    "const { installationVersionsAtCliPath } = await import('./src/cli/service.mjs');",
+    "process.stdout.write(JSON.stringify(installationVersionsAtCliPath(process.env.REMCP_TEST_CLI, '@remcp/runtime')));",
+  ].join('\n');
+  const probe = spawnSync(process.execPath, ['--input-type=module', '-e', script], {
+    cwd: path.resolve('.'),
+    encoding: 'utf8',
+    env: {
+      ...process.env,
+      HOME: root,
+      NODE_ENV: 'test',
+      REMCP_TEST_PLATFORM: 'win32',
+      REMCP_CONFIG_DIR: configDir,
+      REMCP_TEST_CLI: cliPath,
+    },
+  });
+  assert.equal(probe.status, 0, probe.stderr || probe.stdout);
+  const versions = JSON.parse(probe.stdout);
+  assert.equal(versions.cliVersion, '7.8.9');
+  assert.equal(versions.runtimeVersion, '7.8.9');
+  assert.equal(versions.cliPath, cliPath);
 });
 
 

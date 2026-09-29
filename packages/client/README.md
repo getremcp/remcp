@@ -9,10 +9,12 @@ remcp --version
 remcp status
 ```
 
-Pairing commands are generated in the workspace at <https://remcp.site/app/connect>. The
-generated command runs `remcp connect --server … --code … --install`, which stores a per-device
-credential under `~/.config/remcp/`, installs the runtime from npm, and registers a user service
-(systemd on Linux, LaunchAgent on macOS, Scheduled Task on Windows).
+Pairing commands are generated in the workspace at <https://remcp.site/app/connect>. On Windows,
+the browser shows a PowerShell bootstrap that needs no preinstalled system Node.js/npm/npx/winget;
+it keeps the ReMCP runtime under `%LOCALAPPDATA%\ReMCP`. Generated one-time commands ultimately run
+`remcp connect --server … --code … --install`, which stores a per-device credential, installs the
+runtime, and registers a user service (systemd on Linux, LaunchAgent on macOS, Scheduled Task on
+Windows).
 
 ## Commands
 

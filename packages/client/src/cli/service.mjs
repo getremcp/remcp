@@ -9,7 +9,7 @@ import { resolveNpm } from '../npm.mjs';
 import { PACKAGE_NAME, VERSION } from '../version.mjs';
 
 import { saveConfig } from './config.mjs';
-import { configDir, home, linuxServiceFile, linuxServiceLauncherFile, macLogFile, macServiceFile, macServiceLabel, npm, windowsTaskName } from './env.mjs';
+import { configDir, home, linuxServiceFile, linuxServiceLauncherFile, macLogFile, macServiceFile, macServiceLabel, npm, windowsServiceLauncherFile, windowsTaskName } from './env.mjs';
 import { output, run } from './shell.mjs';
 
 export function servicePlatform() {
@@ -350,8 +350,32 @@ export function installMacService(cliPath = globalCliPath(), { restart = true, n
   return 'bootstrapped';
 }
 
-export function installWindowsService(cliPath = globalCliPath()) {
-  const command = `"${cliPath}" start --service`;
+function windowsBatchValue(value) {
+  return String(value).replaceAll('%', '%%');
+}
+
+export function writeWindowsServiceLauncher(cliPath = globalCliPath(), nodePath = process.execPath) {
+  const prefix = path.dirname(cliPath);
+  const nodeDir = path.dirname(nodePath);
+  const launcher = [
+    '@echo off',
+    'setlocal DisableDelayedExpansion',
+    `set "NPM_CONFIG_PREFIX=${windowsBatchValue(prefix)}"`,
+    `set "PATH=${windowsBatchValue(nodeDir)};%PATH%"`,
+    `call "${windowsBatchValue(cliPath)}" start --service`,
+    'exit /b %ERRORLEVEL%',
+    '',
+  ].join('\r\n');
+  fs.mkdirSync(configDir, { recursive:true, mode:0o700 });
+  const temporary = `${windowsServiceLauncherFile}.${process.pid}.${Date.now()}.tmp`;
+  fs.writeFileSync(temporary, launcher, { mode:0o700 });
+  fs.renameSync(temporary, windowsServiceLauncherFile);
+  return windowsServiceLauncherFile;
+}
+
+export function installWindowsService(cliPath = globalCliPath(), { nodePath = process.execPath } = {}) {
+  const launcherFile = writeWindowsServiceLauncher(cliPath, nodePath);
+  const command = `"${launcherFile}"`;
   run('schtasks.exe', ['/Create', '/TN', windowsTaskName, '/TR', command, '/SC', 'ONLOGON', '/RL', 'HIGHEST', '/F']);
   run('schtasks.exe', ['/Run', '/TN', windowsTaskName]);
 }
@@ -450,13 +474,24 @@ function packageVersionBesideCli(cliPath, packageName) {
   return versionFromPackageJson(path.join(nodeModules, ...String(packageName).split('/'), 'package.json'));
 }
 
+function packageVersionForCli(cliPath, packageName) {
+  const beside = packageVersionBesideCli(cliPath, packageName);
+  if (beside || servicePlatform() !== 'win32' || !cliPath || !packageName) return beside;
+  // npm's Windows global executable is a .cmd shim in the prefix root, not a symlink into
+  // node_modules. realpath() therefore cannot reveal the package directory like it does on Unix.
+  // Resolve the package from the same prefix layout npm uses on Windows.
+  if (path.basename(cliPath).toLowerCase() !== 'remcp.cmd') return null;
+  const prefix = path.dirname(cliPath);
+  return versionFromPackageJson(path.join(prefix, 'node_modules', ...String(packageName).split('/'), 'package.json'));
+}
+
 export function installationVersionsAtCliPath(cliPath, runtimePackageName) {
   if (!cliPath) return { cliVersion:null, runtimeVersion:null, cliPath:null };
   let resolvedCliPath = cliPath;
   try { if (fs.existsSync(cliPath)) resolvedCliPath = fs.realpathSync(cliPath); } catch {}
   return {
-    cliVersion:packageVersionBesideCli(resolvedCliPath, PACKAGE_NAME),
-    runtimeVersion:packageVersionBesideCli(resolvedCliPath, runtimePackageName),
+    cliVersion:packageVersionForCli(resolvedCliPath, PACKAGE_NAME),
+    runtimeVersion:packageVersionForCli(resolvedCliPath, runtimePackageName),
     cliPath:resolvedCliPath,
   };
 }
@@ -468,8 +503,8 @@ export function serviceInstallationInfo(config) {
   let resolvedCliPath = cliPath;
   try { if (cliPath && fs.existsSync(cliPath)) resolvedCliPath = fs.realpathSync(cliPath); } catch {}
   return {
-    cliVersion:packageVersionBesideCli(resolvedCliPath, PACKAGE_NAME),
-    runtimeVersion:packageVersionBesideCli(resolvedCliPath, config?.runtime?.packageName),
+    cliVersion:packageVersionForCli(resolvedCliPath, PACKAGE_NAME),
+    runtimeVersion:packageVersionForCli(resolvedCliPath, config?.runtime?.packageName),
     cliPath:resolvedCliPath || cliPath,
     nodePath,
   };
@@ -480,7 +515,7 @@ export function currentInstallationInfo(config) {
   try { if (cliPath && fs.existsSync(cliPath)) cliPath = fs.realpathSync(cliPath); } catch {}
   return {
     cliVersion:VERSION,
-    runtimeVersion:config?.runtime?.packageName ? packageVersionBesideCli(cliPath, config.runtime.packageName) : null,
+    runtimeVersion:config?.runtime?.packageName ? packageVersionForCli(cliPath, config.runtime.packageName) : null,
     cliPath:cliPath || null,
     nodePath:process.execPath,
   };
@@ -599,7 +634,7 @@ export function installPersistentAgent(config) {
   else if (platform === 'darwin') {
     installMacService(cliPath, { nodePath });
     ensureMacCliCommand(config, { cliPath:cliScript, nodePath });
-  } else installWindowsService(cliPath);
+  } else installWindowsService(cliPath, { nodePath });
   configurePostInstallAccess();
   saveConfig({ ...config, serviceInstalled: true, serviceCliPath: cliScript, serviceNodePath: nodePath });
   console.log('ReMCP is installed as a background service. Future updates: remcp update');
@@ -663,7 +698,7 @@ export function ensureServiceIfRecorded(config) {
       const state = installMacService(cliPath, { restart: false, nodePath });
       ensureMacCliCommand(config, { cliPath, nodePath });
       if (state === 'reload-scheduled') restartScheduled = macServiceLabel;
-    } else if (platform === 'win32') installWindowsService(cliPath);
+    } else if (platform === 'win32') installWindowsService(cliPath, { nodePath });
     // Upgrade the legacy inferred state only after the supervisor repair succeeded. A failed repair
     // must not turn a stale artifact into a permanent "managed service" declaration.
     const cliScript = resolvedCliScript(cliPath);
@@ -722,5 +757,6 @@ export function uninstallPersistentService() {
   } else if (platform === 'win32') {
     spawnSync('schtasks.exe', ['/End', '/TN', windowsTaskName], { stdio: 'ignore' });
     spawnSync('schtasks.exe', ['/Delete', '/TN', windowsTaskName, '/F'], { stdio: 'ignore' });
+    try { fs.unlinkSync(windowsServiceLauncherFile); } catch {}
   }
 }
