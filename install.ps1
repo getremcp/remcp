@@ -68,7 +68,8 @@ function Get-ReMCPRelease {
 function Test-ReMCPRelease {
   param(
     [Parameter(Mandatory=$true)][string]$Directory,
-    [Parameter(Mandatory=$true)]$Release
+    [Parameter(Mandatory=$true)]$Release,
+    [switch]$Explain
   )
 
   $node = Join-Path $Directory 'node.exe'
@@ -77,25 +78,47 @@ function Test-ReMCPRelease {
   $clientManifest = Join-Path $Directory 'node_modules\@remcp\remcp\package.json'
   $runtimeManifest = Join-Path $Directory 'node_modules\@remcp\runtime\package.json'
   foreach ($file in @($node, $npm, $cli, $clientManifest, $runtimeManifest)) {
-    if (!(Test-Path -LiteralPath $file -PathType Leaf)) { return $false }
+    if (!(Test-Path -LiteralPath $file -PathType Leaf)) {
+      if ($Explain) { Write-Host "ReMCP verification failed: missing $file" }
+      return $false
+    }
   }
 
   try {
     $nodeVersion = (& $node -p "process.versions.node" 2>$null).Trim()
-    if ($LASTEXITCODE -ne 0 -or $nodeVersion -notmatch '^(\d+)\.(\d+)\.(\d+)$') { return $false }
+    if ($LASTEXITCODE -ne 0 -or $nodeVersion -notmatch '^(\d+)\.(\d+)\.(\d+)$') {
+      if ($Explain) { Write-Host "ReMCP verification failed: node version '$nodeVersion' is invalid." }
+      return $false
+    }
     $major = [int]$Matches[1]
     $minor = [int]$Matches[2]
-    if ($major -lt 22 -or ($major -eq 22 -and $minor -lt 5)) { return $false }
+    if ($major -lt 22 -or ($major -eq 22 -and $minor -lt 5)) {
+      if ($Explain) { Write-Host "ReMCP verification failed: node $nodeVersion is too old." }
+      return $false
+    }
 
     $client = Get-Content -LiteralPath $clientManifest -Raw | ConvertFrom-Json
     $runtime = Get-Content -LiteralPath $runtimeManifest -Raw | ConvertFrom-Json
-    if ([string]$client.version -ne [string]$Release.cliVersion) { return $false }
-    if ([string]$runtime.version -ne [string]$Release.cliVersion) { return $false }
+    $expectedVersion = [string]$Release.cliVersion
+    $clientVersion = [string]$client.version
+    $runtimeVersion = [string]$runtime.version
+    if ($clientVersion -ne $expectedVersion) {
+      if ($Explain) { Write-Host "ReMCP verification failed: client version expected=$expectedVersion actual=$clientVersion." }
+      return $false
+    }
+    if ($runtimeVersion -ne $expectedVersion) {
+      if ($Explain) { Write-Host "ReMCP verification failed: runtime version expected=$expectedVersion actual=$runtimeVersion." }
+      return $false
+    }
 
-    $reported = (& $cli --version 2>$null | Select-Object -First 1)
-    if ($LASTEXITCODE -ne 0 -or [string]$reported -ne [string]$Release.cliVersion) { return $false }
+    $reported = [string](& $cli --version 2>$null | Select-Object -First 1)
+    if ($LASTEXITCODE -ne 0 -or $reported.Trim() -ne $expectedVersion) {
+      if ($Explain) { Write-Host "ReMCP verification failed: CLI version expected=$expectedVersion actual='$reported' exit=$LASTEXITCODE." }
+      return $false
+    }
     return $true
   } catch {
+    if ($Explain) { Write-Host ("ReMCP verification failed: " + [string]$_.Exception.Message) }
     return $false
   }
 }
@@ -160,7 +183,7 @@ function Initialize-ReMCPStage {
       $env:Path = $oldPath
     }
 
-    if (!(Test-ReMCPRelease -Directory $Destination -Release $Release)) {
+    if (!(Test-ReMCPRelease -Directory $Destination -Release $Release -Explain)) {
       throw 'The staged ReMCP release failed verification.'
     }
   } catch {
