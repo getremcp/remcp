@@ -9,6 +9,15 @@ param(
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 $officialOrigin = 'https://remcp.site'
+# Keep the Windows execution engine reproducible for the lifetime of this ReMCP release. An
+# upstream Node point release must never change the bytes installed by an already-reviewed ReMCP
+# release.
+$pinnedNodeVersion = '22.23.3'
+$pinnedNodeSha256 = @{
+  x64 = '2b0ff57b049cda1bbcea2240eec20467018713c1efe1f7360c2681859b90ed71'
+  arm64 = '33dad22e4cef5ee8f9fbb1b0d037fdacd0e56d12a4580f0d63f68b894deab535'
+  x86 = '1e07ac00e61b41b7ecf242de8e38883d237d5ad3fdcad7c16f2dd3a88670e2b6'
+}
 
 if ($env:OS -ne 'Windows_NT') {
   throw 'This installer is for Windows PowerShell only.'
@@ -137,19 +146,13 @@ function Initialize-ReMCPStage {
   )
 
   $arch = Get-ReMCPArchitecture
-  $manifestUrl = 'https://nodejs.org/dist/latest-v22.x/SHASUMS256.txt'
   Write-Host 'Preparing ReMCP...'
-  $manifest = (Invoke-WebRequest -UseBasicParsing -Uri $manifestUrl).Content
-  $escapedArch = [Regex]::Escape($arch)
-  $pattern = '(?m)^([a-fA-F0-9]{64})\s+(node-v([0-9]+\.[0-9]+\.[0-9]+)-win-' + $escapedArch + '\.zip)$'
-  $match = [Regex]::Match($manifest, $pattern)
-  if (!$match.Success) {
-    throw "No matching Windows runtime archive was found for $arch."
+  $nodeVersion = $pinnedNodeVersion
+  $sha256 = [string]$pinnedNodeSha256[$arch]
+  if ($nodeVersion -notmatch '^\d+\.\d+\.\d+$' -or $sha256 -notmatch '^[a-f0-9]{64}$') {
+    throw "ReMCP has no valid pinned Windows runtime for $arch."
   }
-
-  $sha256 = $match.Groups[1].Value.ToLowerInvariant()
-  $archiveName = $match.Groups[2].Value
-  $nodeVersion = $match.Groups[3].Value
+  $archiveName = "node-v$nodeVersion-win-$arch.zip"
   $downloadUrl = "https://nodejs.org/dist/v$nodeVersion/$archiveName"
   $tempRoot = Join-Path ([IO.Path]::GetTempPath()) ("remcp-install-" + [Guid]::NewGuid().ToString('N'))
   $archive = Join-Path $tempRoot $archiveName
