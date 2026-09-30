@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.122 — 2026-09-30
+
+- No runtime tool names, schemas, or device-side implementations change in this release. The runtime package version remains in lockstep with the Windows bootstrap release, which pins the private Windows Node execution engine for reproducible installs.
+
 ## 0.2.121 — 2026-09-29
 
 - record_screen gains a GNOME Shell Screencast backend for GNOME Wayland, so a native GNOME desktop no longer needs wf-recorder merely to advertise and perform bounded screen recording. The backend keeps start/stop on one D-Bus connection and produces WebM.
