@@ -5,6 +5,7 @@ import {
   allExtendedTools,
   advertisedExtendedTools,
   capabilitySnapshot,
+  documentCapabilitySnapshot,
   extendedToolDefinitions,
   extendedToolHandlers,
 } from '../src/extended/catalog.mjs';
@@ -22,6 +23,41 @@ const EXPECTED = [
   'service','event_log','network','installed_apps','environment','audio','power_action','record_screen',
   'read_document','edit_spreadsheet','edit_document','pdf_action',
 ];
+
+test('document capabilities are cross-platform and OOXML-gated by the real archive backend', () => {
+  const none = () => false;
+  const zipAndUnzip = command => command === 'zip' || command === 'unzip';
+  const zipOnly = command => command === 'zip';
+
+  assert.deepEqual(
+    documentCapabilitySnapshot({ platform:'win32', commandExistsFn:none }),
+    { documents:true, ooxml:true },
+    'Windows uses the built-in .NET ZIP backend and must not require external zip/unzip binaries',
+  );
+  for (const platform of ['darwin','linux']) {
+    assert.deepEqual(
+      documentCapabilitySnapshot({ platform, commandExistsFn:zipAndUnzip }),
+      { documents:true, ooxml:true },
+      `${platform} exposes the full document surface when zip+unzip are available`,
+    );
+    assert.deepEqual(
+      documentCapabilitySnapshot({ platform, commandExistsFn:zipOnly }),
+      { documents:true, ooxml:false },
+      `${platform} keeps non-OOXML document capabilities while hiding OOXML tools without unzip`,
+    );
+  }
+  assert.deepEqual(
+    documentCapabilitySnapshot({ platform:'freebsd', commandExistsFn:zipAndUnzip }),
+    { documents:false, ooxml:false },
+    'unvalidated platforms stay fail-closed',
+  );
+
+  const byName = new Map(extendedToolDefinitions.map(tool => [tool.name, tool]));
+  for (const name of ['read_document','edit_spreadsheet','edit_document']) {
+    assert.deepEqual(byName.get(name).requires, ['documents','ooxml'], `${name} requires the full OOXML backend`);
+  }
+  assert.deepEqual(byName.get('pdf_action').requires, ['documents'], 'PDF inspection/actions do not depend on ZIP support');
+});
 
 test('extended computer-use catalog is complete, unique, annotated and invokable', () => {
   assert.equal(extendedToolDefinitions.length, EXPECTED.length);
