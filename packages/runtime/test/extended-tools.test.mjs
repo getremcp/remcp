@@ -53,7 +53,12 @@ test('document capabilities are cross-platform and OOXML-gated by the real archi
   );
 
   const byName = new Map(extendedToolDefinitions.map(tool => [tool.name, tool]));
-  for (const name of ['read_document','edit_spreadsheet','edit_document']) {
+  assert.deepEqual(
+    byName.get('read_document').requires,
+    ['documents'],
+    'read_document stays discoverable for PDF/plain-text formats even when DOCX/XLSX archive support is unavailable',
+  );
+  for (const name of ['edit_spreadsheet','edit_document']) {
     assert.deepEqual(byName.get(name).requires, ['documents','ooxml'], `${name} requires the full OOXML backend`);
   }
   assert.deepEqual(byName.get('pdf_action').requires, ['documents'], 'PDF inspection/actions do not depend on ZIP support');

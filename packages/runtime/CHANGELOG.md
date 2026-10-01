@@ -2,8 +2,8 @@
 
 ## 0.2.124 — 2026-10-01
 
-- P3 document capability discovery is cross-platform: Windows uses the native .NET OOXML archive backend, while macOS/Linux require both `zip` and `unzip` before advertising XLSX/DOCX read/edit tools.
-- `read_document`, `edit_spreadsheet`, and `edit_document` explicitly require the `ooxml` capability; `pdf_action` depends only on the supported document platform and keeps its existing operation-level qpdf/poppler/pdftk checks.
+- P3 document capability discovery is cross-platform: Windows uses the native .NET OOXML archive backend, while macOS/Linux require both `zip` and `unzip` before advertising the XLSX/DOCX editor tools.
+- `read_document` and `pdf_action` remain discoverable on supported desktop platforms even without an OOXML archive backend; DOCX/XLSX read attempts still fail closed at execution time when extraction is unavailable. `edit_spreadsheet` and `edit_document` explicitly require `ooxml`.
 - Windows and macOS release CI run real candidate XLSX/DOCX create/read round trips before publication. The 83-tool names and schemas are unchanged.
 
 ## 0.2.123 — 2026-10-01
