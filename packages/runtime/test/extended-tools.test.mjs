@@ -6,11 +6,12 @@ import {
   advertisedExtendedTools,
   capabilitySnapshot,
   documentCapabilitySnapshot,
+  powerCapabilitySnapshot,
   extendedToolDefinitions,
   extendedToolHandlers,
 } from '../src/extended/catalog.mjs';
 import { browserActionInputValue, browserAutoLaunchAvailable, browserEvaluate, browserNavigate, browserRemoteEnabled, browserSnapshot, browserTabs, browserWait } from '../src/extended/browser.mjs';
-import { gnomeScreencastSupported, parseAvfoundationScreenInput, recordScreen, recordScreenAvailable, recordScreenBackend, resolveRecordScreenFfmpeg, validateRecordingDestinationFormat } from '../src/extended/diagnostics.mjs';
+import { gnomeScreencastSupported, linuxListenerBackend, parseAvfoundationScreenInput, recordScreen, recordScreenAvailable, recordScreenBackend, resolveRecordScreenFfmpeg, validateRecordingDestinationFormat } from '../src/extended/diagnostics.mjs';
 import { hasTool, invokeTool } from '../src/invoke.mjs';
 
 const EXPECTED = [
@@ -23,6 +24,32 @@ const EXPECTED = [
   'service','event_log','network','installed_apps','environment','audio','power_action','record_screen',
   'read_document','edit_spreadsheet','edit_document','pdf_action',
 ];
+
+test('Linux power capability requires both lock and system power backends', () => {
+  const only = name => command => command === name;
+  const both = command => command === 'loginctl' || command === 'systemctl';
+  const none = () => false;
+
+  assert.equal(powerCapabilitySnapshot({ platform:'win32', commandExistsFn:none }), true);
+  assert.equal(powerCapabilitySnapshot({ platform:'darwin', commandExistsFn:none }), true);
+  assert.equal(powerCapabilitySnapshot({ platform:'linux', commandExistsFn:both }), true);
+  assert.equal(powerCapabilitySnapshot({ platform:'linux', commandExistsFn:only('loginctl') }), false);
+  assert.equal(powerCapabilitySnapshot({ platform:'linux', commandExistsFn:only('systemctl') }), false);
+  assert.equal(powerCapabilitySnapshot({ platform:'linux', commandExistsFn:none }), false);
+  assert.equal(powerCapabilitySnapshot({ platform:'freebsd', commandExistsFn:both }), false);
+});
+
+test('Linux listener fallback always requests listening sockets only', () => {
+  assert.deepEqual(
+    linuxListenerBackend({ commandExistsFn:command => command === 'ss' || command === 'netstat' }),
+    { command:'ss', args:['-lntup'] },
+  );
+  assert.deepEqual(
+    linuxListenerBackend({ commandExistsFn:command => command === 'netstat' }),
+    { command:'netstat', args:['-lntu'] },
+  );
+  assert.equal(linuxListenerBackend({ commandExistsFn:() => false }), null);
+});
 
 test('document capabilities are cross-platform and OOXML-gated by the real archive backend', () => {
   const none = () => false;

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.128 — 2026-10-02
+
+- Linux `power_action` is advertised only when both `loginctl` and `systemctl` exist, matching the full lock/sleep/restart/shutdown schema instead of exposing a partially unusable tool.
+- Linux `network listeners` keeps `ss -lntup` as the preferred backend and changes the `netstat` fallback from `-an` to `-lntu`, excluding established/non-listening connections.
+- Tool names and schemas remain unchanged; dynamic capability updates continue to use `tools/list_changed`.
+
 ## 0.2.127 — 2026-10-01
 
 - macOS `network listeners` now returns only TCP `LISTEN` rows from the native network table instead of all active connections.
