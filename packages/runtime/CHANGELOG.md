@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.125 — 2026-10-01
+
+- Windows `audio` now controls the default render endpoint through the native Core Audio `IAudioEndpointVolume` interface hosted by inbox PowerShell `Add-Type`.
+- `status` returns the actual 0–100 master level and mute state; `set_volume` is absolute; `mute`/`unmute` use idempotent `SetMute(true/false)` instead of a shared toggle key.
+- Windows release CI compiles the interop definition with PowerShell 5.1 on `windows-latest`. No third-party runtime dependency is added and the 83 tool schemas are unchanged.
+
 ## 0.2.124 — 2026-10-01
 
 - P3 document capability discovery is cross-platform: Windows uses the native .NET OOXML archive backend, while macOS/Linux require both `zip` and `unzip` before advertising the XLSX/DOCX editor tools.
