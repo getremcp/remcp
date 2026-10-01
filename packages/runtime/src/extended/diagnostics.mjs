@@ -135,6 +135,9 @@ export async function networkTool(args) {
       : 'Get-NetTCPConnection -State Listen | Select-Object LocalAddress,LocalPort,OwningProcess,State | Sort-Object LocalPort | ConvertTo-Json -Compress';
     return text((await runPowerShell(script, { label:`network ${action}` })).stdout.trim() || '[]');
   }
+  if (process.platform === 'darwin' && action === 'routes') {
+    return text((await runFile('/usr/sbin/netstat', ['-rn'], { label:'routes' })).stdout);
+  }
   if (action === 'routes') {
     if (commandExists('ip')) return text((await runFile('ip', ['route','show'], { label:'routes' })).stdout);
     if (commandExists('route')) return text((await runFile('route', ['-n'], { label:'routes' })).stdout);

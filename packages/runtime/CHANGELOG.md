@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.126 — 2026-10-01
+
+- macOS `network` route inventory now uses `/usr/sbin/netstat -rn`; the previous generic Unix fallback invoked `route -n`, which on BSD/macOS expects a command and can return usage instead of the table.
+- Linux and Windows network backends are unchanged.
+- The public macOS release gate executes the real route handler on `macos-latest`. The 83 tool names/schemas remain unchanged.
+
 ## 0.2.125 — 2026-10-01
 
 - Windows `audio` now controls the default render endpoint through the native Core Audio `IAudioEndpointVolume` interface hosted by inbox PowerShell `Add-Type`.
