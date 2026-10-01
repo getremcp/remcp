@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { allExtendedTools } from '../src/extended/catalog.mjs';
-import { boundedComputerSnapshot, mapOcrBoxToDesktop } from '../src/extended/desktop.mjs';
+import { boundedComputerSnapshot, computerSnapshot, mapOcrBoxToDesktop } from '../src/extended/desktop.mjs';
 import { findOcrText, ocrImage, parseTesseractTsv } from '../src/extended/ocr.mjs';
 
 const TSV = [
@@ -104,6 +104,41 @@ test('computer snapshot prunes huge semantic payloads without producing invalid 
   assert.ok(Buffer.byteLength(rendered, 'utf8') <= 800 * 1024);
   assert.ok((bounded.ui?.nodes?.length || 0) < 5000);
   assert.ok((bounded.ocr?.words?.length || 0) < 10000);
+});
+
+test('headless Linux computer_snapshot skips desktop probes and returns a stable empty desktop state', { skip: process.platform !== 'linux' }, async () => {
+  const previous = new Map([
+    ['DISPLAY', process.env.DISPLAY],
+    ['WAYLAND_DISPLAY', process.env.WAYLAND_DISPLAY],
+    ['XDG_SESSION_TYPE', process.env.XDG_SESSION_TYPE],
+  ]);
+  delete process.env.DISPLAY;
+  delete process.env.WAYLAND_DISPLAY;
+  delete process.env.XDG_SESSION_TYPE;
+  try {
+    const result = await computerSnapshot({
+      include_browser:false,
+      include_ocr:false,
+      include_screenshot:true,
+      include_ui:true,
+    });
+    const snapshot = result.structuredContent || JSON.parse(result.content?.find(part => part.type === 'text')?.text || '{}');
+    assert.deepEqual(snapshot.windows, []);
+    assert.deepEqual(snapshot.displays, []);
+    assert.deepEqual(snapshot.cursor, { x:null, y:null });
+    assert.deepEqual(snapshot.clipboard, { available:false, length:0 });
+    assert.equal(snapshot.ui?.unavailable, true);
+    assert.equal(snapshot.fallback_chain?.accessibility?.requested, true);
+    assert.equal(snapshot.fallback_chain?.accessibility?.available, false);
+    assert.equal(snapshot.fallback_chain?.ocr?.requested, false);
+    assert.equal(snapshot.fallback_chain?.vision_screenshot?.available, false);
+    assert.deepEqual(snapshot.errors, []);
+  } finally {
+    for (const [name, value] of previous) {
+      if (value === undefined) delete process.env[name];
+      else process.env[name] = value;
+    }
+  }
 });
 
 test('computer snapshot normalizes partial capture failures into schema-stable fields', () => {

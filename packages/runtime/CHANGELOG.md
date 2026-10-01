@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.130 — 2026-10-02
+
+- `computer_snapshot` now skips desktop-only probes on headless Linux and returns stable empty/unavailable desktop fields without false error noise. The shared `desktopSessionAvailable()` helper keeps this behavior aligned with live capability discovery.
+- Linux `screenshot_region` advertising now uses the same backend resolver as execution: `grim` is Wayland-only, portal capture requires a Wayland portal candidate plus `ffmpeg`, GNOME capture requires `gnome-screenshot` + `ffmpeg`, and X11 uses ImageMagick `import`.
+- Wayland + `ffmpeg` alone no longer exposes a screenshot tool that can only fail at runtime. Tool names and MCP schemas remain unchanged.
+
 ## 0.2.129 — 2026-10-02
 
 - Linux Desktop capability discovery now requires an active `DISPLAY` or `WAYLAND_DISPLAY`, preventing headless hosts from advertising desktop actions just because helper binaries are installed.

@@ -80,7 +80,10 @@ agent forwards the refreshed tool names to the hosted relay. Browser/CDP tools a
 example: they are enabled only while the runtime can use a supported loopback browser endpoint. On Linux,
 Desktop capabilities additionally require an active graphical session (`DISPLAY` or `WAYLAND_DISPLAY`):
 headless hosts do not advertise window/UI/input/clipboard/display/screenshot/launch/open/reveal/notification
-operations merely because desktop helper binaries happen to be installed.
+operations merely because desktop helper binaries happen to be installed. The universal `computer_snapshot`
+remains available on those hosts but skips unavailable desktop probes instead of reporting synthetic backend
+errors. On Linux, `screenshot_region` is advertised only when the current session has a real matching capture
+backend (Wayland grim/GNOME/portal path or X11 ImageMagick), not merely because `ffmpeg` is installed.
 
 The generated hosted reference covers the current **10 hosted production definitions**, all model-visible
 and routing to the 83 granular runtime operations described above; the optional widget-enabled surface is 15.

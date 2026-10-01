@@ -7,8 +7,9 @@ const JSON_OUTPUT_SCHEMA = {
 import { browserControlAvailable, browserHandlers, browserRemoteEnabled } from './browser.mjs';
 import { isWaylandSession } from '../screenshot-portal.mjs';
 import { waylandPortalCandidate } from '../wayland-remote-desktop.mjs';
-import { commandExists, runFile } from './common.mjs';
+import { commandExists, desktopSessionAvailable, runFile } from './common.mjs';
 import { desktopHandlers } from './desktop.mjs';
+import { regionScreenshotBackends } from './desktop-linux.mjs';
 import { diagnosticHandlers, gnomeScreencastSupported, recordScreenAvailable } from './diagnostics.mjs';
 import { documentHandlers } from './documents.mjs';
 
@@ -604,9 +605,7 @@ export function desktopShellCapabilitySnapshot({
   commandExistsFn = commandExists,
 } = {}) {
   const nativeDesktop = platform === 'win32' || platform === 'darwin';
-  const linuxDesktop = platform === 'linux'
-    && Boolean(String(env?.DISPLAY || '').trim() || String(env?.WAYLAND_DISPLAY || '').trim());
-  const desktopSession = nativeDesktop || linuxDesktop;
+  const desktopSession = desktopSessionAvailable({ platform, env });
   return {
     desktop_session:desktopSession,
     desktop_open:desktopSession && (nativeDesktop || commandExistsFn('xdg-open')),
@@ -646,7 +645,8 @@ export async function capabilitySnapshot() {
   const pyAtSpi = linux && desktopSession ? await linuxHasPyAtSpi() : false;
   const wayland = linux && desktopSession && isWaylandSession();
   const gnomeRecord = wayland ? await gnomeScreencastSupported() : false;
-  const portalInput = wayland && waylandPortalCandidate();
+  const portalCandidate = wayland && waylandPortalCandidate();
+  const portalInput = portalCandidate;
   const x11Input = linux && desktopSession && !wayland && (commandExists('wdotool') || commandExists('xdotool'));
   const browserCdp = browserRemoteEnabled() && await browserControlAvailable(undefined, 500);
   const documentCapabilities = documentCapabilitySnapshot();
@@ -659,7 +659,7 @@ export async function capabilitySnapshot() {
     drag: win || mac || (desktopSession && (portalInput || x11Input)),
     clipboard: win || mac || (desktopSession && (commandExists('wl-paste') || commandExists('xclip') || commandExists('xsel'))),
     displays: win || mac || (desktopSession && ((wayland && linux) || commandExists('wlr-randr') || commandExists('xrandr'))),
-    screen_region: win || mac || (desktopSession && (commandExists('grim') || commandExists('import') || (isWaylandSession() && commandExists('ffmpeg')))),
+    screen_region: win || mac || (desktopSession && regionScreenshotBackends({ wayland, portalCandidate }).length > 0),
     notifications: win || mac || (desktopSession && commandExists('notify-send')),
     browser_cdp: browserCdp,
     browser_evaluate: browserCdp && (process.env.NODE_ENV !== 'production' || ['1', 'true', 'yes', 'on'].includes(String(process.env.REMCP_BROWSER_ALLOW_EVALUATE || '').toLowerCase())),

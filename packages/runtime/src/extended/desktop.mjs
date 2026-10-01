@@ -4,7 +4,7 @@ import { fileToolHandlers } from '../tools/files.mjs';
 import { liveConfig, runtimeConfig } from '../config.mjs';
 import { assertAllowedCommand } from '../policy.mjs';
 import { multi, resolveSafePath, text } from '../util.mjs';
-import { clamp, jsonResult, optionalString, requireEnum } from './common.mjs';
+import { clamp, desktopSessionAvailable, jsonResult, optionalString, requireEnum } from './common.mjs';
 import * as linux from './desktop-linux.mjs';
 import * as macos from './desktop-macos.mjs';
 import * as windows from './desktop-windows.mjs';
@@ -1026,12 +1026,14 @@ function computerScreenshotTask(args = {}) {
 }
 
 export async function computerSnapshot(args = {}) {
-  const captureScreenshot = args.include_screenshot !== false || args.include_ocr === true;
+  const desktopAvailable = desktopSessionAvailable();
+  const screenshotRequested = args.include_screenshot !== false || args.include_ocr === true;
+  const captureScreenshot = desktopAvailable && screenshotRequested;
   const includeUi = args.include_ui !== false;
   const [windowsResult, displaysResult, uiResult, clipboardResult, cursorResult, shotResult] = await Promise.allSettled([
-    listWindows(),
-    displayInventory(),
-    includeUi
+    desktopAvailable ? listWindows() : Promise.resolve(null),
+    desktopAvailable ? displayInventory() : Promise.resolve(null),
+    includeUi && desktopAvailable
       ? uiSnapshot({
           max_nodes:args.max_ui_nodes || 800,
           max_depth:args.max_ui_depth || 12,
@@ -1040,8 +1042,8 @@ export async function computerSnapshot(args = {}) {
           ...(args.ui_browser_dom === true ? { browser_dom:true } : {}),
         })
       : Promise.resolve(null),
-    clipboard({ action:'read' }),
-    cursorPosition(),
+    desktopAvailable ? clipboard({ action:'read' }) : Promise.resolve(null),
+    desktopAvailable ? cursorPosition() : Promise.resolve(null),
     captureScreenshot ? computerScreenshotTask(args) : Promise.resolve(null),
   ]);
   const parse = (result, fallback = null) => {
@@ -1069,7 +1071,7 @@ export async function computerSnapshot(args = {}) {
   if (includeUi && parsedUi !== ui && parsedUi != null) {
     shapeErrors.push({ source:'ui', message:'accessibility snapshot returned an invalid result shape' });
   }
-  const clipboardOk = clipboardResult.status === 'fulfilled' && clipboardResult.value?.isError !== true;
+  const clipboardOk = desktopAvailable && clipboardResult.status === 'fulfilled' && clipboardResult.value?.isError !== true && Boolean(clipboardResult.value);
   const clipText = clipboardOk ? clipboardResult.value.content?.[0]?.text || '' : '';
   const uiNodes = Array.isArray(ui?.nodes) ? ui.nodes : Array.isArray(ui) ? ui : [];
   const focusedNodes = uiNodes.filter(node => node.focused === true);
@@ -1152,8 +1154,9 @@ export async function computerSnapshot(args = {}) {
     }
   }
 
-  const shouldOcr = args.include_ocr === true
-    || (args.include_ocr !== false && captureScreenshot && uiNodes.length === 0 && !browser);
+  const ocrRequested = args.include_ocr === true
+    || (desktopAvailable && args.include_ocr !== false && screenshotRequested && uiNodes.length === 0 && !browser);
+  const shouldOcr = desktopAvailable && ocrRequested;
   let ocr = null;
   let ocrCaptureBounds = null;
   let ocrShotResult = shotResult;
@@ -1193,14 +1196,14 @@ export async function computerSnapshot(args = {}) {
     ...(browser ? { browser } : {}),
     ...(ocr ? { ocr } : {}),
     fallback_chain: {
-      accessibility: { requested:includeUi, available:includeUi && uiResult.status === 'fulfilled', nodes:uiNodes.length },
+      accessibility: { requested:includeUi, available:includeUi && desktopAvailable && uiResult.status === 'fulfilled' && Boolean(uiResult.value), nodes:uiNodes.length },
       native_browser_dom: {
         requested:includeUi && args.ui_browser_dom === true,
         available:Boolean(includeUi && ui?.browser_dom?.available),
         provider:ui?.browser_dom?.provider || null,
       },
       browser_dom: { requested:browserRequested, available:Boolean(browser) },
-      ocr: { requested:shouldOcr, available:Boolean(ocr?.available), backend:ocr?.backend || null },
+      ocr: { requested:ocrRequested, available:Boolean(ocr?.available), backend:ocr?.backend || null },
       vision_screenshot: { available:shotResult.status === 'fulfilled' && Boolean(shotResult.value?.content?.some(part => part.type === 'image')) },
     },
     visual: {

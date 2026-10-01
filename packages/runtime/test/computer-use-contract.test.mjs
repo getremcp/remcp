@@ -4,7 +4,7 @@ import { mkdtemp, readFile, rm, stat } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { extendedToolDefinitions } from '../src/extended/catalog.mjs';
-import { computerAction, pointer, scroll, uiAction, uiFind, waitForUi, windowAction } from '../src/extended/desktop.mjs';
+import { computerAction, computerSnapshot, pointer, scroll, uiAction, uiFind, waitForUi, windowAction } from '../src/extended/desktop.mjs';
 import { browserFind, findExpression } from '../src/extended/browser.mjs';
 import * as linux from '../src/extended/desktop-linux.mjs';
 
@@ -548,6 +548,42 @@ test('browser_find ranks exact semantic text targets ahead of ancestor text cont
   assert.equal(buttonMatches.length, 1);
   assert.equal(buttonMatches[0].tag, 'button');
   assert.equal(buttonMatches[0].role, 'button');
+});
+
+test('headless Linux computer_snapshot skips desktop probes without false error noise', { skip: process.platform !== 'linux' }, async () => {
+  const previousDisplay = process.env.DISPLAY;
+  const previousWaylandDisplay = process.env.WAYLAND_DISPLAY;
+  delete process.env.DISPLAY;
+  delete process.env.WAYLAND_DISPLAY;
+  try {
+    const result = await computerSnapshot({
+      include_ui:true,
+      include_screenshot:true,
+      include_browser:false,
+      include_ocr:true,
+      max_ui_nodes:40,
+      max_ui_depth:4,
+    });
+    const snapshot = result.structuredContent;
+    assert.ok(snapshot);
+    assert.deepEqual(snapshot.windows, []);
+    assert.deepEqual(snapshot.displays, []);
+    assert.deepEqual(snapshot.cursor, { x:null, y:null });
+    assert.equal(snapshot.ui?.unavailable, true);
+    assert.equal(snapshot.clipboard?.available, false);
+    assert.equal(snapshot.fallback_chain?.accessibility?.requested, true);
+    assert.equal(snapshot.fallback_chain?.accessibility?.available, false);
+    assert.equal(snapshot.fallback_chain?.ocr?.requested, true);
+    assert.equal(snapshot.fallback_chain?.ocr?.available, false);
+    assert.equal(snapshot.fallback_chain?.vision_screenshot?.available, false);
+    assert.deepEqual(snapshot.errors, []);
+    assert.equal(result.content.some(part => part.type === 'image'), false);
+  } finally {
+    if (previousDisplay === undefined) delete process.env.DISPLAY;
+    else process.env.DISPLAY = previousDisplay;
+    if (previousWaylandDisplay === undefined) delete process.env.WAYLAND_DISPLAY;
+    else process.env.WAYLAND_DISPLAY = previousWaylandDisplay;
+  }
 });
 
 test('Linux Wayland cursor telemetry fails closed instead of reporting stale XWayland coordinates', { skip: process.platform !== 'linux' }, async () => {
