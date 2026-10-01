@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.123 — 2026-10-01
+
+- The compact local MCP facade now tracks live capability changes after startup. It advertises `tools.listChanged`, refreshes grouped input/output schemas, and adds or removes domains such as `control_browser` when loopback CDP becomes available or unavailable.
+- Compact and granular capability polling now serializes discovery passes so a slow probe cannot overlap the next interval and apply a stale capability result out of order.
+- The underlying 83 granular runtime tool names, input/output schemas, annotations, and handlers remain unchanged from 0.2.122.
+
 ## 0.2.122 — 2026-09-30
 
 - No runtime tool names, schemas, or device-side implementations change in this release. The runtime package version remains in lockstep with the Windows bootstrap release, which pins the private Windows Node execution engine for reproducible installs.
