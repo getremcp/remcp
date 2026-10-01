@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.129 — 2026-10-02
+
+- Linux Desktop capability discovery now requires an active `DISPLAY` or `WAYLAND_DISPLAY`, preventing headless hosts from advertising desktop actions just because helper binaries are installed.
+- `launch_app` requires `desktop_session`; `open_path` and `reveal_path` require `desktop_open`, which additionally checks `xdg-open` on Linux.
+- AT-SPI/Wayland portal probes are skipped entirely on headless Linux. Browser/CDP and non-desktop capability groups remain independent.
+- Tool names and MCP schemas remain unchanged.
+
 ## 0.2.128 — 2026-10-02
 
 - Linux `power_action` is advertised only when both `loginctl` and `systemctl` exist, matching the full lock/sleep/restart/shutdown schema instead of exposing a partially unusable tool.

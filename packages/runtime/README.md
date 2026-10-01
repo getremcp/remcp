@@ -77,7 +77,10 @@ system tools such as qpdf/poppler when present. PDF text reading uses the built-
 A running device can advertise a smaller capability-aware subset; the runtime declares
 `tools.listChanged`, emits `notifications/tools/list_changed` when dynamic capabilities change, and the
 agent forwards the refreshed tool names to the hosted relay. Browser/CDP tools are the primary dynamic
-example: they are enabled only while the runtime can use a supported loopback browser endpoint.
+example: they are enabled only while the runtime can use a supported loopback browser endpoint. On Linux,
+Desktop capabilities additionally require an active graphical session (`DISPLAY` or `WAYLAND_DISPLAY`):
+headless hosts do not advertise window/UI/input/clipboard/display/screenshot/launch/open/reveal/notification
+operations merely because desktop helper binaries happen to be installed.
 
 The generated hosted reference covers the current **10 hosted production definitions**, all model-visible
 and routing to the 83 granular runtime operations described above; the optional widget-enabled surface is 15.
