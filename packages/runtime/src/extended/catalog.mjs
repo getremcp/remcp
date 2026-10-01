@@ -598,6 +598,15 @@ async function linuxHasPyAtSpi() {
   return pyAtSpiCache.value;
 }
 
+export function powerCapabilitySnapshot({
+  platform = process.platform,
+  commandExistsFn = commandExists,
+} = {}) {
+  if (platform === 'win32' || platform === 'darwin') return true;
+  if (platform !== 'linux') return false;
+  return commandExistsFn('loginctl') && commandExistsFn('systemctl');
+}
+
 export function documentCapabilitySnapshot({
   platform = process.platform,
   commandExistsFn = commandExists,
@@ -641,7 +650,7 @@ export async function capabilitySnapshot() {
     logs: win || mac || commandExists('journalctl'),
     apps: win || mac || commandExists('dpkg-query') || commandExists('rpm'),
     audio: win || mac || commandExists('wpctl') || commandExists('pactl') || commandExists('amixer'),
-    power: win || mac || commandExists('systemctl') || commandExists('loginctl'),
+    power: powerCapabilitySnapshot(),
     record: recordScreenAvailable({ platform:process.platform, wayland, gnomeSupported:gnomeRecord }),
     ...documentCapabilities,
   };

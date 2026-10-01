@@ -127,6 +127,12 @@ async function connectivityTest(host, port, timeoutMs) {
   });
 }
 
+export function linuxListenerBackend({ commandExistsFn = commandExists } = {}) {
+  if (commandExistsFn('ss')) return { command:'ss', args:['-lntup'] };
+  if (commandExistsFn('netstat')) return { command:'netstat', args:['-lntu'] };
+  return null;
+}
+
 export async function networkTool(args) {
   const action = requireEnum(args.action || 'summary', 'action', ['summary','interfaces','dns','routes','listeners','test']);
   if (action === 'interfaces') return jsonResult(os.networkInterfaces());
@@ -154,8 +160,8 @@ export async function networkTool(args) {
     if (commandExists('route')) return text((await runFile('route', ['-n'], { label:'routes' })).stdout);
     unavailable('Route inventory', 'ip or route is required');
   }
-  if (commandExists('ss')) return text((await runFile('ss', ['-lntup'], { label:'listeners', allowFailure:true })).stdout);
-  if (commandExists('netstat')) return text((await runFile('netstat', ['-an'], { label:'listeners' })).stdout);
+  const listenerBackend = linuxListenerBackend();
+  if (listenerBackend) return text((await runFile(listenerBackend.command, listenerBackend.args, { label:'listeners', allowFailure:true })).stdout);
   unavailable('Listener inventory', 'ss or netstat is required');
 }
 
