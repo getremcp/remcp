@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.124 — 2026-10-01
+
+- P3 document capability discovery is cross-platform: Windows uses the native .NET OOXML archive backend, while macOS/Linux require both `zip` and `unzip` before advertising the XLSX/DOCX editor tools.
+- `read_document` and `pdf_action` remain discoverable on supported desktop platforms even without an OOXML archive backend; DOCX/XLSX read attempts still fail closed at execution time when extraction is unavailable. `edit_spreadsheet` and `edit_document` explicitly require `ooxml`.
+- Windows and macOS release CI run real candidate XLSX/DOCX create/read round trips before publication. The 83-tool names and schemas are unchanged.
+
 ## 0.2.123 — 2026-10-01
 
 - The compact local MCP facade now tracks live capability changes after startup. It advertises `tools.listChanged`, refreshes grouped input/output schemas, and adds or removes domains such as `control_browser` when loopback CDP becomes available or unavailable.

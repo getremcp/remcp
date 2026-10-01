@@ -569,8 +569,8 @@ export const extendedToolDefinitions = [
   define('record_screen', 'Record screen', 'Record a short bounded desktop video to a permitted local file for debugging and return its path and size. Uses native/available recording helpers.', o({ duration_seconds:n('1..120 seconds.'), fps:n('1..60.'), destination:s('Permitted output path. If an extension is supplied, use .webm for native GNOME Wayland recording and .mp4 for the other recorder backends.') }), mutating, diagnosticHandlers.record_screen, ['record']),
 
   define('read_document', 'Read document', 'Read PDF, DOCX, XLSX, TXT, Markdown, CSV, JSON, or XML. PDF/DOCX extraction is built in and XLSX is parsed from its OOXML worksheet cells.', o({ path:s('Document path.'), sheet:s('Worksheet name for XLSX.'), max_cells:n() }, ['path']), readOnly, documentHandlers.read_document, ['documents']),
-  define('edit_spreadsheet', 'Edit spreadsheet', 'Create a new XLSX workbook or edit up to 500 expanded XLSX cells directly in OOXML without launching Excel. For creation set create=true and use path as a new destination; existing files are never overwritten by create mode. Each edit may target one cell or a rectangular range, with a scalar fill, a values matrix, or a formula.', o({ path:s('Existing .xlsx path, or the new workbook destination when create=true.'), create:b('Create a new XLSX at path. Fails if path already exists; do not combine with output.'), output:s('Optional output .xlsx when editing an existing workbook; defaults to replacing input.'), sheet:s('Worksheet name. For create=true, defaults to Sheet1 and becomes the new workbook sheet name.'), edits:{ type:'array', maxItems:500, items:o({ cell:s('Single A1 cell reference.'), range:s('Rectangular range such as A1:C3.'), value:{ description:'Scalar value for one cell or to fill a range.' }, values:{ type:'array', items:{ type:'array', items:{} }, description:'2D matrix matching the range dimensions.' }, formula:s('Optional formula; for a range it is written to each expanded cell.') }) } }, ['path','edits']), mutating, documentHandlers.edit_spreadsheet, ['documents']),
-  define('edit_document', 'Edit DOCX document', 'Create a new DOCX document or edit DOCX paragraph structure directly in OOXML: replace text, append/prepend paragraphs, insert before/after matching paragraphs, or delete matching paragraphs. For creation set create=true and use path as a new destination; existing files are never overwritten by create mode.', o({ path:s('Existing .docx path, or the new document destination when create=true.'), create:b('Create a new DOCX at path. Fails if path already exists; do not combine with output.'), output:s('Optional output .docx path when editing an existing document.'), operations:{ type:'array', maxItems:100, items:o({ action:e(['replace','append_paragraph','prepend_paragraph','insert_paragraph_before','insert_paragraph_after','delete_paragraph']), search:s('Paragraph text substring for replace/insert/delete operations.'), replacement:s(), all:b('Apply to all matching paragraphs; default true.'), text:s('Paragraph text to append/prepend/insert.') }, ['action']) } }, ['path','operations']), mutating, documentHandlers.edit_document, ['documents']),
+  define('edit_spreadsheet', 'Edit spreadsheet', 'Create a new XLSX workbook or edit up to 500 expanded XLSX cells directly in OOXML without launching Excel. For creation set create=true and use path as a new destination; existing files are never overwritten by create mode. Each edit may target one cell or a rectangular range, with a scalar fill, a values matrix, or a formula.', o({ path:s('Existing .xlsx path, or the new workbook destination when create=true.'), create:b('Create a new XLSX at path. Fails if path already exists; do not combine with output.'), output:s('Optional output .xlsx when editing an existing workbook; defaults to replacing input.'), sheet:s('Worksheet name. For create=true, defaults to Sheet1 and becomes the new workbook sheet name.'), edits:{ type:'array', maxItems:500, items:o({ cell:s('Single A1 cell reference.'), range:s('Rectangular range such as A1:C3.'), value:{ description:'Scalar value for one cell or to fill a range.' }, values:{ type:'array', items:{ type:'array', items:{} }, description:'2D matrix matching the range dimensions.' }, formula:s('Optional formula; for a range it is written to each expanded cell.') }) } }, ['path','edits']), mutating, documentHandlers.edit_spreadsheet, ['documents','ooxml']),
+  define('edit_document', 'Edit DOCX document', 'Create a new DOCX document or edit DOCX paragraph structure directly in OOXML: replace text, append/prepend paragraphs, insert before/after matching paragraphs, or delete matching paragraphs. For creation set create=true and use path as a new destination; existing files are never overwritten by create mode.', o({ path:s('Existing .docx path, or the new document destination when create=true.'), create:b('Create a new DOCX at path. Fails if path already exists; do not combine with output.'), output:s('Optional output .docx path when editing an existing document.'), operations:{ type:'array', maxItems:100, items:o({ action:e(['replace','append_paragraph','prepend_paragraph','insert_paragraph_before','insert_paragraph_after','delete_paragraph']), search:s('Paragraph text substring for replace/insert/delete operations.'), replacement:s(), all:b('Apply to all matching paragraphs; default true.'), text:s('Paragraph text to append/prepend/insert.') }, ['action']) } }, ['path','operations']), mutating, documentHandlers.edit_document, ['documents','ooxml']),
   define('pdf_action', 'PDF action', 'Inspect PDF annotations or metadata, merge PDFs, split a PDF into pages, or extract selected page ranges. Structural writes use qpdf/poppler/pdftk when installed.', o({ action:e(['merge','split','extract_pages','annotations','info']), path:s(), paths:{type:'array',items:{type:'string'}}, output:s(), output_dir:s(), pattern:s(), pages:s('Page list/ranges such as 1-3,5.') }, ['action']), mutating, documentHandlers.pdf_action, ['documents']),
 ];
 
@@ -598,6 +598,21 @@ async function linuxHasPyAtSpi() {
   return pyAtSpiCache.value;
 }
 
+export function documentCapabilitySnapshot({
+  platform = process.platform,
+  commandExistsFn = commandExists,
+} = {}) {
+  const supportedPlatform = ['win32','darwin','linux'].includes(platform);
+  const nativeOoxml = platform === 'win32';
+  const archiveOoxml = (platform === 'darwin' || platform === 'linux')
+    && commandExistsFn('zip')
+    && commandExistsFn('unzip');
+  return {
+    documents:supportedPlatform,
+    ooxml:supportedPlatform && (nativeOoxml || archiveOoxml),
+  };
+}
+
 export async function capabilitySnapshot() {
   const win = process.platform === 'win32';
   const mac = process.platform === 'darwin';
@@ -608,6 +623,7 @@ export async function capabilitySnapshot() {
   const portalInput = wayland && waylandPortalCandidate();
   const x11Input = linux && !wayland && (commandExists('wdotool') || commandExists('xdotool'));
   const browserCdp = browserRemoteEnabled() && await browserControlAvailable(undefined, 500);
+  const documentCapabilities = documentCapabilitySnapshot();
   return {
     windows: win || mac || commandExists('wdotool') || commandExists('wmctrl') || (wayland && pyAtSpi),
     ui: win || mac || pyAtSpi,
@@ -620,7 +636,6 @@ export async function capabilitySnapshot() {
     notifications: win || mac || commandExists('notify-send'),
     browser_cdp: browserCdp,
     browser_evaluate: browserCdp && (process.env.NODE_ENV !== 'production' || ['1', 'true', 'yes', 'on'].includes(String(process.env.REMCP_BROWSER_ALLOW_EVALUATE || '').toLowerCase())),
-    documents: linux,
     services: win || mac || commandExists('systemctl'),
 
     logs: win || mac || commandExists('journalctl'),
@@ -628,7 +643,7 @@ export async function capabilitySnapshot() {
     audio: win || mac || commandExists('wpctl') || commandExists('pactl') || commandExists('amixer'),
     power: win || mac || commandExists('systemctl') || commandExists('loginctl'),
     record: recordScreenAvailable({ platform:process.platform, wayland, gnomeSupported:gnomeRecord }),
-    ooxml: linux && (commandExists('zip') && commandExists('unzip')),
+    ...documentCapabilities,
   };
 }
 

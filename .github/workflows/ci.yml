@@ -79,6 +79,25 @@ jobs:
           (cd "$bare" && node src/index.mjs --describe >/dev/null && node src/index.mjs --print-tools >/dev/null)
           echo "bare-metadata ok"
 
+  macos-documents:
+    name: macOS document backend
+    runs-on: macos-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22.23.3
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: Verify macOS document capabilities and OOXML backend
+        run: >-
+          node --import ./packages/runtime/test/setup.mjs --test
+          --test-name-pattern='P3 document toolset|XLSX can be created|DOCX can be created'
+          ./packages/runtime/test/computer-documents.test.mjs
+
   windows-installer:
     name: Windows PowerShell installer
     runs-on: windows-latest
@@ -87,6 +106,17 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22.23.3
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: Verify Windows document capabilities and built-in OOXML backend
+        shell: powershell
+        run: >-
+          node --import ./packages/runtime/test/setup.mjs --test
+          --test-name-pattern='P3 document toolset|XLSX can be created|DOCX can be created'
+          ./packages/runtime/test/computer-documents.test.mjs
       - name: Parse and validate with Windows PowerShell 5.1
         shell: powershell
         run: |
@@ -243,7 +273,7 @@ jobs:
   publish:
     name: publish to npm and open a release
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [test, windows-installer, publish-mcp-registry]
+    needs: [test, windows-installer, macos-documents, publish-mcp-registry]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -652,7 +682,7 @@ jobs:
     # Manual CI is validation-only. Registry publishing is a release side effect and only
     # belongs to immutable v* tags.
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: test
+    needs: [test, windows-installer, macos-documents]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:

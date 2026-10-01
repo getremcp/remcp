@@ -8,6 +8,7 @@ import { freshWorkspace } from './helpers.mjs';
 const root = freshWorkspace('computer-documents');
 const has = command => { const r = spawnSync(command, ['--version'], { stdio: 'ignore' }); return !r.error; };
 const zipReady = has('zip') && has('unzip');
+const ooxmlReady = process.platform === 'win32' || zipReady;
 
 function writeTree(base, files) {
   for (const [relative, value] of Object.entries(files)) {
@@ -21,7 +22,15 @@ function zipTree(base, output) {
   execFileSync('zip', ['-qr', output, '.'], { cwd: base });
 }
 
-test('XLSX can be created from scratch through edit_spreadsheet', { skip: !zipReady }, async () => {
+test('runtime advertises the complete P3 document toolset when its OOXML backend is available', { skip: !ooxmlReady }, async () => {
+  const { advertisedExtendedTools } = await import('../src/extended/catalog.mjs');
+  const names = new Set((await advertisedExtendedTools()).map(tool => tool.name));
+  for (const name of ['read_document','edit_spreadsheet','edit_document','pdf_action']) {
+    assert.ok(names.has(name), `${process.platform} should advertise ${name}`);
+  }
+});
+
+test('XLSX can be created from scratch through edit_spreadsheet', { skip: !ooxmlReady }, async () => {
   const xlsx = join(root, 'created-book.xlsx');
   const { editSpreadsheet, readDocument } = await import('../src/extended/documents.mjs');
   const created = await editSpreadsheet({
@@ -60,7 +69,7 @@ test('XLSX can be created from scratch through edit_spreadsheet', { skip: !zipRe
   );
 });
 
-test('DOCX can be created from scratch through edit_document', { skip: !zipReady }, async () => {
+test('DOCX can be created from scratch through edit_document', { skip: !ooxmlReady }, async () => {
   const docx = join(root, 'created-note.docx');
   const { editDocument, readDocument } = await import('../src/extended/documents.mjs');
   const created = await editDocument({

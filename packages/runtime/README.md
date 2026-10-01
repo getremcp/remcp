@@ -67,7 +67,8 @@ For frontend QA, use semantic data to operate the page and rendered pixels to ve
 `set_config_value` remains deliberately narrow: it can change only `telemetryEnabled`,
 `maxReadLines`, `maxBufferedLines`, and `maxOutputBytes`. Access roots, blocked commands,
 the command guardrail, shell, write limit, runtime name, and unrestricted mode stay with the person
-at the computer. DOCX/XLSX edits operate directly on OOXML, while structural PDF writes use existing
+at the computer. DOCX/XLSX edits operate directly on OOXML: Windows uses the built-in .NET ZIP backend,
+while macOS/Linux advertise the OOXML editor tools only when both `zip` and `unzip` are available. `read_document` stays discoverable for PDF/plain-text formats when that backend is absent and fails closed only for DOCX/XLSX reads. Structural PDF writes use existing
 system tools such as qpdf/poppler when present. PDF text reading uses the built-in parser first and can fall back to local `pdftotext` for embedded-font PDFs; ReMCP still does not bundle Chromium, Puppeteer,
 `sharp`, or `exceljs`.
 
