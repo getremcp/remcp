@@ -108,6 +108,13 @@ export async function eventLog(args) {
   return text(rendered, result.code !== 0 && !result.stdout.trim());
 }
 
+export function filterMacosTcpListeners(output) {
+  const lines = String(output || '').split(/\r?\n/);
+  const header = lines.filter(line => /^Proto\s+/i.test(line) || /^Active Internet connections/i.test(line));
+  const listeners = lines.filter(line => /\bLISTEN\b/i.test(line));
+  return [...header, ...listeners].join('\n').trim();
+}
+
 async function connectivityTest(host, port, timeoutMs) {
   return new Promise(resolve => {
     const started = performance.now();
@@ -137,6 +144,10 @@ export async function networkTool(args) {
   }
   if (process.platform === 'darwin' && action === 'routes') {
     return text((await runFile('/usr/sbin/netstat', ['-rn'], { label:'routes' })).stdout);
+  }
+  if (process.platform === 'darwin' && action === 'listeners') {
+    const { stdout } = await runFile('/usr/sbin/netstat', ['-an', '-p', 'tcp'], { label:'listeners' });
+    return text(filterMacosTcpListeners(stdout));
   }
   if (action === 'routes') {
     if (commandExists('ip')) return text((await runFile('ip', ['route','show'], { label:'routes' })).stdout);

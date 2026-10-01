@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.127 — 2026-10-01
+
+- macOS `network listeners` now returns only TCP `LISTEN` rows from the native network table instead of all active connections.
+- Established/closing and Unix-domain rows are filtered out, aligning macOS with the documented listener-only contract.
+- The macOS release CI runs the routing + listener diagnostics test on `macos-latest`. Tool names and schemas remain unchanged.
+
 ## 0.2.126 — 2026-10-01
 
 - macOS `network` route inventory now uses `/usr/sbin/netstat -rn`; the previous generic Unix fallback invoked `route -n`, which on BSD/macOS expects a command and can return usage instead of the table.

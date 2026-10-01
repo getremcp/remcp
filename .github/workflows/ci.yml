@@ -97,7 +97,7 @@ jobs:
           node --import ./packages/runtime/test/setup.mjs --test
           --test-name-pattern='P3 document toolset|XLSX can be created|DOCX can be created'
           ./packages/runtime/test/computer-documents.test.mjs
-      - name: Verify macOS network routing backend
+      - name: Verify macOS network diagnostics backend
         run: node --import ./packages/runtime/test/setup.mjs --test ./packages/runtime/test/macos-network.test.mjs
 
   windows-installer:
