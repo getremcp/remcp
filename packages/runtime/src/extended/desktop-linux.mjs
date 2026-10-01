@@ -1487,12 +1487,13 @@ export function regionScreenshotBackends({
   gnomeScreenshot = commandExists('gnome-screenshot'),
   ffmpeg = commandExists('ffmpeg'),
   imagemagick = commandExists('import'),
+  portalCandidate = waylandPortalCandidate(),
 } = {}) {
   const backends = [];
-  if (grim) backends.push('grim');
+  if (wayland && grim) backends.push('grim');
   if (wayland) {
     if (gnomeScreenshot && ffmpeg) backends.push('gnome-screenshot');
-    if (ffmpeg) backends.push('portal');
+    if (ffmpeg && portalCandidate) backends.push('portal');
   } else if (imagemagick) {
     backends.push('imagemagick');
   }

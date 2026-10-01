@@ -75,17 +75,25 @@ test('Wayland detection accepts session type or WAYLAND_DISPLAY', () => {
   assert.equal(isWaylandSession({ XDG_SESSION_TYPE: 'x11', DISPLAY: ':0' }), false);
 });
 
-test('Wayland region screenshots prefer native compositor capture before the portal', () => {
+test('region screenshot backends only advertise working session-specific candidates', () => {
   assert.deepEqual(
-    regionScreenshotBackends({ wayland:true, grim:false, gnomeScreenshot:true, ffmpeg:true, imagemagick:true }),
+    regionScreenshotBackends({ wayland:true, grim:false, gnomeScreenshot:true, ffmpeg:true, imagemagick:true, portalCandidate:true }),
     ['gnome-screenshot','portal'],
   );
   assert.deepEqual(
-    regionScreenshotBackends({ wayland:true, grim:true, gnomeScreenshot:true, ffmpeg:true, imagemagick:true }),
+    regionScreenshotBackends({ wayland:true, grim:true, gnomeScreenshot:true, ffmpeg:true, imagemagick:true, portalCandidate:true }),
     ['grim','gnome-screenshot','portal'],
   );
   assert.deepEqual(
-    regionScreenshotBackends({ wayland:false, grim:false, gnomeScreenshot:true, ffmpeg:true, imagemagick:true }),
+    regionScreenshotBackends({ wayland:true, grim:false, gnomeScreenshot:true, ffmpeg:true, imagemagick:true, portalCandidate:false }),
+    ['gnome-screenshot'],
+  );
+  assert.deepEqual(
+    regionScreenshotBackends({ wayland:true, grim:false, gnomeScreenshot:false, ffmpeg:true, imagemagick:true, portalCandidate:false }),
+    [],
+  );
+  assert.deepEqual(
+    regionScreenshotBackends({ wayland:false, grim:true, gnomeScreenshot:true, ffmpeg:true, imagemagick:true, portalCandidate:true }),
     ['imagemagick'],
   );
 });

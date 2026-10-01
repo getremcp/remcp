@@ -21,6 +21,15 @@ export function optionalString(value) {
   return typeof value === 'string' && value.trim() ? value.trim() : null;
 }
 
+export function desktopSessionAvailable({
+  platform = process.platform,
+  env = process.env,
+} = {}) {
+  if (platform === 'win32' || platform === 'darwin') return true;
+  if (platform !== 'linux') return false;
+  return Boolean(String(env?.DISPLAY || '').trim() || String(env?.WAYLAND_DISPLAY || '').trim());
+}
+
 export function requireEnum(value, field, allowed) {
   const normalized = String(value ?? '');
   if (!allowed.includes(normalized)) fail(`${field} must be one of: ${allowed.join(', ')}`);
