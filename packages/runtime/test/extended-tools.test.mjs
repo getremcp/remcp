@@ -256,11 +256,16 @@ test('capability-aware live advertising is a subset of the full release contract
   const allNames = new Set(all.map(tool => tool.name));
   for (const tool of advertised) assert.ok(allNames.has(tool.name));
   for (const always of [
-    'computer_snapshot','computer_action','launch_app',
+    'computer_snapshot','computer_action',
     'network','environment','read_document','pdf_action',
   ]) {
     assert.ok(advertised.some(tool => tool.name === always), `${always} should remain discoverable`);
   }
+  assert.equal(
+    advertised.some(tool => tool.name === 'launch_app'),
+    Boolean(capabilities.desktop_session),
+    'launch_app should follow the live desktop-session capability',
+  );
   for (const browserTool of ['browser_tabs','browser_navigate','browser_snapshot','browser_find','browser_action','browser_wait','browser_evaluate']) {
     assert.equal(advertised.some(tool => tool.name === browserTool), Boolean(capabilities.browser_cdp), `${browserTool} should follow the live CDP capability`);
   }
