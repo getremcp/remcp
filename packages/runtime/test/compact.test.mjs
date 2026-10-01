@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import http from 'node:http';
 import path from 'node:path';
+import { once } from 'node:events';
 import { fileURLToPath } from 'node:url';
 import { readFileSync } from 'node:fs';
 import { Client } from '@modelcontextprotocol/client';
@@ -10,6 +12,24 @@ import { compactRuntimeGroups, compactRuntimeToolDefinitions } from '../src/comp
 
 const entry = fileURLToPath(new URL('../src/compact.mjs', import.meta.url));
 const root = freshWorkspace('compact-runtime');
+
+async function unusedPort() {
+  const server = http.createServer();
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  const port = server.address().port;
+  await new Promise(resolve => server.close(resolve));
+  return port;
+}
+
+async function waitUntil(predicate, timeoutMs = 5000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (predicate()) return true;
+    await new Promise(resolve => setTimeout(resolve, 25));
+  }
+  return false;
+}
 
 test('compact catalog is small, verb_noun, and contains no granular convenience siblings', async () => {
   const tools = await compactRuntimeToolDefinitions();
@@ -24,6 +44,68 @@ test('compact catalog is small, verb_noun, and contains no granular convenience 
     assert.ok(compactRuntimeGroups[group]?.length, `${group} maps to real runtime operations`);
     const definition = tools.find(tool => tool.name === group);
     assert.ok(definition.inputSchema.properties.operation.enum.length >= 1);
+  }
+});
+
+test('compact runtime updates capability groups and emits one tools/list_changed per CDP transition', async () => {
+  const port = await unusedPort();
+  const endpoint = `http://127.0.0.1:${port}`;
+  const changes = [];
+  const transport = new StdioClientTransport({
+    command:process.execPath,
+    args:[entry],
+    env:{ ...process.env, REMCP_CDP_URL:endpoint, REMCP_CAPABILITY_POLL_MS:'250' },
+  });
+  const client = new Client(
+    { name:'remcp-compact-list-changed-test', version:'1.0.0' },
+    {
+      versionNegotiation:{ mode:{ pin:'2026-07-28' } },
+      listChanged:{
+        tools:{
+          autoRefresh:true,
+          debounceMs:0,
+          onChanged(error, tools) { changes.push({ error, tools }); },
+        },
+      },
+    },
+  );
+  let server;
+  await client.connect(transport);
+  try {
+    const discover = client.getDiscoverResult();
+    assert.equal(discover?.capabilities?.tools?.listChanged, true);
+
+    const initial = await client.listTools();
+    assert.equal(initial.tools.some(tool => tool.name === 'control_browser'), false);
+
+    server = http.createServer((request, response) => {
+      if (request.url === '/json/version') {
+        response.writeHead(200, { 'content-type':'application/json' });
+        response.end(JSON.stringify({ Browser:'Chrome/ReMCP-compact-test' }));
+        return;
+      }
+      response.writeHead(404);
+      response.end();
+    });
+    server.listen(port, '127.0.0.1');
+    await once(server, 'listening');
+
+    assert.equal(await waitUntil(() => changes.some(change => {
+      const browser = change.tools?.find(tool => tool.name === 'control_browser');
+      return !change.error && browser?.inputSchema?.properties?.operation?.enum?.includes('browser_tabs');
+    })), true, 'compact browser group should appear after CDP starts');
+    assert.equal(changes.length, 1, 'browser group appearance should emit one compact tools/list_changed notification');
+
+    await new Promise(resolve => server.close(resolve));
+    server = null;
+    const appearedAt = changes.findIndex(change => change.tools?.some(tool => tool.name === 'control_browser'));
+    assert.equal(await waitUntil(() => changes.slice(appearedAt + 1).some(change =>
+      !change.error && Array.isArray(change.tools) && !change.tools.some(tool => tool.name === 'control_browser')
+    )), true, 'compact browser group should disappear after CDP stops');
+    assert.equal(changes.length, 2, 'browser group disappearance should emit one compact tools/list_changed notification');
+  } finally {
+    if (server) await new Promise(resolve => server.close(resolve));
+    await client.close();
   }
 });
 

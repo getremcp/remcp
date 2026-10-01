@@ -27,7 +27,7 @@ npx @remcp/runtime              # granular capability-aware MCP server over stdi
 node ./src/compact.mjs --print-tools  # compact local façade for scanners/local MCP hosts
 ```
 
-`src/compact.mjs` is a second stdio entrypoint over the **same real handlers**. It advertises `read_file` plus up to seven `verb_noun` domain tools (`manage_files`, `run_terminal`, `control_computer`, `view_image`, `control_browser`, `manage_system`, `manage_documents`) and narrows each operation enum to capabilities available on the current host. It exists for directory scanners and local MCP hosts that benefit from a small selection surface; the paired ReMCP agent continues to use the granular capability-aware entrypoint.
+`src/compact.mjs` is a second stdio entrypoint over the **same real handlers**. It advertises `read_file` plus up to seven `verb_noun` domain tools (`manage_files`, `run_terminal`, `control_computer`, `view_image`, `control_browser`, `manage_system`, `manage_documents`) and narrows each operation enum to capabilities available on the current host. It also tracks capability changes while running: grouped schemas are refreshed and `notifications/tools/list_changed` is emitted when a domain appears, disappears, or changes membership. It exists for directory scanners and local MCP hosts that benefit from a small selection surface; the paired ReMCP agent continues to use the granular capability-aware entrypoint.
 
 ## Tools
 
@@ -81,7 +81,7 @@ example: they are enabled only while the runtime can use a supported loopback br
 The generated hosted reference covers the current **10 hosted production definitions**, all model-visible
 and routing to the 83 granular runtime operations described above; the optional widget-enabled surface is 15.
 The separate compact local stdio entrypoint advertises `read_file` plus up to seven domain tools
-(up to 8 tools total) while the paired agent keeps using the capability-aware granular runtime.
+(up to 8 tools total) and keeps those groups capability-aware at runtime with `tools/list_changed`; the paired agent keeps using the capability-aware granular runtime.
 See https://remcp.site/docs#tools and public `docs/TOOLS.md`.
 
 ## No approval staircase

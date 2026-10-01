@@ -32,6 +32,7 @@ export async function startRuntimeMcpServer({ version, instructions, onError = (
   ]);
   let activeServer = null;
   let capabilityTimer = null;
+  let capabilityPollRunning = false;
   let closed = false;
 
   const serverHandle = serveStdio(() => {
@@ -65,7 +66,8 @@ export async function startRuntimeMcpServer({ version, instructions, onError = (
 
     let lastSupported = initiallySupported;
     capabilityTimer = setInterval(async () => {
-      if (closed) return;
+      if (closed || capabilityPollRunning) return;
+      capabilityPollRunning = true;
       try {
         const next = new Set((await advertisedExtendedTools()).map(tool => tool.name));
         let changed = false;
@@ -87,6 +89,8 @@ export async function startRuntimeMcpServer({ version, instructions, onError = (
         if (changed) server.sendToolListChanged();
       } catch (error) {
         onError(error instanceof Error ? error : new Error(String(error)));
+      } finally {
+        capabilityPollRunning = false;
       }
     }, pollIntervalMs());
     capabilityTimer.unref?.();
