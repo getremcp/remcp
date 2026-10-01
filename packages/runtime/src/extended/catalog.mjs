@@ -534,7 +534,7 @@ export const extendedToolDefinitions = [
   ),
   define('list_windows', 'List windows', 'List visible top-level desktop windows with stable-enough identifiers, PID, application name, title, bounds, and the monitor containing the largest part of each window when display geometry is available.', o({ include_monitor:b('Enrich each window with monitor and monitor_index; default true.') }), readOnlyLive, desktopHandlers.list_windows, ['windows']),
   define('window_action', 'Window action', 'Focus, minimize, maximize, restore, move, resize, or close a top-level desktop window selected by id, pid, application name, or title. Native GNOME Wayland focus uses AT-SPI; compositor window-manager actions use the consent-backed XDG RemoteDesktop input path.', o({ action:e(['focus','minimize','maximize','restore','move','resize','move_resize','close']), ...windowSelector, x:n(), y:n(), width:n(), height:n(), ...inputBackendSelector }, ['action']), mutating, desktopHandlers.window_action, ['windows']),
-  define('launch_app', 'Launch application', 'Launch a desktop application or executable without invoking a shell. On Windows, executable/path launch falls back to Start Menu/UWP app discovery by friendly name. cwd is confined by the ReMCP filesystem policy and is only accepted when the platform can guarantee the child working directory. Optionally wait until a matching top-level window exists.', o({ app:s('Application name, friendly Start Menu name, or executable path.'), path:s('Alias for app.'), args:{ type:'array', items:{type:'string'} }, cwd:s('Optional permitted working directory for direct executable launch.'), wait_for_window:s('Optional application/title substring that must appear after launch.'), wait_timeout_ms:n('Maximum wait for wait_for_window; default 10000, maximum 120000.') }), openMutatingNonDestructive, desktopHandlers.launch_app),
+  define('launch_app', 'Launch application', 'Launch a desktop application or executable without invoking a shell. On Windows, executable/path launch falls back to Start Menu/UWP app discovery by friendly name. cwd is confined by the ReMCP filesystem policy and is only accepted when the platform can guarantee the child working directory. Optionally wait until a matching top-level window exists.', o({ app:s('Application name, friendly Start Menu name, or executable path.'), path:s('Alias for app.'), args:{ type:'array', items:{type:'string'} }, cwd:s('Optional permitted working directory for direct executable launch.'), wait_for_window:s('Optional application/title substring that must appear after launch.'), wait_timeout_ms:n('Maximum wait for wait_for_window; default 10000, maximum 120000.') }), openMutatingNonDestructive, desktopHandlers.launch_app, ['desktop_session']),
   define('ui_snapshot', 'UI accessibility snapshot', 'Read the active desktop accessibility/UI Automation tree with compact labels, semantic hierarchy, bounds, state and suggested actions. Default scope is the active application/window; scope=desktop requests the full desktop tree. Explicit pid/app/window_title scopes override the active default. browser_dom asks the OS accessibility provider for the web-document subtree when available.', o({ scope:e(['active','desktop'],'Default active. Use desktop only when cross-application discovery is required.'), pid:n('Optional owning process id scope.'), app:s('Optional application/process name substring scope.'), window_title:s('Optional top-level accessibility window/frame title scope.'), browser_dom:b('Prefer the native browser document accessibility subtree instead of browser chrome when supported.'), semantic_tree:b('Include compact semantic hierarchy text; default true.'), max_nodes:n('Maximum nodes; default 500, maximum 5000.'), max_depth:n('Maximum traversal depth; default 8, maximum 32.') }), readOnlyLive, desktopHandlers.ui_snapshot, ['ui']),
   define('ui_find', 'Find UI elements', 'Find native accessible desktop elements by label/id/name/role/AutomationId. Reuses the latest five-second semantic snapshot for fast repeated targeting; refresh=true forces a new OS accessibility capture.', o({ ...uiSelector, refresh:b('Force a fresh accessibility capture instead of the short-lived snapshot cache.'), limit:n('Maximum matches; default 20.'), max_nodes:n(), max_depth:n() }), readOnlyLive, desktopHandlers.ui_find, ['ui']),
   define('ui_action', 'Act on UI element', 'Act on a native accessibility/UI Automation element by id, label or semantic selector. Supports invoke/focus/value/toggle/selection, expand-collapse, range values and scroll-into-view before falling back to coordinates.', o({ action:e(['click','invoke','focus','set_value','select','toggle','expand','collapse','scroll_into_view','set_range_value','add_to_selection','remove_from_selection']), ...uiSelector, value:{description:'New text or numeric range value.'} }, ['action']), openMutating, desktopHandlers.ui_action, ['ui']),
@@ -547,8 +547,8 @@ export const extendedToolDefinitions = [
   define('clipboard', 'Clipboard', 'Read, write, or clear the system text clipboard using native operating-system clipboard facilities.', o({ action:e(['read','write','clear']), text:s('Text to write.') }, ['action']), mutating, desktopHandlers.clipboard, ['clipboard']),
   define('display_inventory', 'Display inventory', 'List connected displays/monitors and their geometry and primary-display status using native display tools.', o(), readOnlyLive, desktopHandlers.display_inventory, ['displays']),
   define('screenshot_region', 'Screenshot region', 'Capture a desktop rectangle, a selected top-level window, or a selected monitor and return it as an inline PNG. This avoids full-desktop screenshots when only one UI area matters.', o({ x:n(), y:n(), width:n(), height:n(), window_id:s('Window id returned by list_windows.'), pid:n(), app:s(), title:s(), monitor:s('Monitor name substring, or "primary".'), monitor_index:n('Zero-based monitor index from display_inventory.'), padding:n('Optional pixels added around the resolved rectangle; 0..200.') }), readOnlyLive, desktopHandlers.screenshot_region, ['screen_region']),
-  define('open_path', 'Open path', 'Open a permitted local file or directory in its system-associated desktop application. Filesystem confinement is checked before opening.', o({ path:s('File or directory to open.') }, ['path']), additive, desktopHandlers.open_path),
-  define('reveal_path', 'Reveal path', 'Reveal a permitted local file or directory in Finder, Explorer, or the Linux file manager after applying ReMCP filesystem confinement.', o({ path:s('File or directory to reveal.') }, ['path']), additive, desktopHandlers.reveal_path),
+  define('open_path', 'Open path', 'Open a permitted local file or directory in its system-associated desktop application. Filesystem confinement is checked before opening.', o({ path:s('File or directory to open.') }, ['path']), additive, desktopHandlers.open_path, ['desktop_open']),
+  define('reveal_path', 'Reveal path', 'Reveal a permitted local file or directory in Finder, Explorer, or the Linux file manager after applying ReMCP filesystem confinement.', o({ path:s('File or directory to reveal.') }, ['path']), additive, desktopHandlers.reveal_path, ['desktop_open']),
   define('notification', 'Desktop notification', 'Show a native desktop notification or user-visible popup on the paired computer.', o({ title:s(), message:s('Notification message.'), timeout_seconds:n() }, ['message']), additive, desktopHandlers.notification, ['notifications']),
 
   define('browser_tabs', 'Browser tabs', 'List debuggable Chrome, Edge, or Chromium page targets from a loopback-only Chrome DevTools Protocol endpoint.', o({ ...browserTarget }), readOnlyLive, browserHandlers.browser_tabs, ['browser_cdp']),
@@ -598,6 +598,21 @@ async function linuxHasPyAtSpi() {
   return pyAtSpiCache.value;
 }
 
+export function desktopShellCapabilitySnapshot({
+  platform = process.platform,
+  env = process.env,
+  commandExistsFn = commandExists,
+} = {}) {
+  const nativeDesktop = platform === 'win32' || platform === 'darwin';
+  const linuxDesktop = platform === 'linux'
+    && Boolean(String(env?.DISPLAY || '').trim() || String(env?.WAYLAND_DISPLAY || '').trim());
+  const desktopSession = nativeDesktop || linuxDesktop;
+  return {
+    desktop_session:desktopSession,
+    desktop_open:desktopSession && (nativeDesktop || commandExistsFn('xdg-open')),
+  };
+}
+
 export function powerCapabilitySnapshot({
   platform = process.platform,
   commandExistsFn = commandExists,
@@ -626,23 +641,26 @@ export async function capabilitySnapshot() {
   const win = process.platform === 'win32';
   const mac = process.platform === 'darwin';
   const linux = process.platform === 'linux';
-  const pyAtSpi = linux ? await linuxHasPyAtSpi() : false;
-  const wayland = linux && isWaylandSession();
+  const desktopShellCapabilities = desktopShellCapabilitySnapshot();
+  const desktopSession = desktopShellCapabilities.desktop_session;
+  const pyAtSpi = linux && desktopSession ? await linuxHasPyAtSpi() : false;
+  const wayland = linux && desktopSession && isWaylandSession();
   const gnomeRecord = wayland ? await gnomeScreencastSupported() : false;
   const portalInput = wayland && waylandPortalCandidate();
-  const x11Input = linux && !wayland && (commandExists('wdotool') || commandExists('xdotool'));
+  const x11Input = linux && desktopSession && !wayland && (commandExists('wdotool') || commandExists('xdotool'));
   const browserCdp = browserRemoteEnabled() && await browserControlAvailable(undefined, 500);
   const documentCapabilities = documentCapabilitySnapshot();
   return {
-    windows: win || mac || commandExists('wdotool') || commandExists('wmctrl') || (wayland && pyAtSpi),
-    ui: win || mac || pyAtSpi,
-    input: win || mac || portalInput || x11Input || (wayland && commandExists('wtype')),
-    pointer: win || mac || portalInput || x11Input,
-    drag: win || mac || portalInput || x11Input,
-    clipboard: win || mac || commandExists('wl-paste') || commandExists('xclip') || commandExists('xsel'),
-    displays: win || mac || (wayland && linux) || commandExists('wlr-randr') || commandExists('xrandr'),
-    screen_region: win || mac || commandExists('grim') || commandExists('import') || (isWaylandSession() && commandExists('ffmpeg')),
-    notifications: win || mac || commandExists('notify-send'),
+    ...desktopShellCapabilities,
+    windows: win || mac || (desktopSession && (commandExists('wdotool') || commandExists('wmctrl') || (wayland && pyAtSpi))),
+    ui: win || mac || (desktopSession && pyAtSpi),
+    input: win || mac || (desktopSession && (portalInput || x11Input || (wayland && commandExists('wtype')))),
+    pointer: win || mac || (desktopSession && (portalInput || x11Input)),
+    drag: win || mac || (desktopSession && (portalInput || x11Input)),
+    clipboard: win || mac || (desktopSession && (commandExists('wl-paste') || commandExists('xclip') || commandExists('xsel'))),
+    displays: win || mac || (desktopSession && ((wayland && linux) || commandExists('wlr-randr') || commandExists('xrandr'))),
+    screen_region: win || mac || (desktopSession && (commandExists('grim') || commandExists('import') || (isWaylandSession() && commandExists('ffmpeg')))),
+    notifications: win || mac || (desktopSession && commandExists('notify-send')),
     browser_cdp: browserCdp,
     browser_evaluate: browserCdp && (process.env.NODE_ENV !== 'production' || ['1', 'true', 'yes', 'on'].includes(String(process.env.REMCP_BROWSER_ALLOW_EVALUATE || '').toLowerCase())),
     services: win || mac || commandExists('systemctl'),

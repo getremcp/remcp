@@ -5,6 +5,7 @@ import {
   allExtendedTools,
   advertisedExtendedTools,
   capabilitySnapshot,
+  desktopShellCapabilitySnapshot,
   documentCapabilitySnapshot,
   powerCapabilitySnapshot,
   extendedToolDefinitions,
@@ -24,6 +25,43 @@ const EXPECTED = [
   'service','event_log','network','installed_apps','environment','audio','power_action','record_screen',
   'read_document','edit_spreadsheet','edit_document','pdf_action',
 ];
+
+test('desktop shell capabilities disappear on headless Linux and stay native on Windows/macOS', () => {
+  const allCommands = () => true;
+  const noCommands = () => false;
+
+  assert.deepEqual(
+    desktopShellCapabilitySnapshot({ platform:'linux', env:{}, commandExistsFn:allCommands }),
+    { desktop_session:false, desktop_open:false },
+    'installed desktop utilities must not expose desktop actions without an active graphical session',
+  );
+  assert.deepEqual(
+    desktopShellCapabilitySnapshot({ platform:'linux', env:{ DISPLAY:':0' }, commandExistsFn:noCommands }),
+    { desktop_session:true, desktop_open:false },
+    'a Linux graphical session supports direct application launch but system-associated open/reveal still requires xdg-open',
+  );
+  assert.deepEqual(
+    desktopShellCapabilitySnapshot({ platform:'linux', env:{ WAYLAND_DISPLAY:'wayland-0' }, commandExistsFn:command => command === 'xdg-open' }),
+    { desktop_session:true, desktop_open:true },
+  );
+  for (const platform of ['win32','darwin']) {
+    assert.deepEqual(
+      desktopShellCapabilitySnapshot({ platform, env:{}, commandExistsFn:noCommands }),
+      { desktop_session:true, desktop_open:true },
+      `${platform} uses native desktop shell facilities`,
+    );
+  }
+  assert.deepEqual(
+    desktopShellCapabilitySnapshot({ platform:'freebsd', env:{ DISPLAY:':0' }, commandExistsFn:allCommands }),
+    { desktop_session:false, desktop_open:false },
+    'unvalidated platforms stay fail-closed',
+  );
+
+  const byName = new Map(extendedToolDefinitions.map(tool => [tool.name, tool]));
+  assert.deepEqual(byName.get('launch_app').requires, ['desktop_session']);
+  assert.deepEqual(byName.get('open_path').requires, ['desktop_open']);
+  assert.deepEqual(byName.get('reveal_path').requires, ['desktop_open']);
+});
 
 test('Linux power capability requires both lock and system power backends', () => {
   const only = name => command => command === name;
@@ -218,11 +256,16 @@ test('capability-aware live advertising is a subset of the full release contract
   const allNames = new Set(all.map(tool => tool.name));
   for (const tool of advertised) assert.ok(allNames.has(tool.name));
   for (const always of [
-    'computer_snapshot','computer_action','launch_app',
+    'computer_snapshot','computer_action',
     'network','environment','read_document','pdf_action',
   ]) {
     assert.ok(advertised.some(tool => tool.name === always), `${always} should remain discoverable`);
   }
+  assert.equal(
+    advertised.some(tool => tool.name === 'launch_app'),
+    Boolean(capabilities.desktop_session),
+    'launch_app should follow the live desktop-session capability',
+  );
   for (const browserTool of ['browser_tabs','browser_navigate','browser_snapshot','browser_find','browser_action','browser_wait','browser_evaluate']) {
     assert.equal(advertised.some(tool => tool.name === browserTool), Boolean(capabilities.browser_cdp), `${browserTool} should follow the live CDP capability`);
   }
