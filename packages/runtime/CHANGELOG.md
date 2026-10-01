@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.131 — 2026-10-02
+
+- `network action=summary` is now bounded for Docker-heavy hosts: non-container interfaces are prioritized, at most eight interfaces and four addresses per interface are returned, and count/truncation metadata shows what was omitted.
+- `network action=interfaces` remains the complete adapter/address inventory. The MCP schema and tool names remain compatible; stable count/truncation fields are now declared for chaining.
+
 ## 0.2.130 — 2026-10-02
 
 - `computer_snapshot` now skips desktop-only probes on headless Linux and returns stable empty/unavailable desktop fields without false error noise. The shared `desktopSessionAvailable()` helper keeps this behavior aligned with live capability discovery.

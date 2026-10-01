@@ -12,7 +12,7 @@ import {
   extendedToolHandlers,
 } from '../src/extended/catalog.mjs';
 import { browserActionInputValue, browserAutoLaunchAvailable, browserEvaluate, browserNavigate, browserRemoteEnabled, browserSnapshot, browserTabs, browserWait } from '../src/extended/browser.mjs';
-import { gnomeScreencastSupported, linuxListenerBackend, parseAvfoundationScreenInput, recordScreen, recordScreenAvailable, recordScreenBackend, resolveRecordScreenFfmpeg, validateRecordingDestinationFormat } from '../src/extended/diagnostics.mjs';
+import { compactNetworkSummary, gnomeScreencastSupported, linuxListenerBackend, parseAvfoundationScreenInput, recordScreen, recordScreenAvailable, recordScreenBackend, resolveRecordScreenFfmpeg, validateRecordingDestinationFormat } from '../src/extended/diagnostics.mjs';
 import { hasTool, invokeTool } from '../src/invoke.mjs';
 
 const EXPECTED = [
@@ -75,6 +75,48 @@ test('Linux power capability requires both lock and system power backends', () =
   assert.equal(powerCapabilitySnapshot({ platform:'linux', commandExistsFn:only('systemctl') }), false);
   assert.equal(powerCapabilitySnapshot({ platform:'linux', commandExistsFn:none }), false);
   assert.equal(powerCapabilitySnapshot({ platform:'freebsd', commandExistsFn:both }), false);
+});
+
+test('network summary stays compact on Docker-heavy hosts while preserving physical interfaces first', () => {
+  const row = (address, internal = false) => ({
+    address,
+    netmask:'255.255.255.0',
+    family:'IPv4',
+    mac:'00:11:22:33:44:55',
+    internal,
+    cidr:`${address}/24`,
+  });
+  const interfaces = {
+    lo:[row('127.0.0.1', true)],
+    eth0:[row('203.0.113.10')],
+    enp7s0:[row('10.0.0.2')],
+    'br-aaaaaaaaaaaa':[row('172.18.0.1')],
+    'br-bbbbbbbbbbbb':[row('172.19.0.1')],
+    docker0:[row('172.17.0.1')],
+    veth001:[row('169.254.1.1')],
+    veth002:[row('169.254.1.2')],
+    veth003:[row('169.254.1.3')],
+    veth004:[row('169.254.1.4')],
+    veth005:[row('169.254.1.5')],
+  };
+  const summary = compactNetworkSummary({
+    hostname:'fixture',
+    interfaces,
+    dnsServers:['1.1.1.1'],
+    maxInterfaces:4,
+    maxAddressesPerInterface:2,
+  });
+  assert.equal(summary.hostname, 'fixture');
+  assert.deepEqual(summary.dns, ['1.1.1.1']);
+  assert.equal(summary.interface_count, 11);
+  assert.equal(summary.interface_count_returned, 4);
+  assert.equal(summary.interfaces_truncated, true);
+  assert.equal(summary.addresses_truncated, false);
+  assert.deepEqual(Object.keys(summary.interfaces).slice(0, 2), ['eth0','enp7s0']);
+  assert.equal('lo' in summary.interfaces, false);
+  assert.equal(Object.keys(summary.interfaces).length, 4);
+  assert.equal(summary.address_count, 11);
+  assert.equal(summary.address_count_returned, 4);
 });
 
 test('Linux listener fallback always requests listening sockets only', () => {

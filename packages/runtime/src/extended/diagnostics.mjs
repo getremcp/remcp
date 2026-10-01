@@ -133,11 +133,59 @@ export function linuxListenerBackend({ commandExistsFn = commandExists } = {}) {
   return null;
 }
 
+const CONTAINER_INTERFACE_PATTERN = /^(?:veth|docker\d*$|br-[0-9a-f]{6,}$)/i;
+
+export function compactNetworkSummary({
+  hostname = os.hostname(),
+  interfaces = os.networkInterfaces(),
+  dnsServers = dns.getServers(),
+  maxInterfaces = 8,
+  maxAddressesPerInterface = 4,
+} = {}) {
+  const entries = Object.entries(interfaces || {}).map(([name, rows], index) => {
+    const normalizedRows = Array.isArray(rows) ? rows.filter(Boolean) : [];
+    const hasExternal = normalizedRows.some(row => row?.internal !== true);
+    const rank = hasExternal
+      ? (CONTAINER_INTERFACE_PATTERN.test(name) ? 1 : 0)
+      : 2;
+    return { name, rows:normalizedRows, index, rank };
+  });
+  entries.sort((left, right) => left.rank - right.rank || left.index - right.index);
+
+  const interfaceLimit = clamp(maxInterfaces, 8, 1, 64);
+  const addressLimit = clamp(maxAddressesPerInterface, 4, 1, 16);
+  const selected = entries.slice(0, interfaceLimit);
+  const compact = {};
+  let addressCount = 0;
+  let addressCountReturned = 0;
+  let addressesTruncated = false;
+
+  for (const entry of entries) addressCount += entry.rows.length;
+  for (const entry of selected) {
+    const rows = entry.rows.slice(0, addressLimit);
+    compact[entry.name] = rows;
+    addressCountReturned += rows.length;
+    if (entry.rows.length > rows.length) addressesTruncated = true;
+  }
+
+  return {
+    hostname,
+    dns:Array.isArray(dnsServers) ? dnsServers : [],
+    interfaces:compact,
+    interface_count:entries.length,
+    interface_count_returned:selected.length,
+    address_count:addressCount,
+    address_count_returned:addressCountReturned,
+    interfaces_truncated:entries.length > selected.length,
+    addresses_truncated:addressesTruncated,
+  };
+}
+
 export async function networkTool(args) {
   const action = requireEnum(args.action || 'summary', 'action', ['summary','interfaces','dns','routes','listeners','test']);
   if (action === 'interfaces') return jsonResult(os.networkInterfaces());
   if (action === 'dns') return jsonResult({ servers:dns.getServers(), hostname:os.hostname() });
-  if (action === 'summary') return jsonResult({ hostname:os.hostname(), interfaces:os.networkInterfaces(), dns:dns.getServers() });
+  if (action === 'summary') return jsonResult(compactNetworkSummary());
   if (action === 'test') {
     const host = optionalString(args.host); if (!host) throw new Error('host is required for action=test');
     return jsonResult(await connectivityTest(host, clamp(args.port, 443, 1, 65535), clamp(args.timeout_ms, 3000, 100, 30_000)));
