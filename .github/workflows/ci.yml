@@ -114,9 +114,9 @@ jobs:
       - name: Verify Windows document capabilities and built-in OOXML backend
         shell: powershell
         run: >-
-          node --import .\packages\runtime\test\setup.mjs --test
+          node --import ./packages/runtime/test/setup.mjs --test
           --test-name-pattern='P3 document toolset|XLSX can be created|DOCX can be created'
-          .\packages\runtime\test\computer-documents.test.mjs
+          ./packages/runtime/test/computer-documents.test.mjs
       - name: Parse and validate with Windows PowerShell 5.1
         shell: powershell
         run: |
