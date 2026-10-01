@@ -3,7 +3,7 @@ import process from 'node:process';
 import { randomUUID } from 'node:crypto';
 import { constants } from 'node:fs';
 import { copyFile, link, lstat, mkdir, mkdtemp, open, readFile, readdir, rename, rm, stat, unlink, writeFile } from 'node:fs/promises';
-import { readDocxText, readPdfText } from '../documents.mjs';
+import { readDocxXmlText, readPdfText } from '../documents.mjs';
 import { openDirectoryPath } from '../tools/files.mjs';
 import { resolveSafePath, text } from '../util.mjs';
 import {
@@ -353,6 +353,25 @@ async function readXlsx(filePath, args) {
   }
 }
 
+async function readDocxDocument(filePath) {
+  const dir = await tempDir('remcp-docx-read-');
+  try {
+    await extractZip(filePath, dir);
+    let xml;
+    try {
+      xml = await readFile(path.join(dir, 'word', 'document.xml'), 'utf8');
+    } catch (error) {
+      if (error?.code === 'ENOENT') {
+        throw new Error('This file is not a readable .docx (word/document.xml is missing)');
+      }
+      throw error;
+    }
+    return readDocxXmlText(xml);
+  } finally {
+    await removeTemp(dir);
+  }
+}
+
 async function readPdfDocument(data) {
   try {
     return readPdfText(data);
@@ -380,10 +399,10 @@ async function readPdfDocument(data) {
 export async function readDocument(args) {
   const filePath = await resolveSafePath(args.path,'path');
   const lower = filePath.toLowerCase();
-  const data = await readDocumentFile(filePath);
-  if (lower.endsWith('.docx')) return text(readDocxText(data));
-  if (lower.endsWith('.pdf')) return text(await readPdfDocument(data));
+  if (lower.endsWith('.docx')) return text(await readDocxDocument(filePath));
   if (lower.endsWith('.xlsx')) return jsonResult(await readXlsx(filePath,args));
+  const data = await readDocumentFile(filePath);
+  if (lower.endsWith('.pdf')) return text(await readPdfDocument(data));
   if (/\.(txt|md|csv|json|xml|yaml|yml)$/i.test(lower)) return text(data.toString('utf8'));
   throw new Error('read_document supports PDF, DOCX, XLSX, TXT, Markdown, CSV, JSON, XML, YAML');
 }

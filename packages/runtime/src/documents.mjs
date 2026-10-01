@@ -40,7 +40,7 @@ function unzipEntry(buffer, wanted) {
     const extraLength = buffer.readUInt16LE(offset + 30);
     const commentLength = buffer.readUInt16LE(offset + 32);
     const localOffset = buffer.readUInt32LE(offset + 42);
-    const name = buffer.toString('utf8', offset + 46, offset + 46 + nameLength);
+    const name = buffer.toString('utf8', offset + 46, offset + 46 + nameLength).replace(/\\/g, '/');
     if (name === wanted) {
       const localNameLength = buffer.readUInt16LE(localOffset + 26);
       const localExtraLength = buffer.readUInt16LE(localOffset + 28);
@@ -116,14 +116,17 @@ function wordXmlText(xml) {
   return output;
 }
 
-export function readDocxText(buffer) {
-  const document = unzipEntry(buffer, 'word/document.xml');
-  if (!document) throw new Error('This file is not a readable .docx (its word/document.xml is missing or compressed in an unsupported way)');
-  const xml = document.toString('utf8');
-  return wordXmlText(xml)
+export function readDocxXmlText(xml) {
+  return wordXmlText(String(xml))
     .replace(/&(amp|lt|gt|quot|apos);/g, match => DOCX_ENTITIES[match])
     .replace(/\n{3,}/g, '\n\n')
     .trim();
+}
+
+export function readDocxText(buffer) {
+  const document = unzipEntry(buffer, 'word/document.xml');
+  if (!document) throw new Error('This file is not a readable .docx (its word/document.xml is missing or compressed in an unsupported way)');
+  return readDocxXmlText(document.toString('utf8'));
 }
 
 function decodePdfString(raw) {
