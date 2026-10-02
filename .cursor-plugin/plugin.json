@@ -1,7 +1,7 @@
 {
   "name": "remcp",
   "displayName": "ReMCP",
-  "version": "0.2.133",
+  "version": "0.2.134",
   "description": "Securely control computers you explicitly pair using semantic desktop UI, browser DOM/CDP, files, terminals, screenshots, diagnostics, and PDF/DOCX/XLSX tools.",
   "author": {
     "name": "Anton Baider"

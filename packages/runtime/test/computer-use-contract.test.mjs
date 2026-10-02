@@ -654,6 +654,11 @@ test('power_action routes restart and shutdown through command policy before nat
     /assertAllowedCommand\(action === 'restart' \? 'reboot' : action === 'shutdown' \? 'shutdown' : action\)/,
     'restart/shutdown must reach the destructive-command guardrail before OS dispatch',
   );
+  assert.match(
+    source,
+    /const delay = normalizePowerActionDelay\(args\.delay_seconds\);[\s\S]{0,220}await waitForPowerActionDelay\(delay, extra\.signal\);[\s\S]{0,220}throwIfCancelled\(extra\.signal\);[\s\S]{0,220}if \(process\.platform === 'win32'\)/,
+    'delayed power actions must honor cancellation before any native power command is dispatched',
+  );
   assert.match(source, /systemctl', \[action === 'sleep' \? 'suspend' : action === 'restart' \? 'reboot' : 'poweroff'/);
 });
 
