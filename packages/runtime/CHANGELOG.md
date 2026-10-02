@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.134 — 2026-10-02
+
+- `power_action delay_seconds` is bounded to 0–90 seconds in schema and runtime validation so a delayed destructive call cannot intentionally outlive the hosted ~110-second device-call lifetime.
+- Delayed power actions use the propagated MCP AbortSignal; cancellation clears the timer and stops before any OS lock/sleep/restart/shutdown command is sent.
+- A second cancellation check runs immediately before platform dispatch. Regression tests cover pre-cancelled, mid-delay-cancelled, and schema-bound behavior.
+- Runtime tool names remain unchanged; this is a safety/correctness tightening of the existing power tool.
+
 ## 0.2.133 — 2026-10-02
 
 - Explicit `computer_action type target=window` now keeps top-level window selectors separate from semantic element selectors; `window_id` is never rewritten into the UI-element `id` before `type_text`.
