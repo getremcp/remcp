@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.133 — 2026-10-02
+
+- Explicit `computer_action type target=window` now keeps top-level window selectors separate from semantic element selectors; `window_id` is never rewritten into the UI-element `id` before `type_text`.
+- Auto window fallback uses the same sanitized window-only selector shape, preventing stale UI/browser selectors from hijacking window-scoped text entry.
+- Live GNOME/AT-SPI Zenity validation returned the exact Unicode payload after the accessibility edit path. Runtime tool names and schemas are unchanged from 0.2.132.
+
 ## 0.2.132 — 2026-10-02
 
 - `computer_action` now exposes `type`, `scroll`, `drag`, and `target=window` in its MCP schema while keeping specialist tools available when the backend is already known.

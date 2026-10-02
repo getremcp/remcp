@@ -4,7 +4,7 @@ import { mkdtemp, readFile, rm, stat } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { extendedToolDefinitions } from '../src/extended/catalog.mjs';
-import { computerAction, computerSnapshot, pointer, scroll, uiAction, uiFind, waitForUi, windowAction } from '../src/extended/desktop.mjs';
+import { computerAction, computerActionWindowTextArgs, computerSnapshot, pointer, scroll, uiAction, uiFind, waitForUi, windowAction } from '../src/extended/desktop.mjs';
 import { browserFind, findExpression } from '../src/extended/browser.mjs';
 import * as linux from '../src/extended/desktop-linux.mjs';
 
@@ -13,6 +13,33 @@ const tool = name => {
   assert.ok(value, `missing tool definition: ${name}`);
   return value;
 };
+
+test('computer_action window text targeting never aliases a window id into a semantic UI element id', () => {
+  const routed = computerActionWindowTextArgs({
+    action:'type',
+    target:'window',
+    window_id:'linux:123:r.0',
+    window_title:'Scratch',
+    id:'stale-ui-element',
+    label:7,
+    name:'Search',
+    role:'textbox',
+    automation_id:'query',
+    selector:'#message',
+    browser_text:'Message',
+    text:'hello',
+    clear:true,
+    backend:'portal',
+  });
+  assert.equal(routed.window_id, 'linux:123:r.0');
+  assert.equal(routed.title, 'Scratch');
+  assert.equal(routed.text, 'hello');
+  assert.equal(routed.clear, true);
+  assert.equal(routed.backend, 'portal');
+  for (const field of ['id','label','name','role','automation_id','automationId','selector','browser_text']) {
+    assert.equal(Object.hasOwn(routed, field), false, `window text route must strip ${field}`);
+  }
+});
 
 test('computer_action exposes the universal cross-backend actions without absorbing specialist-only controls', () => {
   const computerAction = tool('computer_action');

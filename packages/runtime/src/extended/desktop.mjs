@@ -1291,6 +1291,24 @@ function browserComputerAction(args, action) {
   });
 }
 
+export function computerActionWindowTextArgs(args = {}) {
+  const {
+    id: _id,
+    label: _label,
+    name: _name,
+    role: _role,
+    automation_id: _automationId,
+    automationId: _automationIdAlias,
+    selector: _selector,
+    browser_text: _browserText,
+    ...windowArgs
+  } = args;
+  return {
+    ...windowArgs,
+    ...(args.window_title && !args.title ? { title:args.window_title } : {}),
+  };
+}
+
 export async function computerAction(args = {}) {
   const legacy = ['ui','pointer','window','type','keyboard','scroll','drag','clipboard','launch_app','open_path','reveal_path','notification'];
   const universal = [
@@ -1376,13 +1394,14 @@ export async function computerAction(args = {}) {
     ...(args.window_id ? { id:args.window_id } : {}),
     ...(args.window_title && !args.title ? { title:args.window_title } : {}),
   });
+  const windowTextTarget = () => computerActionWindowTextArgs(args);
 
   if (action === 'type') {
     if (target === 'browser') return browserComputerAction(args, 'type');
     if (target === 'ocr' || target === 'coordinates') {
       throw new Error('computer_action type requires a native UI, browser, or window target');
     }
-    if (target === 'window') return typeText(windowTarget());
+    if (target === 'window') return typeText(windowTextTarget());
     if (!automatic) return typeText({ ...args, method:args.method || 'accessibility' });
 
     const failures = [];
@@ -1399,7 +1418,7 @@ export async function computerAction(args = {}) {
       }
     }
     if (args.window_id || args.pid != null || args.app || args.window_title || args.title) {
-      try { return await typeText(windowTarget()); }
+      try { return await typeText(windowTextTarget()); }
       catch (error) { failures.push(`window: ${String(error?.message || error).slice(0, 300)}`); }
     }
     if (failures.length) throw new Error(`computer_action type targeting failed: ${failures.join('; ')}`);
