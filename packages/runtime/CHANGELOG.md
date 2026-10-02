@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.135 — 2026-10-02
+
+- Linux `audio` status is normalized across `wpctl`, `pactl`, and `amixer` into structured `volume`, `muted`, `action`, and `backend` fields; mutating audio actions re-read and return the verified state.
+- Windows Core Audio and macOS audio responses expose the same `action`/`backend` fields.
+- The additive `backend` output-schema field changes the tool-surface digest without changing tool names or the 83-tool count.
+
 ## 0.2.134 — 2026-10-02
 
 - `power_action delay_seconds` is bounded to 0–90 seconds in schema and runtime validation so a delayed destructive call cannot intentionally outlive the hosted ~110-second device-call lifetime.

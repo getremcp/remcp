@@ -49,7 +49,7 @@ support and emits `notifications/tools/list_changed` when that capability set ch
 | Runtime | `get_system_info`, `get_runtime_info`, `get_runtime_stats`, `set_config_value` |
 | Computer use | `computer_snapshot`, `computer_action`, `list_windows`, `window_action`, `launch_app`, `ui_snapshot`, `ui_find`, `ui_action`, `type_text`, `keyboard`, `pointer`, `drag_drop`, `scroll`, `wait_for_ui`, `clipboard`, `display_inventory`, `screenshot_region`, `open_path`, `reveal_path`, `notification` |
 | Browser | `browser_tabs`, `browser_navigate`, `browser_snapshot`, `browser_find`, `browser_action`, `browser_wait`, `browser_evaluate` |
-| Diagnostics | `service`, `event_log`, `network`, `installed_apps`, `environment`, `audio`, `power_action`, `record_screen` |
+| Diagnostics | `service`, `event_log`, `network`, `installed_apps`, `environment`, `audio`, `power_action`, `record_screen` — `audio` returns stable structured `volume`, `muted`, `action`, and `backend` fields across supported OS backends |
 | Documents | `read_document`, `edit_spreadsheet`, `edit_document`, `pdf_action` |
 
 The hosted ReMCP endpoint does not append those 83 granular operation names to its discovery list.

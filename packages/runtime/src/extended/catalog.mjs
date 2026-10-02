@@ -214,7 +214,7 @@ const OUTPUT_FIELDS = Object.freeze({
   network: { hostname:outputString(), interfaces:outputObject(), dns:outputArray(outputString()), servers:outputArray(outputString()), host:outputString(), port:outputNumber(), ok:outputBoolean(), latency_ms:outputNumber(), interface_count:outputNumber(), interface_count_returned:outputNumber(), address_count:outputNumber(), address_count_returned:outputNumber(), interfaces_truncated:outputBoolean(), addresses_truncated:outputBoolean(), data:outputArray(outputObject()) },
   installed_apps: { data:outputArray(outputObject('Installed app/package with name/version/path where available.')) },
   environment: { platform:outputString(), arch:outputString(), hostname:outputString(), release:outputString(), shell:outputString(), path:outputString(), node:outputString(), env:outputObject() },
-  audio: { volume:outputNumber(), muted:outputBoolean(), action:outputString(), text:outputString() },
+  audio: { volume:outputNumber(), muted:outputBoolean(), action:outputString(), backend:outputString(), text:outputString() },
   power_action: { text:outputString(), action:outputString() },
   record_screen: { path:outputString(), bytes:outputNumber(), duration_seconds:outputNumber(), format:outputString() },
   read_document: { text:outputString(), path:outputString(), data:{}, sheets:outputArray(outputObject()), sheet:outputString(), rows:outputArray({}), cells:outputArray({}) },
