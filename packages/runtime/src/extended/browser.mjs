@@ -1045,6 +1045,47 @@ export async function browserFind(args) {
   });
 }
 
+const PAGE_SCROLL_ACTION = `function(selector, needle, deltaX, deltaY) {
+  let target = selector ? document.querySelector(selector) : null;
+  if (!target && needle) {
+    const lower = String(needle).toLowerCase();
+    target = Array.from(document.querySelectorAll('*')).find(node =>
+      String(node.innerText || node.textContent || '').trim().toLowerCase().includes(lower)
+    ) || null;
+  }
+  if ((selector || needle) && !target) throw new Error('Element not found');
+
+  let scroller = document.scrollingElement || document.documentElement;
+  if (target) {
+    let current = target;
+    while (current && current !== document.documentElement) {
+      const style = getComputedStyle(current);
+      const scrollX = /(auto|scroll|overlay)/.test(String(style.overflowX || '')) && current.scrollWidth > current.clientWidth;
+      const scrollY = /(auto|scroll|overlay)/.test(String(style.overflowY || '')) && current.scrollHeight > current.clientHeight;
+      if (scrollX || scrollY) {
+        scroller = current;
+        break;
+      }
+      current = current.parentElement;
+    }
+  }
+
+  const beforeX = Number(scroller.scrollLeft || 0);
+  const beforeY = Number(scroller.scrollTop || 0);
+  scroller.scrollLeft = beforeX + Number(deltaX || 0);
+  scroller.scrollTop = beforeY + Number(deltaY || 0);
+  return {
+    target: target ? target.tagName.toLowerCase() : 'page',
+    scroller: scroller === document.scrollingElement || scroller === document.documentElement ? 'page' : scroller.tagName.toLowerCase(),
+    before_x: beforeX,
+    before_y: beforeY,
+    after_x: Number(scroller.scrollLeft || 0),
+    after_y: Number(scroller.scrollTop || 0),
+    delta_x: Number(deltaX || 0),
+    delta_y: Number(deltaY || 0),
+  };
+}`;
+
 const PAGE_ELEMENT_ACTION = `function(selector, needle, action, value) {
   let el = selector ? document.querySelector(selector) : null;
   if (!el && needle) {
@@ -1081,14 +1122,46 @@ const PAGE_ELEMENT_ACTION = `function(selector, needle, action, value) {
   };
 }`;
 
+export function browserActionLocatorText(args = {}, action = '') {
+  const explicit = optionalString(args.browser_text || args.match_text);
+  if (explicit) return explicit;
+  if (action === 'type') {
+    // Legacy type calls used text as the locator and value/text_value as the payload.
+    if (!optionalString(args.selector) && (args.value != null || args.text_value != null)) return optionalString(args.text);
+    return null;
+  }
+  return optionalString(args.text);
+}
+
 export function browserActionInputValue(args = {}, action = '') {
-  // text is the public field models naturally use for type, while set_value/select historically
-  // used value/text_value. Keep all aliases compatible but give each action its semantic field.
-  return String(action === 'type' ? (args.text ?? args.text_value ?? args.value ?? '') : (args.value ?? args.text_value ?? args.text ?? ''));
+  if (action === 'type') {
+    if (!optionalString(args.selector) && !optionalString(args.browser_text || args.match_text) && (args.value != null || args.text_value != null)) {
+      return String(args.text_value ?? args.value ?? '');
+    }
+    return String(args.text ?? args.text_value ?? args.value ?? '');
+  }
+  return String(args.value ?? args.text_value ?? args.text ?? '');
+}
+
+export function browserScrollDeltas(args = {}) {
+  const direction = optionalString(args.direction);
+  const hasDelta = [args.delta_x,args.delta_y,args.delta].some(value => value != null && Number.isFinite(Number(value)));
+  if (!direction && !hasDelta) return null;
+  const times = clamp(args.wheel_times, 1, 1, 50);
+  let deltaX = Number(args.delta_x || 0);
+  let deltaY = Number(args.delta_y ?? args.delta ?? 0);
+  if (direction) {
+    const normalized = requireEnum(direction, 'direction', ['up','down','left','right']);
+    if (normalized === 'up') deltaY = -120 * times;
+    if (normalized === 'down') deltaY = 120 * times;
+    if (normalized === 'left') deltaX = -120 * times;
+    if (normalized === 'right') deltaX = 120 * times;
+  }
+  return { delta_x:deltaX, delta_y:deltaY };
 }
 
 export async function browserAction(args) {
-  const action = requireEnum(args.action, 'action', ['click', 'focus', 'type', 'set_value', 'select', 'scroll_into_view', 'upload', 'press', 'set_viewport']);
+  const action = requireEnum(args.action, 'action', ['click', 'focus', 'type', 'set_value', 'select', 'scroll', 'scroll_into_view', 'upload', 'press', 'set_viewport']);
   return withTarget(args, async (session, target) => {
     if (action === 'set_viewport') {
       const width = clamp(args.width, 1280, 200, 8192);
@@ -1126,10 +1199,21 @@ export async function browserAction(args) {
       return jsonResult({ target_id: target.id, action, key });
     }
     const selector = optionalString(args.selector);
-    const needle = optionalString(args.text);
-    if (!selector && !needle) throw new Error('selector or text is required');
+    const needle = browserActionLocatorText(args, action);
     const value = browserActionInputValue(args, action);
     const option = String(args.option ?? value);
+
+    if (action === 'scroll') {
+      const deltas = browserScrollDeltas(args);
+      if (!deltas) throw new Error('browser_action scroll requires direction or a delta');
+      return jsonResult({
+        target_id: target.id,
+        action,
+        result: await callPageFunction(session, PAGE_SCROLL_ACTION, [selector, needle, deltas.delta_x, deltas.delta_y]),
+      });
+    }
+
+    if (!selector && !needle) throw new Error('selector or browser_text/text locator is required');
 
     if (action === 'click') {
       const rect = await callPageFunction(session, PAGE_ELEMENT_ACTION, [selector, needle, 'click', '']);
@@ -1143,6 +1227,7 @@ export async function browserAction(args) {
 
     if (action === 'type') {
       const focused = await callPageFunction(session, PAGE_ELEMENT_ACTION, [selector, needle, 'type', '']);
+      if (args.clear === true) await callPageFunction(session, PAGE_ELEMENT_ACTION, [selector, needle, 'set_value', '']);
       await session.send('Input.insertText', { text:value });
       const current = await callPageFunction(session, PAGE_ELEMENT_ACTION, [selector, needle, 'read_value', '']);
       return jsonResult({ target_id:target.id, action, result:{ ...focused, value:current.value } });

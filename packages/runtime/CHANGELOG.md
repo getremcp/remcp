@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.2.132 — 2026-10-02
+
+- `computer_action` now exposes `type`, `scroll`, `drag`, and `target=window` in its MCP schema while keeping specialist tools available when the backend is already known.
+- Auto `type` uses accessibility-only semantic editing before CDP and never falls through to unverified physical text input merely because a native selector failed.
+- Browser DOM typing separates `browser_text` locator semantics from the `text` payload; legacy locator-in-`text` calls remain compatible when `value`/`text_value` carries the payload.
+- `browser_action scroll` performs bounded page or nearest-scrollable-ancestor scrolling with the same delta/direction vocabulary as native `scroll`; `computer_action scroll` can route to it automatically.
+- Action-specific schemas validate type targets/text, scroll deltas/directions, drag endpoints, and explicit backend/target compatibility before handler execution. Window targets require a window selector; UI/coordinate scroll and drag require target-appropriate fields; browser/OCR drag is rejected before dispatch.
+- macOS `service action=list` now uses explicit launchd domains so `scope=user` reads `gui/<uid>` and `scope=system` reads `system`; the old legacy `launchctl list` path could not honor system scope.
+- Public macOS release CI exercises the system launchd domain in addition to document/network backends. Runtime tool names remain unchanged at 83.
+
 ## 0.2.131 — 2026-10-02
 
 - `network action=summary` is now bounded for Docker-heavy hosts: non-container interfaces are prioritized, at most eight interfaces and four addresses per interface are returned, and count/truncation metadata shows what was omitted.

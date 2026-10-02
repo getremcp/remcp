@@ -30,7 +30,7 @@ const o = (properties = {}, required = []) => ({ type: 'object', properties, ...
 
 const AI_TOOL_DESCRIPTIONS = Object.freeze({
   computer_snapshot: 'Use this for the first look at an unfamiliar desktop state when you need one compact bundle of windows, semantic UI, displays, clipboard metadata and optional pixels/browser/OCR. Prefer it over repeated screenshots; narrow later with ui_find, browser_find or screenshot_region.',
-  computer_action: 'Use this only when one semantic click/edit/focus/selection action must work across an uncertain target backend and may need Accessibility → browser DOM/CDP → OCR → coordinate fallback, or when multi_select/multi_edit avoids many identical native UI calls. Do not use it when the backend or operation is already known: use ui_action for native controls, browser_action for page DOM, type_text for prose, keyboard for shortcuts, pointer for raw pointer gestures, drag_drop or scroll for those gestures, window_action for windows, and the dedicated clipboard/launch/open/reveal/notification tools for those jobs.',
+  computer_action: 'Use this only when one semantic click/type/invoke/select/focus/scroll/drag action must work across an uncertain target backend and may need Accessibility → browser DOM/CDP → OCR → coordinate fallback, or when multi_select/multi_edit avoids many identical native UI calls. When the backend is already known, prefer the specialist tool (ui_action, browser_action, type_text, drag_drop, scroll or window_action) for its full controls. Keep keyboard, clipboard, launch/open/reveal/notification and raw pointer gestures in their dedicated tools.',
   list_windows: 'Use this to discover top-level desktop windows or obtain a stable window id/PID/bounds before window_action, screenshot_region or targeted input. Use ui_snapshot instead when you need controls inside a window; prefer list_windows over screenshot-based window guessing.',
   window_action: 'Use this to focus, minimize, maximize, restore, move, resize or close one known top-level window. Select it by id/PID/app/title from list_windows. Use ui_action for controls inside the window; do not use pointer coordinates for window management when this semantic tool can express the action.',
   launch_app: 'Use this to start a desktop application by executable/path or friendly application name without a shell. Prefer it over start_process for GUI application launch. If the user wants to open a specific file or directory in its associated application, use open_path instead; use start_process for terminal commands, build tools and shell pipelines.',
@@ -247,8 +247,18 @@ function requiredAny(...groups) {
 function applySchemaRules(name, schema) {
   const next = structuredClone(schema);
   if (name === 'computer_action') {
-    const semanticTarget = requiredAny(['id'], ['label'], ['name'], ['role'], ['automation_id'], ['selector'], ['browser_text']);
+    const nativeTarget = requiredAny(['id'], ['label'], ['name'], ['role'], ['automation_id']);
+    const browserElementTarget = requiredAny(['selector'], ['browser_text'], ['name']);
+    const windowTarget = requiredAny(['window_id'], ['pid'], ['app'], ['window_title'], ['title']);
+    const semanticTarget = [...nativeTarget, ...browserElementTarget];
     next.allOf = [
+      {
+        if:{ properties:{ target:{ const:'window' } }, required:['target'] },
+        then:{
+          properties:{ action:{ enum:['type','focus','scroll','drag'] } },
+          anyOf:windowTarget,
+        },
+      },
       {
         if:{ properties:{ action:{ const:'click' } }, required:['action'] },
         then:{ anyOf:[...semanticTarget, { required:['ocr_text'] }, { required:['x','y'] }] },
@@ -259,7 +269,60 @@ function applySchemaRules(name, schema) {
       },
       {
         if:{ properties:{ action:{ const:'focus' } }, required:['action'] },
-        then:{ anyOf:[...semanticTarget, ...requiredAny(['pid'], ['app'], ['window_title'], ['title'])] },
+        then:{ anyOf:[...semanticTarget, ...requiredAny(['window_id'], ['pid'], ['app'], ['window_title'], ['title'])] },
+      },
+      {
+        if:{ properties:{ action:{ const:'type' } }, required:['action'] },
+        then:{
+          required:['text'],
+          properties:{ target:{ enum:['auto','ui','ui_element','browser','window'] } },
+          allOf:[
+            { anyOf:[...semanticTarget, ...windowTarget] },
+            {
+              if:{ properties:{ target:{ enum:['ui','ui_element'] } }, required:['target'] },
+              then:{ anyOf:nativeTarget },
+            },
+            {
+              if:{ properties:{ target:{ const:'browser' } }, required:['target'] },
+              then:{ anyOf:browserElementTarget },
+            },
+          ],
+        },
+      },
+      {
+        if:{ properties:{ action:{ const:'scroll' } }, required:['action'] },
+        then:{
+          properties:{ target:{ enum:['auto','ui','ui_element','browser','coordinates','window'] } },
+          allOf:[
+            { anyOf:requiredAny(['delta_x'], ['delta_y'], ['delta'], ['direction']) },
+            {
+              if:{ properties:{ target:{ enum:['ui','ui_element'] } }, required:['target'] },
+              then:{ anyOf:nativeTarget },
+            },
+            {
+              if:{ properties:{ target:{ const:'coordinates' } }, required:['target'] },
+              then:{ required:['x','y'] },
+            },
+          ],
+        },
+      },
+      {
+        if:{ properties:{ action:{ const:'drag' } }, required:['action'] },
+        then:{
+          properties:{ target:{ enum:['auto','ui','ui_element','coordinates','window'] } },
+          allOf:[
+            { anyOf:requiredAny(['from_id'], ['from_x','from_y']) },
+            { anyOf:requiredAny(['to_id'], ['to_x','to_y']) },
+            {
+              if:{ properties:{ target:{ enum:['ui','ui_element'] } }, required:['target'] },
+              then:{ required:['from_id','to_id'] },
+            },
+            {
+              if:{ properties:{ target:{ const:'coordinates' } }, required:['target'] },
+              then:{ required:['from_x','from_y','to_x','to_y'] },
+            },
+          ],
+        },
       },
       {
         if:{ properties:{ action:{ enum:['set_value','set_range_value'] } }, required:['action'] },
@@ -357,8 +420,19 @@ function applySchemaRules(name, schema) {
   } else if (name === 'browser_action') {
     next.allOf = [
       {
-        if:{ properties:{ action:{ enum:['click','focus','type','set_value','select','scroll_into_view'] } }, required:['action'] },
-        then:{ anyOf:requiredAny(['selector'], ['text']) },
+        if:{ properties:{ action:{ enum:['click','focus','set_value','select','scroll_into_view'] } }, required:['action'] },
+        then:{ anyOf:requiredAny(['selector'], ['text'], ['browser_text']) },
+      },
+      {
+        if:{ properties:{ action:{ const:'type' } }, required:['action'] },
+        then:{
+          required:['text'],
+          anyOf:requiredAny(['selector'], ['browser_text'], ['value'], ['text_value']),
+        },
+      },
+      {
+        if:{ properties:{ action:{ const:'scroll' } }, required:['action'] },
+        then:{ anyOf:requiredAny(['delta_x'], ['delta_y'], ['delta'], ['direction']) },
       },
       {
         if:{ properties:{ action:{ const:'upload' } }, required:['action'] },
@@ -477,22 +551,38 @@ export const extendedToolDefinitions = [
     'Perform one semantic cross-backend action when the target may require Accessibility → browser DOM/CDP → OCR → coordinate fallback.',
     o({
       action:e([
-        'click','invoke','focus','set_value','select','toggle','expand','collapse',
+        'click','type','invoke','focus','select','scroll','drag','set_value','toggle','expand','collapse',
         'scroll_into_view','set_range_value','add_to_selection','remove_from_selection',
         'multi_select','multi_edit',
       ]),
       target:e(
-        ['auto','ui','ui_element','browser','ocr','coordinates'],
-        'Optional target type. auto tries native accessibility first, then browser DOM/CDP, OCR text when requested, then coordinates for click.',
+        ['auto','ui','ui_element','browser','ocr','coordinates','window'],
+        'Optional target type. auto prefers native accessibility, then browser DOM/CDP, then OCR/coordinates where supported. Use window for explicit top-level window focus/text/scroll targeting.',
       ),
       ...uiSelector,
-      title:s('Optional browser page title substring when target=browser.'),
-      text:s('Text used by multi_edit or as a compatibility value for a semantic edit.'),
+      title:s('Optional browser page title substring or top-level window title when target=window.'),
+      window_id:s('Top-level window id returned by list_windows when target=window.'),
+      text:s('Unicode text to enter for action=type, or text used by multi_edit.'),
+      clear:b('For action=type, clear the current semantic/browser value before inserting text when supported.'),
       value:s('New value for set_value, set_range_value, or select.'),
-      x:n('Virtual-desktop X coordinate used only by the final click fallback.'),
-      y:n('Virtual-desktop Y coordinate used only by the final click fallback.'),
+      x:n('Virtual-desktop X coordinate used by click/scroll coordinate targeting.'),
+      y:n('Virtual-desktop Y coordinate used by click/scroll coordinate targeting.'),
       selector:s('CSS selector when the fallback target is a browser element.'),
-      browser_text:s('Visible browser text used to locate a DOM fallback target.'),
+      browser_text:s('Visible browser text used only to locate a DOM target; for action=type, text remains the value to enter.'),
+      delta_x:n('Horizontal scroll delta; positive means right.'),
+      delta_y:n('Vertical scroll delta; positive means down.'),
+      delta:n('Alias for delta_y.'),
+      direction:e(['up','down','left','right']),
+      wheel_times:n('Number of 120-unit wheel steps for direction; 1..50.'),
+      from_x:n('Drag source X coordinate.'),
+      from_y:n('Drag source Y coordinate.'),
+      to_x:n('Drag destination X coordinate.'),
+      to_y:n('Drag destination Y coordinate.'),
+      from_id:s('Source semantic UI element id for action=drag.'),
+      to_id:s('Destination semantic UI element id for action=drag.'),
+      button:e(['left','right','middle']),
+      hold_ms:n('Delay after pointer down before moving during action=drag.'),
+      duration_ms:n('Drag movement duration.'),
       ocr_text:s('Visible text to find in rendered pixels for the OCR click fallback.'),
       ocr_region:{
         type:'array',
@@ -556,7 +646,7 @@ export const extendedToolDefinitions = [
   define('browser_navigate', 'Browser navigate', 'Open a new debuggable tab or navigate a selected browser page by URL, history back/forward, or reload through Chrome DevTools Protocol.', o({ ...browserTarget, action:e(['url','new_tab','back','forward','reload'], 'Default url when url is provided, otherwise reload. new_tab creates the first page target when needed.'), url:s('Destination URL for action=url or action=new_tab.'), wait:b('Wait for the page load event; default true.'), ignore_cache:b('Reload without cache when action=reload.') }), openMutatingNonDestructive, browserHandlers.browser_navigate, ['browser_cdp']),
   define('browser_snapshot', 'Browser snapshot', 'Return the selected browser page accessibility tree through Chrome DevTools Protocol and, when requested, attach a real rendered viewport PNG for visual verification. A selector is temporarily recentered for capture, its exact viewport bounds are returned, and the prior scroll position is restored before return.', o({ ...browserTarget, max_nodes:n('Maximum AX nodes; default 1500.'), include_screenshot:b('Attach a real CDP-rendered viewport PNG screenshot; default false.'), selector:s('When include_screenshot=true, center this CSS-selected element before capture and report its viewport bounds.') }), readOnlyLive, browserHandlers.browser_snapshot, ['browser_cdp']),
   define('browser_find', 'Find browser element', 'Find visible DOM elements by CSS selector, text, or ARIA role and return reusable selectors plus text, value, and bounding boxes.', o({ ...browserTarget, selector:s('CSS selector.'), text:s('Visible text substring.'), role:s('ARIA role.'), limit:n() }), readOnlyLive, browserHandlers.browser_find, ['browser_cdp']),
-  define('browser_action', 'Browser element action', 'Click, focus, type/set a value, select, scroll to, upload files, press a key, or set an exact responsive-test viewport in a debuggable browser page using DOM/CDP semantics.', o({ ...browserTarget, action:e(['click','focus','type','set_value','select','scroll_into_view','upload','press','set_viewport']), selector:s('CSS selector for the target element; prefer the reusable selector returned by browser_find.'), text:s('For action=type, Unicode text to insert. For element actions without selector, visible text may identify the target.'), value:s('Value for action=set_value; also accepted as a compatibility fallback for action=type.'), text_value:s('Compatibility alias for the type/set_value text value.'), option:s(), path:s(), paths:{type:'array',items:{type:'string'}}, key:s(), width:n('CSS viewport width for set_viewport.'), height:n('CSS viewport height for set_viewport.'), device_scale_factor:n('Device scale factor for set_viewport; default 1.'), mobile:b('Enable mobile emulation for set_viewport.') }, ['action']), openMutating, browserHandlers.browser_action, ['browser_cdp']),
+  define('browser_action', 'Browser element action', 'Click, focus, type/set a value, select, scroll a page or scrollable element, scroll an element into view, upload files, press a key, or set an exact responsive-test viewport in a debuggable browser page using DOM/CDP semantics.', o({ ...browserTarget, action:e(['click','focus','type','set_value','select','scroll','scroll_into_view','upload','press','set_viewport']), selector:s('CSS selector for the target element; prefer the reusable selector returned by browser_find.'), browser_text:s('Visible text used only to locate a DOM element; use this instead of overloading text for action=type.'), text:s('For action=type, Unicode text to insert. For non-type element actions without selector/browser_text, visible text may identify the target.'), clear:b('For action=type, clear the current value before inserting text.'), value:s('Value for action=set_value; also accepted as a legacy type payload when text is used as the locator.'), text_value:s('Compatibility alias for the type/set_value text value.'), option:s(), delta_x:n('Horizontal scroll delta; positive means right.'), delta_y:n('Vertical scroll delta; positive means down.'), delta:n('Alias for delta_y.'), direction:e(['up','down','left','right']), wheel_times:n('Number of 120-unit wheel steps for direction; 1..50.'), path:s(), paths:{type:'array',items:{type:'string'}}, key:s(), width:n('CSS viewport width for set_viewport.'), height:n('CSS viewport height for set_viewport.'), device_scale_factor:n('Device scale factor for set_viewport; default 1.'), mobile:b('Enable mobile emulation for set_viewport.') }, ['action']), openMutating, browserHandlers.browser_action, ['browser_cdp']),
   define('browser_wait', 'Wait for browser', 'Wait for DOM state, page text, URL, completed loading, a navigation away from the current URL, or a short network-idle period in a debuggable browser page. Use browser_evaluate separately for JavaScript predicates or page-specific inspection.', o({ ...browserTarget, condition:e(['selector','text','url_contains','load','navigation','network_idle']), selector:s(), text:s(), value:s(), poll_ms:n(), idle_ms:n('Required zero-in-flight network quiet window for network_idle; default 500 ms.') }), readOnlyLive, browserHandlers.browser_wait, ['browser_cdp']),
   define('browser_evaluate', 'Evaluate browser JavaScript', 'Evaluate JavaScript in a selected debuggable browser page and return its serializable value. This is a powerful escape hatch for page-specific automation.', o({ ...browserTarget, expression:s('JavaScript expression.'), await_promise:b('Await a returned Promise; default true.') }, ['expression']), openMutating, browserHandlers.browser_evaluate, ['browser_evaluate']),
 

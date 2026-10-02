@@ -1263,6 +1263,7 @@ function browserComputerAction(args, action) {
     set_value:'set_value',
     select:'select',
     type:'type',
+    scroll:'scroll',
   }[action];
   if (!mapped) throw new Error(`Browser target does not support computer_action action: ${action}`);
   const visibleText = optionalString(args.browser_text)
@@ -1276,10 +1277,17 @@ function browserComputerAction(args, action) {
     timeout_ms: args.timeout_ms,
     action: mapped,
     selector: args.selector,
-    ...(visibleText ? { text: visibleText } : {}),
+    ...(visibleText ? { browser_text: visibleText } : {}),
     ...(args.value != null ? { value: args.value } : {}),
     ...(args.option != null ? { option: args.option } : {}),
-    ...(action === 'type' && args.text != null ? { value: args.text } : {}),
+    ...(action === 'type' && args.text != null ? { text: args.text, clear:args.clear === true } : {}),
+    ...(action === 'scroll' ? {
+      delta_x:args.delta_x,
+      delta_y:args.delta_y,
+      delta:args.delta,
+      direction:args.direction,
+      wheel_times:args.wheel_times,
+    } : {}),
   });
 }
 
@@ -1362,21 +1370,84 @@ export async function computerAction(args = {}) {
   if (action === 'ui') return uiAction(nested);
   if (action === 'pointer') return pointer(nested);
   if (action === 'window') return windowAction(nested);
-  if (action === 'type') return target === 'browser' ? browserComputerAction(args, 'type') : typeText(args);
+
+  const windowTarget = () => ({
+    ...args,
+    ...(args.window_id ? { id:args.window_id } : {}),
+    ...(args.window_title && !args.title ? { title:args.window_title } : {}),
+  });
+
+  if (action === 'type') {
+    if (target === 'browser') return browserComputerAction(args, 'type');
+    if (target === 'ocr' || target === 'coordinates') {
+      throw new Error('computer_action type requires a native UI, browser, or window target');
+    }
+    if (target === 'window') return typeText(windowTarget());
+    if (!automatic) return typeText({ ...args, method:args.method || 'accessibility' });
+
+    const failures = [];
+    if (hasUi) {
+      try { return await typeText({ ...args, method:'accessibility' }); }
+      catch (error) { failures.push(`accessibility: ${String(error?.message || error).slice(0, 300)}`); }
+    }
+    if (hasBrowser) {
+      if (await browserCapabilityAvailable(args.endpoint, 300)) {
+        try { return await browserComputerAction(args, 'type'); }
+        catch (error) { failures.push(`browser DOM: ${String(error?.message || error).slice(0, 300)}`); }
+      } else {
+        failures.push('browser DOM: no local CDP endpoint is available');
+      }
+    }
+    if (args.window_id || args.pid != null || args.app || args.window_title || args.title) {
+      try { return await typeText(windowTarget()); }
+      catch (error) { failures.push(`window: ${String(error?.message || error).slice(0, 300)}`); }
+    }
+    if (failures.length) throw new Error(`computer_action type targeting failed: ${failures.join('; ')}`);
+    throw new Error('computer_action type requires a native UI, browser, or window target');
+  }
+
   if (action === 'keyboard') {
     if (target === 'browser' && args.key && !args.shortcut && !Array.isArray(args.keys)) {
       return browserAction({ ...args, action:'press' });
     }
     return keyboard(args);
   }
+
   if (action === 'scroll') {
-    if (target === 'browser' && (args.selector || args.browser_text)) {
-      return browserAction({ ...args, action:'scroll_into_view', text:args.browser_text });
+    if (target === 'browser') return browserComputerAction(args, 'scroll');
+    if (target === 'ocr') throw new Error('computer_action scroll does not support OCR targets; use browser/UI/window/coordinates');
+
+    if (automatic) {
+      let uiError = null;
+      if (hasUi) {
+        try { return await scroll(args); }
+        catch (error) { uiError = error; }
+      }
+      if (hasBrowser) {
+        if (await browserCapabilityAvailable(args.endpoint, 300)) return browserComputerAction(args, 'scroll');
+        if (uiError) throw new Error(`computer_action scroll targeting failed: accessibility: ${String(uiError?.message || uiError).slice(0, 300)}; browser DOM: no local CDP endpoint is available`);
+        throw new Error('computer_action scroll browser target is unavailable because no local CDP endpoint is available');
+      }
+      if (args.window_id || args.pid != null || args.app || args.window_title || args.title) {
+        await windowAction({ ...windowTarget(), action:'focus' });
+      }
+      return scroll(args);
     }
-    if (args.id || args.name || args.role || args.automation_id) await uiAction({ ...args, action:'focus' }).catch(() => null);
+
+    if (target === 'window') {
+      await windowAction({ ...windowTarget(), action:'focus' });
+      return scroll(args);
+    }
     return scroll(args);
   }
-  if (action === 'drag') return dragDrop(args);
+
+  if (action === 'drag') {
+    if (target === 'browser' || target === 'ocr') {
+      throw new Error('computer_action drag currently requires native UI element ids or desktop coordinates; browser/OCR drag is not advertised');
+    }
+    if (target === 'window') await windowAction({ ...windowTarget(), action:'focus' });
+    return dragDrop(args);
+  }
   if (action === 'clipboard') return clipboard(nested);
   if (action === 'launch_app') return launchApp(args);
   if (action === 'open_path') return openPath(args);
@@ -1423,7 +1494,7 @@ export async function computerAction(args = {}) {
       }
       return uiAction({ ...args, action:'focus' });
     }
-    return windowAction({ ...args, action:'focus' });
+    return windowAction({ ...windowTarget(), action:'focus' });
   }
 
   if (['minimize','maximize','restore','move_resize','resize','close'].includes(action)) {
