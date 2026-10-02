@@ -12,7 +12,7 @@ import { describeFilesystemFailure } from '../permissions.mjs';
 import { capturePortalScreenshot, isWaylandSession } from '../screenshot-portal.mjs';
 import { applyHunks, parseUnifiedDiff } from '../patch.mjs';
 import { countEvent, recordEvent } from '../telemetry.mjs';
-import { clampInteger, decodeText, displayPath, fail, globToRegExp, image, isInsideRoot, looksBinary, multi, pageLines, resolveSafePath, splitLines, text, throwIfCancelled } from '../util.mjs';
+import { clampInteger, decodeText, displayPath, fail, fitsOutput, globToRegExp, image, isInsideRoot, looksBinary, multi, pageLines, resolveSafePath, splitLines, text, throwIfCancelled } from '../util.mjs';
 
 const MAX_INLINE_FILE_BYTES = 20 * 1024 * 1024;
 // An image travels base64-encoded, which costs a third more bytes. The agent's stdio transport holds
@@ -785,16 +785,33 @@ export async function readBinaryTool(args) {
   try {
     const buffer = Buffer.alloc(end - start);
     if (buffer.length) await handle.read(buffer, 0, buffer.length, start);
-    const payload = JSON.stringify({
-      path: displayPath(absolute),
-      size: info.size,
-      offsetBytes: start,
-      lengthBytes: buffer.length,
-      nextOffsetBytes: end < info.size ? end : null,
-      complete: end >= info.size,
-      encoding: 'base64',
-      data: buffer.toString('base64'),
-    });
+    const renderPayload = lengthBytes => {
+      const actualEnd = start + lengthBytes;
+      return JSON.stringify({
+        path: displayPath(absolute),
+        size: info.size,
+        offsetBytes: start,
+        lengthBytes,
+        nextOffsetBytes: actualEnd < info.size ? actualEnd : null,
+        complete: actualEnd >= info.size,
+        encoding: 'base64',
+        data: buffer.subarray(0, lengthBytes).toString('base64'),
+      });
+    };
+    let returnedLength = buffer.length;
+    let payload = renderPayload(returnedLength);
+    if (!fitsOutput(payload)) {
+      let low = 0;
+      let high = returnedLength;
+      while (low < high) {
+        const candidate = Math.ceil((low + high) / 2);
+        if (fitsOutput(renderPayload(candidate))) low = candidate;
+        else high = candidate - 1;
+      }
+      returnedLength = low;
+      payload = renderPayload(returnedLength);
+      if (!fitsOutput(payload)) fail('Runtime output limit is too small to return read_binary metadata');
+    }
     return text(payload);
   } finally {
     await opened.close();
@@ -1793,6 +1810,13 @@ function archiveTool({ platform = process.platform, probe = archiveCommandProbe 
 export function archiveBackendAvailable({ platform = process.platform, probe = archiveCommandProbe } = {}) {
   if (platform === 'win32') return Boolean(archiveTool({ platform, probe }).tar);
   return platform === 'linux' || platform === 'darwin';
+}
+
+export function zipArchiveBackendAvailable({ platform = process.platform, probe = archiveCommandProbe } = {}) {
+  const tools = archiveTool({ platform, probe });
+  if (platform === 'win32') return Boolean(tools.tar);
+  if (platform === 'linux' || platform === 'darwin') return Boolean(tools.zip && tools.unzip);
+  return false;
 }
 
 export async function createArchiveTool(args, extra = {}) {

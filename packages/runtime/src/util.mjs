@@ -136,10 +136,16 @@ function frameBytes(text) {
   return Buffer.byteLength(JSON.stringify(String(text)), 'utf8');
 }
 
+export function fitsOutput(text, maxBytes) {
+  const limit = maxBytes || liveConfig('maxOutputBytes');
+  const value = String(text);
+  return Buffer.byteLength(value, 'utf8') <= limit && frameBytes(value) <= limit;
+}
+
 export function truncate(text, maxBytes) {
   const limit = maxBytes || liveConfig('maxOutputBytes');
   const value = String(text);
-  if (Buffer.byteLength(value, 'utf8') <= limit && frameBytes(value) <= limit) return value;
+  if (fitsOutput(value, limit)) return value;
   // Shrink until the escaped frame fits, so the escaped size is what the caller gets is bounded.
   let size = Math.min(Buffer.byteLength(value, 'utf8'), limit);
   let rendered = '';

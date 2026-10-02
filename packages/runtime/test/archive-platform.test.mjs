@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { coreToolSupported, toolDefinitions } from '../src/catalog.mjs';
-import { archiveBackendAvailable, tarEntrySize } from '../src/tools/files.mjs';
+import { archiveBackendAvailable, tarEntrySize, zipArchiveBackendAvailable } from '../src/tools/files.mjs';
 
 test('archive tools are advertised on Linux/macOS and on Windows only with the native tar backend', () => {
   const archives = toolDefinitions.filter(tool => ['create_archive','extract_archive'].includes(tool.name));
@@ -22,6 +22,18 @@ test('Windows archive backend availability is the tar.exe probe result', () => {
   assert.equal(archiveBackendAvailable({ platform:'darwin', probe:() => null }), true);
   assert.equal(archiveBackendAvailable({ platform:'linux', probe:() => null }), true);
   assert.equal(archiveBackendAvailable({ platform:'freebsd', probe:() => 'tar' }), false);
+});
+
+test('ZIP backend availability matches each platform archive implementation', () => {
+  const zipAndUnzip = name => name === 'zip' || name === 'unzip' ? name : null;
+  const zipOnly = name => name === 'zip' ? name : null;
+  assert.equal(zipArchiveBackendAvailable({ platform:'win32', probe:name => name === 'tar.exe' ? 'tar.exe' : null }), true);
+  assert.equal(zipArchiveBackendAvailable({ platform:'win32', probe:() => null }), false);
+  for (const platform of ['linux','darwin']) {
+    assert.equal(zipArchiveBackendAvailable({ platform, probe:zipAndUnzip }), true);
+    assert.equal(zipArchiveBackendAvailable({ platform, probe:zipOnly }), false);
+  }
+  assert.equal(zipArchiveBackendAvailable({ platform:'freebsd', probe:zipAndUnzip }), false);
 });
 
 test('tar verbose parser accepts GNU and macOS bsdtar date formats without guessing other columns', () => {
