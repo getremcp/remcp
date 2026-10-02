@@ -9,7 +9,7 @@ import { isWaylandSession } from '../screenshot-portal.mjs';
 import { waylandPortalCandidate } from '../wayland-remote-desktop.mjs';
 import { commandExists, desktopSessionAvailable, runFile } from './common.mjs';
 import { desktopHandlers } from './desktop.mjs';
-import { regionScreenshotBackends } from './desktop-linux.mjs';
+import { displayInventoryAvailable, regionScreenshotBackends } from './desktop-linux.mjs';
 import { diagnosticHandlers, gnomeScreencastSupported, recordScreenAvailable } from './diagnostics.mjs';
 import { documentHandlers } from './documents.mjs';
 
@@ -760,6 +760,7 @@ export async function capabilitySnapshot() {
   const portalCandidate = wayland && waylandPortalCandidate();
   const portalInput = portalCandidate;
   const x11Input = linux && desktopSession && !wayland && (commandExists('wdotool') || commandExists('xdotool'));
+  const displayInventoryReady = linux && desktopSession ? await displayInventoryAvailable() : false;
   const browserCdp = browserRemoteEnabled() && await browserControlAvailable(undefined, 500);
   const documentCapabilities = documentCapabilitySnapshot();
   return {
@@ -770,7 +771,7 @@ export async function capabilitySnapshot() {
     pointer: win || mac || (desktopSession && (portalInput || x11Input)),
     drag: win || mac || (desktopSession && (portalInput || x11Input)),
     clipboard: win || mac || (desktopSession && (commandExists('wl-paste') || commandExists('xclip') || commandExists('xsel'))),
-    displays: win || mac || (desktopSession && ((wayland && linux) || commandExists('wlr-randr') || commandExists('xrandr'))),
+    displays: win || mac || displayInventoryReady,
     screen_region: win || mac || (desktopSession && regionScreenshotBackends({ wayland, portalCandidate }).length > 0),
     notifications: win || mac || (desktopSession && commandExists('notify-send')),
     browser_cdp: browserCdp,

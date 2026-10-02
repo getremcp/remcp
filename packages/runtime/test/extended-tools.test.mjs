@@ -12,6 +12,7 @@ import {
   extendedToolHandlers,
 } from '../src/extended/catalog.mjs';
 import { browserActionInputValue, browserActionLocatorText, browserAutoLaunchAvailable, browserEvaluate, browserNavigate, browserRemoteEnabled, browserScrollDeltas, browserSnapshot, browserTabs, browserWait } from '../src/extended/browser.mjs';
+import { displayInventoryAvailable, parseWlrRandrOutput, resolveLinuxDisplayInventory } from '../src/extended/desktop-linux.mjs';
 import { compactNetworkSummary, gnomeScreencastSupported, linuxListenerBackend, parseAvfoundationScreenInput, recordScreen, recordScreenAvailable, recordScreenBackend, resolveRecordScreenFfmpeg, validateRecordingDestinationFormat } from '../src/extended/diagnostics.mjs';
 import { hasTool, invokeTool } from '../src/invoke.mjs';
 
@@ -61,6 +62,99 @@ test('desktop shell capabilities disappear on headless Linux and stay native on 
   assert.deepEqual(byName.get('launch_app').requires, ['desktop_session']);
   assert.deepEqual(byName.get('open_path').requires, ['desktop_open']);
   assert.deepEqual(byName.get('reveal_path').requires, ['desktop_open']);
+});
+
+test('Linux display capability follows the same real backend chain as display_inventory', async () => {
+  const wlrOutput = `eDP-1 "BOE 0x0A1D (eDP-1)"
+  Make: BOE
+  Model: 0x0A1D
+  Serial:
+  Enabled: yes
+  Modes:
+    1920x1080 px, 60.001000 Hz (preferred, current)
+    1920x1080 px, 59.930000 Hz
+  Position: 0,0
+  Transform: normal
+  Scale: 1.250000
+HDMI-A-1 "Dell Inc. DELL U2720Q ABC123 (HDMI-A-1)"
+  Make: Dell Inc.
+  Model: DELL U2720Q
+  Serial: ABC123
+  Enabled: yes
+  Modes:
+    3840x2160 px, 60.000000 Hz (preferred, current)
+  Position: 1536,0
+  Transform: 90
+  Scale: 2.000000
+DP-9 "Disconnected"
+  Enabled: no
+`;
+  assert.deepEqual(parseWlrRandrOutput(wlrOutput), [
+    {
+      name:'eDP-1',
+      display_name:'BOE 0x0A1D (eDP-1)',
+      primary:false,
+      x:0,
+      y:0,
+      width:1536,
+      height:864,
+      pixel_width:1920,
+      pixel_height:1080,
+      scale:1.25,
+      refresh_hz:60.001,
+      transform:'normal',
+      builtin:true,
+      vendor:'BOE',
+      product:'0x0A1D',
+      serial:null,
+      backend:'wlr-randr',
+    },
+    {
+      name:'HDMI-A-1',
+      display_name:'Dell Inc. DELL U2720Q ABC123 (HDMI-A-1)',
+      primary:false,
+      x:1536,
+      y:0,
+      width:1080,
+      height:1920,
+      pixel_width:3840,
+      pixel_height:2160,
+      scale:2,
+      refresh_hz:60,
+      transform:'90',
+      builtin:false,
+      vendor:'Dell Inc.',
+      product:'DELL U2720Q',
+      serial:'ABC123',
+      backend:'wlr-randr',
+    },
+  ]);
+
+  const runWlr = async (command, args) => ({
+    code: command === 'wlr-randr' && args.length === 0 ? 0 : 1,
+    stdout: command === 'wlr-randr' ? wlrOutput : '',
+    stderr:'',
+  });
+  const rows = await resolveLinuxDisplayInventory({
+    wayland:true,
+    mutterProbe:async () => null,
+    commandExistsFn:command => command === 'wlr-randr',
+    runFileFn:runWlr,
+    env:{},
+  });
+  assert.equal(rows?.[0]?.backend, 'wlr-randr');
+  assert.equal(rows?.length, 2);
+  assert.equal(
+    await displayInventoryAvailable({
+      wayland:true,
+      mutterProbe:async () => null,
+      commandExistsFn:() => false,
+      runFileFn:async () => ({ code:1, stdout:'', stderr:'' }),
+      env:{},
+    }),
+    false,
+    'an unsupported Wayland compositor must not advertise display_inventory merely because Wayland is active',
+  );
 });
 
 test('Linux power capability requires both lock and system power backends', () => {
