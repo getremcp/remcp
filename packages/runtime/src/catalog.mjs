@@ -1,4 +1,4 @@
-import { fileToolHandlers } from './tools/files.mjs';
+import { archiveBackendAvailable, fileToolHandlers } from './tools/files.mjs';
 import { searchToolHandlers } from './tools/search.mjs';
 import { terminalToolHandlers } from './tools/terminal.mjs';
 import { systemToolHandlers } from './tools/system.mjs';
@@ -830,12 +830,18 @@ export const toolDefinitions = [
   },
 ];
 
-export function coreToolSupported(definition, { platform = process.platform } = {}) {
-  return !['create_archive', 'extract_archive'].includes(definition.name) || ['linux', 'darwin'].includes(platform);
+export function coreToolSupported(definition, {
+  platform = process.platform,
+  archiveAvailable = platform === 'win32' ? archiveBackendAvailable({ platform }) : true,
+} = {}) {
+  if (!['create_archive', 'extract_archive'].includes(definition.name)) return true;
+  if (platform === 'linux' || platform === 'darwin') return true;
+  return platform === 'win32' && archiveAvailable === true;
 }
 
 export function supportedCoreTools() {
-  return toolDefinitions.filter(coreToolSupported);
+  const archiveAvailable = process.platform === 'win32' ? archiveBackendAvailable({ platform:process.platform }) : true;
+  return toolDefinitions.filter(definition => coreToolSupported(definition, { platform:process.platform, archiveAvailable }));
 }
 
 export function advertisedTools() {

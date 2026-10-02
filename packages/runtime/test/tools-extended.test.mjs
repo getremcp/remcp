@@ -82,6 +82,22 @@ test('archives can be created and extracted', async () => {
   assert.equal(readFileSync(nested, 'utf8'), 'beta\n');
 });
 
+test('ZIP archives can be created and extracted through the platform archive backend', async () => {
+  const project = join(root, 'archive-zip-project');
+  mkdirSync(join(project, 'nested'), { recursive: true });
+  writeFileSync(join(project, 'a.txt'), 'zip alpha\n');
+  writeFileSync(join(project, 'nested', 'b.txt'), 'zip beta\n');
+  const archive = join(root, 'bundle.zip');
+  const created = await invokeTool('create_archive', { paths:[project], destination:archive, format:'zip' });
+  assert.equal(isError(created), false, body(created));
+  assert.ok(statSync(archive).size > 0);
+  const out = join(root, 'extracted-zip');
+  const extracted = await invokeTool('extract_archive', { archive, destination:out });
+  assert.equal(isError(extracted), false, body(extracted));
+  assert.equal(readFileSync(join(out, 'archive-zip-project', 'a.txt'), 'utf8'), 'zip alpha\n');
+  assert.equal(readFileSync(join(out, 'archive-zip-project', 'nested', 'b.txt'), 'utf8'), 'zip beta\n');
+});
+
 test('archive creation passes option-like member names after the option terminator', async () => {
   const project = join(root, 'archive-option-project');
   mkdirSync(project, { recursive: true });
