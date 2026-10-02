@@ -32,6 +32,11 @@ function durationSpec(value) {
   return raw;
 }
 
+export function macosLaunchctlDomain(scope = 'user', uid = process.getuid?.() ?? 0) {
+  const normalized = requireEnum(scope, 'scope', ['user','system']);
+  return normalized === 'system' ? 'system' : `gui/${uid}`;
+}
+
 export async function serviceTool(args) {
   const action = requireEnum(args.action || 'list', 'action', ['list','status','start','stop','restart']);
   const name = optionalString(args.name);
@@ -55,8 +60,8 @@ export async function serviceTool(args) {
   }
 
   if (process.platform === 'darwin') {
-    if (action === 'list') return text((await runFile('/bin/launchctl', ['list'], { label: 'launchctl list' })).stdout);
-    const domain = scope === 'system' ? 'system' : `gui/${process.getuid?.() ?? 0}`;
+    const domain = macosLaunchctlDomain(scope);
+    if (action === 'list') return text((await runFile('/bin/launchctl', ['print', domain], { label: `launchctl print ${domain}` })).stdout);
     const target = `${domain}/${name}`;
     if (action === 'status') {
       const result = await runFile('/bin/launchctl', ['print', target], { label: 'launchctl print', allowFailure: true });

@@ -60,7 +60,9 @@ If custom widgets are explicitly re-enabled, hosted discovery expands to **15 de
 **5 app-only** UI helpers. Cached legacy clients can still call supported granular aliases without inflating
 discovery for new clients.
 
-`computer_snapshot` and `computer_action` keep OCR inside the compact high-level surface: when a local `tesseract` binary is available, snapshot can return bounded OCR text/boxes and click targeting can fall back through Accessibility → browser DOM/CDP → OCR → coordinates. OCR is optional and never adds another MCP tool or bundled OCR dependency.
+`computer_snapshot` and `computer_action` keep OCR inside the compact high-level surface: when a local `tesseract` binary is available, snapshot can return bounded OCR text/boxes and click targeting can fall back through Accessibility → browser DOM/CDP → OCR → coordinates. `computer_action` also exposes backend-uncertain `type`, `scroll`, and `drag` plus explicit window targeting; it prefers semantic Accessibility, can route browser selectors through CDP, and keeps native coordinate/UI gestures as the fallback. When the backend is already known, the specialist UI/browser/type/scroll/drag/window tools keep their full controls. OCR is optional and never adds another MCP tool or bundled OCR dependency.
+
+For browser typing, `browser_text` is the visible DOM locator while `text` is the Unicode payload. `browser_action(action="scroll")` accepts page/element deltas or direction/wheel steps and scrolls the page or nearest scrollable ancestor; `scroll_into_view` remains the separate semantic reveal operation.
 
 For frontend QA, use semantic data to operate the page and rendered pixels to verify it: `browser_action(action="set_viewport")` sets an exact responsive-test viewport, `browser_wait` waits for the real application state, and `browser_snapshot(include_screenshot=true, selector=...)` recenters the component, returns its bounds, and attaches the real CDP-rendered viewport PNG. This intentionally treats screenshots as the visual oracle without making screenshot-driven coordinate guessing the primary control path.
 

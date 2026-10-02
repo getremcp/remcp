@@ -11,7 +11,7 @@ import {
   extendedToolDefinitions,
   extendedToolHandlers,
 } from '../src/extended/catalog.mjs';
-import { browserActionInputValue, browserAutoLaunchAvailable, browserEvaluate, browserNavigate, browserRemoteEnabled, browserSnapshot, browserTabs, browserWait } from '../src/extended/browser.mjs';
+import { browserActionInputValue, browserActionLocatorText, browserAutoLaunchAvailable, browserEvaluate, browserNavigate, browserRemoteEnabled, browserScrollDeltas, browserSnapshot, browserTabs, browserWait } from '../src/extended/browser.mjs';
 import { compactNetworkSummary, gnomeScreencastSupported, linuxListenerBackend, parseAvfoundationScreenInput, recordScreen, recordScreenAvailable, recordScreenBackend, resolveRecordScreenFfmpeg, validateRecordingDestinationFormat } from '../src/extended/diagnostics.mjs';
 import { hasTool, invokeTool } from '../src/invoke.mjs';
 
@@ -270,7 +270,20 @@ test('MCP SDK enforces conditional argument requirements before extended handler
     ['pointer', { action:'move' }, { action:'move', x:10, y:20 }],
     ['scroll', {}, { direction:'down' }],
     ['computer_action', { action:'click' }, { action:'click', x:10, y:20 }],
+    ['computer_action', { action:'click', target:'window', window_id:'w1', x:10, y:20 }, { action:'focus', target:'window', window_id:'w1' }],
+    ['computer_action', { action:'type', selector:'#message' }, { action:'type', selector:'#message', text:'hello' }],
+    ['computer_action', { action:'type', target:'browser', id:'native-edit', text:'hello' }, { action:'type', target:'browser', selector:'#message', text:'hello' }],
+    ['computer_action', { action:'type', target:'coordinates', x:10, y:20, text:'hello' }, { action:'type', target:'ui', id:'native-edit', text:'hello' }],
+    ['computer_action', { action:'scroll', selector:'#panel' }, { action:'scroll', selector:'#panel', delta_y:120 }],
+    ['computer_action', { action:'scroll', target:'ui', direction:'down' }, { action:'scroll', target:'ui', id:'panel', direction:'down' }],
+    ['computer_action', { action:'scroll', target:'coordinates', x:10, direction:'down' }, { action:'scroll', target:'coordinates', x:10, y:20, direction:'down' }],
+    ['computer_action', { action:'scroll', target:'window', direction:'down' }, { action:'scroll', target:'window', window_id:'w1', direction:'down' }],
+    ['computer_action', { action:'drag', from_id:'a' }, { action:'drag', from_id:'a', to_id:'b' }],
+    ['computer_action', { action:'drag', target:'browser', from_x:1, from_y:2, to_x:3, to_y:4 }, { action:'drag', target:'coordinates', from_x:1, from_y:2, to_x:3, to_y:4 }],
+    ['computer_action', { action:'drag', target:'ui', from_x:1, from_y:2, to_x:3, to_y:4 }, { action:'drag', target:'ui', from_id:'a', to_id:'b' }],
     ['network', { action:'test', host:'127.0.0.1' }, { action:'test', host:'127.0.0.1', port:443 }],
+    ['browser_action', { action:'type', text:'hello' }, { action:'type', selector:'#message', text:'hello' }],
+    ['browser_action', { action:'scroll' }, { action:'scroll', direction:'down' }],
     ['browser_action', { action:'press' }, { action:'press', key:'Enter' }],
     ['browser_wait', { condition:'text' }, { condition:'text', text:'ready' }],
     ['service', { action:'restart' }, { action:'restart', name:'demo.service' }],
@@ -529,14 +542,27 @@ test('browser_snapshot restores page scroll after selector screenshot capture', 
   assert.match(source, /window\.scrollTo\(\{left:\$\{restoreScroll\.x\},top:\$\{restoreScroll\.y\}/);
 });
 
-test('browser_action type honors the public text argument while set_value prefers value', () => {
+test('browser_action separates type payload from browser text locators and preserves legacy calls', () => {
   assert.equal(
-    browserActionInputValue({ text:'Антон ✓ ReMCP' }, 'type'),
+    browserActionInputValue({ selector:'#message', text:'Антон ✓ ReMCP' }, 'type'),
     'Антон ✓ ReMCP',
     'the public browser_action text field must reach Input.insertText',
   );
-  assert.equal(browserActionInputValue({ text:'typed', value:'explicit' }, 'type'), 'typed');
+  assert.equal(browserActionLocatorText({ selector:'#message', text:'typed' }, 'type'), null);
+  assert.equal(browserActionLocatorText({ browser_text:'Search', text:'typed' }, 'type'), 'Search');
+  assert.equal(browserActionInputValue({ browser_text:'Search', text:'typed' }, 'type'), 'typed');
+
+  assert.equal(browserActionLocatorText({ text:'Search', value:'legacy payload' }, 'type'), 'Search');
+  assert.equal(browserActionInputValue({ text:'Search', value:'legacy payload' }, 'type'), 'legacy payload');
   assert.equal(browserActionInputValue({ text:'typed', value:'explicit' }, 'set_value'), 'explicit');
+});
+
+test('browser_action scroll normalizes native-style direction and deltas', () => {
+  assert.deepEqual(browserScrollDeltas({ direction:'down', wheel_times:3 }), { delta_x:0, delta_y:360 });
+  assert.deepEqual(browserScrollDeltas({ direction:'left', wheel_times:2 }), { delta_x:-240, delta_y:0 });
+  assert.deepEqual(browserScrollDeltas({ delta_x:25, delta_y:-80 }), { delta_x:25, delta_y:-80 });
+  assert.deepEqual(browserScrollDeltas({ delta:90 }), { delta_x:0, delta_y:90 });
+  assert.equal(browserScrollDeltas({}), null);
 });
 
 test('browser remote control defaults off unless a runtime mode or explicit opt-in is present', () => {

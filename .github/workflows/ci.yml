@@ -80,7 +80,7 @@ jobs:
           echo "bare-metadata ok"
 
   macos-documents:
-    name: macOS document backend
+    name: macOS runtime backends
     runs-on: macos-latest
     timeout-minutes: 5
     steps:
@@ -99,6 +99,8 @@ jobs:
           ./packages/runtime/test/computer-documents.test.mjs
       - name: Verify macOS network diagnostics backend
         run: node --import ./packages/runtime/test/setup.mjs --test ./packages/runtime/test/macos-network.test.mjs
+      - name: Verify macOS launchd service scope backend
+        run: node --import ./packages/runtime/test/setup.mjs --test ./packages/runtime/test/macos-service.test.mjs
 
   windows-installer:
     name: Windows PowerShell installer

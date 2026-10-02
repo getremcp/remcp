@@ -14,23 +14,27 @@ const tool = name => {
   return value;
 };
 
-test('computer_action stays a narrow cross-backend fallback instead of duplicating specialist tools', () => {
+test('computer_action exposes the universal cross-backend actions without absorbing specialist-only controls', () => {
   const computerAction = tool('computer_action');
   const actions = computerAction.inputSchema.properties.action.enum;
   for (const action of [
-    'click','invoke','focus','set_value','select','toggle',
+    'click','type','invoke','focus','select','scroll','drag','set_value','toggle',
     'expand','collapse','scroll_into_view','set_range_value',
     'add_to_selection','remove_from_selection','multi_select','multi_edit',
   ]) assert.ok(actions.includes(action), `computer_action missing cross-backend action ${action}`);
   for (const action of [
-    'ui','pointer','window','type','keyboard','scroll','drag','clipboard','launch_app',
+    'ui','pointer','window','keyboard','clipboard','launch_app',
     'double_click','right_click',
     'open_path','reveal_path','notification','move','down','up','minimize','maximize',
     'restore','move_resize','resize','close','wait','batch',
   ]) assert.equal(actions.includes(action), false, `computer_action must not duplicate specialist action ${action}`);
-  for (const property of ['operation','shortcut','key','from_x','from_y','to_x','to_y','delta_x','delta_y','path','message','wait_ms','seconds','steps','args']) {
+  for (const property of ['operation','shortcut','key','path','message','wait_ms','seconds','steps','args']) {
     assert.equal(Object.hasOwn(computerAction.inputSchema.properties, property), false, `computer_action must not advertise specialist field ${property}`);
   }
+  for (const property of ['window_id','delta_x','delta_y','direction','from_x','from_y','to_x','to_y','from_id','to_id']) {
+    assert.ok(Object.hasOwn(computerAction.inputSchema.properties, property), `computer_action universal action field missing: ${property}`);
+  }
+  assert.ok(computerAction.inputSchema.properties.target.enum.includes('window'), 'computer_action must support explicit window targeting');
   assert.match(computerAction.description, /only when/i);
   assert.match(computerAction.description, /ui_action/i);
   assert.match(computerAction.description, /browser_action/i);
@@ -75,7 +79,7 @@ test('desktop action schemas reject targetless or no-op calls before execution',
   assert.ok(Array.isArray(scrollSchema.anyOf) && scrollSchema.anyOf.length >= 4, 'scroll requires direction or delta');
 
   const computerSchema = tool('computer_action').inputSchema;
-  assert.ok(Array.isArray(computerSchema.allOf) && computerSchema.allOf.length >= 6, 'computer_action declares action-specific target requirements');
+  assert.ok(Array.isArray(computerSchema.allOf) && computerSchema.allOf.length >= 9, 'computer_action declares action-specific target/value/gesture requirements');
 
   assert.ok(Array.isArray(tool('ui_find').inputSchema.anyOf), 'ui_find declares an element selector requirement');
   assert.ok(Array.isArray(tool('browser_find').inputSchema.anyOf), 'browser_find declares a page-element selector requirement');
