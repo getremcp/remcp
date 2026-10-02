@@ -367,45 +367,89 @@ export function windowsAudioPowerShell(action = 'status', volume = 50, { compile
   ].filter(Boolean).join('\n');
 }
 
+export function parseWpctlAudioStatus(output) {
+  const match = String(output || '').match(/\bVolume:\s*([0-9]+(?:\.[0-9]+)?)(?:\s+\[(MUTED)\])?/i);
+  if (!match) throw new Error('wpctl returned an unrecognized volume status');
+  const scalar = Number(match[1]);
+  if (!Number.isFinite(scalar)) throw new Error('wpctl returned a non-numeric volume');
+  return { volume:Math.round(Math.max(0, Math.min(1, scalar)) * 100), muted:Boolean(match[2]) };
+}
+
+export function parsePactlAudioStatus(volumeOutput, muteOutput) {
+  const volumeMatch = String(volumeOutput || '').match(/\b(\d{1,3})%/);
+  const muteMatch = String(muteOutput || '').match(/\bMute:\s*(yes|no)\b/i);
+  if (!volumeMatch || !muteMatch) throw new Error('pactl returned an unrecognized volume/mute status');
+  return {
+    volume:Math.max(0, Math.min(100, Number(volumeMatch[1]))),
+    muted:muteMatch[1].toLowerCase() === 'yes',
+  };
+}
+
+export function parseAmixerAudioStatus(output) {
+  const rendered = String(output || '');
+  const volumeMatch = rendered.match(/\[(\d{1,3})%\]/);
+  const states = [...rendered.matchAll(/\[(on|off)\]/gi)].map(match => match[1].toLowerCase());
+  if (!volumeMatch || !states.length) throw new Error('amixer returned an unrecognized Master status');
+  return {
+    volume:Math.max(0, Math.min(100, Number(volumeMatch[1]))),
+    muted:states.every(state => state === 'off'),
+  };
+}
+
+async function linuxAudioStatus(backend) {
+  if (backend === 'wpctl') {
+    const { stdout } = await runFile('wpctl', ['get-volume','@DEFAULT_AUDIO_SINK@'], { label:'audio status' });
+    return parseWpctlAudioStatus(stdout);
+  }
+  if (backend === 'pactl') {
+    const volumeResult = await runFile('pactl', ['get-sink-volume','@DEFAULT_SINK@'], { label:'audio status' });
+    const muteResult = await runFile('pactl', ['get-sink-mute','@DEFAULT_SINK@'], { label:'audio status' });
+    return parsePactlAudioStatus(volumeResult.stdout, muteResult.stdout);
+  }
+  const { stdout } = await runFile('amixer', ['get','Master'], { label:'audio status' });
+  return parseAmixerAudioStatus(stdout);
+}
+
 export async function audioTool(args) {
   const action = requireEnum(args.action || 'status', 'action', ['status','set_volume','mute','unmute']);
   const volume = clamp(args.volume, 50, 0, 100);
   if (process.platform === 'darwin') {
-    if (action === 'status') {
+    const readState = async () => {
       const { stdout } = await runOsa('set v to output volume of (get volume settings)\nset m to output muted of (get volume settings)\nreturn (v as text) & tab & (m as text)', { label:'audio status' });
-      const [v,m] = stdout.trim().split('\t'); return jsonResult({ volume:Number(v), muted:m === 'true' });
+      const [v,m] = stdout.trim().split('\t');
+      return { volume:Number(v), muted:m === 'true' };
+    };
+    if (action !== 'status') {
+      await runOsa(action === 'set_volume' ? `set volume output volume ${volume}` : action === 'mute' ? 'set volume with output muted' : 'set volume without output muted', { label:'audio control' });
     }
-    await runOsa(action === 'set_volume' ? `set volume output volume ${volume}` : action === 'mute' ? 'set volume with output muted' : 'set volume without output muted', { label:'audio control' });
-    return audioTool({ action:'status' });
+    return jsonResult({ ...(await readState()), action, backend:'osascript' });
   }
   if (process.platform === 'win32') {
     if (!commandExists('powershell.exe') && !process.env.SystemRoot) unavailable('Windows audio control');
     const { stdout } = await runPowerShell(windowsAudioPowerShell(action, volume), { label:'Windows CoreAudio control', timeout:30_000 });
     const rendered = stdout.trim();
     try {
-      return jsonResult(JSON.parse(rendered));
+      return jsonResult({ ...JSON.parse(rendered), action, backend:'coreaudio' });
     } catch {
       throw new Error(`Windows CoreAudio returned an invalid state payload: ${rendered || '(empty)'}`);
     }
   }
-  if (commandExists('wpctl')) {
-    if (action === 'status') return text((await runFile('wpctl', ['get-volume','@DEFAULT_AUDIO_SINK@'], { label:'audio status' })).stdout.trim());
-    if (action === 'set_volume') await runFile('wpctl', ['set-volume','@DEFAULT_AUDIO_SINK@',`${volume}%`], { label:'audio control' });
-    else await runFile('wpctl', ['set-mute','@DEFAULT_AUDIO_SINK@',action === 'mute' ? '1' : '0'], { label:'audio control' });
-    return text(`Audio action ${action} completed.`);
+
+  const backend = commandExists('wpctl') ? 'wpctl' : commandExists('pactl') ? 'pactl' : commandExists('amixer') ? 'amixer' : null;
+  if (!backend) unavailable('Audio control', 'wpctl, pactl or amixer is required on Linux');
+
+  if (action !== 'status') {
+    if (backend === 'wpctl') {
+      if (action === 'set_volume') await runFile('wpctl', ['set-volume','@DEFAULT_AUDIO_SINK@',`${volume}%`], { label:'audio control' });
+      else await runFile('wpctl', ['set-mute','@DEFAULT_AUDIO_SINK@',action === 'mute' ? '1' : '0'], { label:'audio control' });
+    } else if (backend === 'pactl') {
+      if (action === 'set_volume') await runFile('pactl', ['set-sink-volume','@DEFAULT_SINK@',`${volume}%`], { label:'audio control' });
+      else await runFile('pactl', ['set-sink-mute','@DEFAULT_SINK@',action === 'mute' ? '1' : '0'], { label:'audio control' });
+    } else {
+      await runFile('amixer', action === 'set_volume' ? ['set','Master',`${volume}%`] : ['set','Master',action === 'mute' ? 'mute' : 'unmute'], { label:'audio control' });
+    }
   }
-  if (commandExists('pactl')) {
-    if (action === 'status') return text(`${(await runFile('pactl',['get-sink-volume','@DEFAULT_SINK@'],{label:'audio status'})).stdout}${(await runFile('pactl',['get-sink-mute','@DEFAULT_SINK@'],{label:'audio status'})).stdout}`.trim());
-    if (action === 'set_volume') await runFile('pactl', ['set-sink-volume','@DEFAULT_SINK@',`${volume}%`], { label:'audio control' });
-    else await runFile('pactl', ['set-sink-mute','@DEFAULT_SINK@',action === 'mute' ? '1' : '0'], { label:'audio control' });
-    return text(`Audio action ${action} completed.`);
-  }
-  if (commandExists('amixer')) {
-    if (action === 'status') return text((await runFile('amixer',['get','Master'],{label:'audio status'})).stdout);
-    await runFile('amixer', action === 'set_volume' ? ['set','Master',`${volume}%`] : ['set','Master',action === 'mute' ? 'mute' : 'unmute'], { label:'audio control' });
-    return text(`Audio action ${action} completed.`);
-  }
-  unavailable('Audio control', 'wpctl, pactl or amixer is required on Linux');
+  return jsonResult({ ...(await linuxAudioStatus(backend)), action, backend });
 }
 
 export const POWER_ACTION_MAX_DELAY_SECONDS = 90;
