@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.138 — 2026-10-02
+
+- `browser_tabs`, `browser_snapshot`, `browser_find`, and `browser_wait` now set `openWorldHint=true` while retaining `readOnlyHint=true` and `idempotentHint=true`.
+- This matches MCP 2026-07-28 ToolAnnotations semantics: browser inspection can observe an open world of external web entities even when it does not mutate them.
+- The hosted compact browser lane was already open-world because it also contains navigation/action/evaluation operations. The 83 runtime tool names and schemas are unchanged; the annotation digest changes intentionally.
+
 ## 0.2.137 — 2026-10-02
 
 - `environment.outputSchema` now matches the real stable runtime payload: `platform`, `arch`, `node`, `cwd`, `home`, `temp`, nullable `shell`, `path_entries[]`, and opt-in sanitized `environment`.

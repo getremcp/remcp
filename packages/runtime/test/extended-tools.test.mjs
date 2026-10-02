@@ -222,10 +222,10 @@ test('extended tool schemas are written for agent selection rather than name gue
     assert.ok(byName.get(name).inputSchema.properties.create, `${name} exposes create mode`);
     assert.ok(byName.get(name).outputSchema.properties.created, `${name} reports whether it created a new file`);
   }
-  for (const name of ['computer_snapshot','browser_tabs','browser_snapshot','browser_find','browser_wait','scroll','display_inventory','installed_apps','environment','read_document']) {
+  for (const name of ['computer_snapshot','scroll','display_inventory','installed_apps','environment','read_document']) {
     assert.equal(byName.get(name).annotations.openWorldHint, false, name + ' stays within local/private state');
   }
-  for (const name of ['browser_navigate','browser_action','browser_evaluate','computer_action','network']) {
+  for (const name of ['browser_tabs','browser_snapshot','browser_find','browser_wait','browser_navigate','browser_action','browser_evaluate','computer_action','network']) {
     assert.equal(byName.get(name).annotations.openWorldHint, true, name + ' can reach open-ended external state');
   }
   assert.equal(byName.get('browser_navigate').annotations.destructiveHint, false, 'navigation changes browser state but is not inherently irreversible');
