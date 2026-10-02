@@ -24,6 +24,13 @@ test('environment variables are opt-in and credential-bearing values are redacte
 
   const base = JSON.parse((await environmentTool({})).content[0].text);
   assert.equal(Object.hasOwn(base, 'environment'), false, 'environment values must be opt-in');
+  for (const key of ['platform','arch','node','cwd','home','temp','shell','path_entries']) {
+    assert.ok(Object.hasOwn(base, key), `environment payload exposes ${key}`);
+  }
+  assert.ok(Array.isArray(base.path_entries), 'PATH is exposed as a stable ordered array');
+  for (const stale of ['hostname','release','path','env']) {
+    assert.equal(Object.hasOwn(base, stale), false, `environment payload does not emit stale field ${stale}`);
+  }
 
   const withEnv = JSON.parse((await environmentTool({ include_env: true })).content[0].text);
   assert.equal(withEnv.environment.DATABASE_URL, '***');

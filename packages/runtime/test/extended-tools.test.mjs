@@ -253,6 +253,16 @@ test('extended output schemas expose stable chaining fields instead of an untype
   for (const key of ['id','title','url']) assert.ok(tab[key], `browser_tabs exposes ${key}`);
   const match = byName.get('browser_find').outputSchema.properties.matches.items.properties;
   for (const key of ['selector','role','text']) assert.ok(match[key], `browser_find exposes ${key}`);
+  const environment = byName.get('environment').outputSchema.properties;
+  for (const key of ['platform','arch','node','cwd','home','temp','shell','path_entries','environment']) {
+    assert.ok(environment[key], `environment exposes ${key}`);
+  }
+  for (const stale of ['hostname','release','path','env']) {
+    assert.equal(Object.hasOwn(environment, stale), false, `environment does not advertise stale field ${stale}`);
+  }
+  assert.deepEqual(environment.shell.type, ['string','null'], 'environment shell may be unavailable');
+  assert.equal(environment.path_entries.type, 'array');
+  assert.equal(environment.path_entries.items.type, 'string');
 });
 
 test('MCP SDK enforces conditional argument requirements before extended handlers run', async () => {
