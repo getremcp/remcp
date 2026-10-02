@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.141 — 2026-10-02
+
+- Linux `display_inventory` capability discovery now uses the same real backend resolver as execution instead of treating every Wayland session as supported.
+- wlroots compositors gain a native `wlr-randr` parser for connector metadata, logical position/size, scale, transform, pixel mode and refresh rate; the fallback chain is Mutter → wlr-randr → xrandr.
+- Unsupported Wayland sessions without one of those working backends stop advertising `display_inventory`, and dynamic capability polling can add/remove the tool through `tools/list_changed`.
+- Live GNOME Wayland verification still returns the ASUS eDP-1 through Mutter with the 83-tool desktop surface unchanged.
+
 ## 0.2.140 — 2026-10-02
 
 - Windows `create_archive` / `extract_archive` are enabled when the native inbox `tar.exe` (libarchive/bsdtar) backend is available.

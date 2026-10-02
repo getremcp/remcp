@@ -1445,24 +1445,165 @@ async function mutterDisplayInventory() {
   }
 }
 
-export async function displayInventory() {
-  const mutter = await mutterDisplayInventory();
-  if (mutter) return jsonResult(mutter);
-  if (!commandExists('xrandr')) unavailable('Display inventory', 'GNOME Mutter DisplayConfig or xrandr is required');
-  const { stdout } = await runFile('xrandr', ['--query'], { label: 'display inventory' });
-  let scale = Number(process.env.GDK_SCALE || process.env.QT_SCALE_FACTOR || 0);
+export function parseWlrRandrOutput(stdout) {
+  const rows = [];
+  let current = null;
+
+  const finish = () => {
+    if (!current || current.enabled === false) return;
+    const mode = current.currentMode || current.firstMode;
+    if (!mode) return;
+    const scale = Number.isFinite(current.scale) && current.scale > 0 ? current.scale : 1;
+    const rotated = /(?:^|\D)(?:90|270)(?:\D|$)/.test(current.transform || '');
+    const pixelWidth = mode.width;
+    const pixelHeight = mode.height;
+    rows.push({
+      name:current.name,
+      display_name:current.description || current.model || current.name,
+      primary:false,
+      x:Number.isFinite(current.x) ? current.x : null,
+      y:Number.isFinite(current.y) ? current.y : null,
+      width:Math.round((rotated ? pixelHeight : pixelWidth) / scale),
+      height:Math.round((rotated ? pixelWidth : pixelHeight) / scale),
+      pixel_width:pixelWidth,
+      pixel_height:pixelHeight,
+      scale,
+      refresh_hz:mode.refresh_hz,
+      transform:current.transform || 'normal',
+      builtin:/^(?:eDP|LVDS|DSI)-/i.test(current.name),
+      vendor:current.make || null,
+      product:current.model || null,
+      serial:current.serial || null,
+      backend:'wlr-randr',
+    });
+  };
+
+  for (const rawLine of String(stdout || '').split(/\r?\n/)) {
+    if (rawLine && !/^\s/.test(rawLine)) {
+      finish();
+      const header = rawLine.match(/^(\S+)(?:\s+"([^"]*)")?\s*$/);
+      current = header ? {
+        name:header[1],
+        description:header[2] || '',
+        enabled:true,
+        scale:1,
+        transform:'normal',
+        currentMode:null,
+        firstMode:null,
+      } : null;
+      continue;
+    }
+    if (!current) continue;
+    const line = rawLine.trim();
+    let match;
+    if ((match = line.match(/^Enabled:\s*(yes|no)$/i))) current.enabled = match[1].toLowerCase() === 'yes';
+    else if ((match = line.match(/^Position:\s*(-?\d+)\s*,\s*(-?\d+)$/i))) {
+      current.x = Number(match[1]);
+      current.y = Number(match[2]);
+    } else if ((match = line.match(/^Scale:\s*(\d+(?:\.\d+)?)$/i))) current.scale = Number(match[1]);
+    else if ((match = line.match(/^Transform:\s*(.+)$/i))) current.transform = match[1].trim();
+    else if ((match = line.match(/^Make:\s*(.*)$/i))) current.make = match[1].trim();
+    else if ((match = line.match(/^Model:\s*(.*)$/i))) current.model = match[1].trim();
+    else if ((match = line.match(/^Serial:\s*(.*)$/i))) current.serial = match[1].trim();
+    else if ((match = line.match(/^(\d+)x(\d+)\s+px,\s*([\d.]+)\s+Hz(?:\s+\(([^)]*)\))?/i))) {
+      const mode = { width:Number(match[1]), height:Number(match[2]), refresh_hz:Number(match[3]) };
+      current.firstMode ||= mode;
+      if (/\bcurrent\b/i.test(match[4] || '')) current.currentMode = mode;
+    }
+  }
+  finish();
+  return rows;
+}
+
+export function parseXrandrDisplayOutput(stdout, scale = 1) {
+  const rows = [];
+  for (const line of String(stdout || '').split(/\r?\n/)) {
+    const match = line.match(/^(\S+) connected( primary)?(?: (\d+)x(\d+)\+(-?\d+)\+(-?\d+))?/);
+    if (match) rows.push({
+      name:match[1],
+      display_name:match[1],
+      primary:Boolean(match[2]),
+      width:match[3]?Number(match[3]):null,
+      height:match[4]?Number(match[4]):null,
+      pixel_width:match[3]?Number(match[3]):null,
+      pixel_height:match[4]?Number(match[4]):null,
+      x:match[5]?Number(match[5]):null,
+      y:match[6]?Number(match[6]):null,
+      scale,
+      backend:'xrandr',
+    });
+  }
+  return rows;
+}
+
+async function xrandrDisplayScale({ commandExistsFn = commandExists, runFileFn = runFile, env = process.env } = {}) {
+  let scale = Number(env.GDK_SCALE || env.QT_SCALE_FACTOR || 0);
   if (!Number.isFinite(scale) || scale <= 0) scale = 0;
-  if (!scale && commandExists('gsettings')) {
-    const probe = await runFile('gsettings', ['get','org.gnome.desktop.interface','scaling-factor'], { label:'display scale', allowFailure:true, timeout:1500 });
+  if (!scale && commandExistsFn('gsettings')) {
+    const probe = await runFileFn('gsettings', ['get','org.gnome.desktop.interface','scaling-factor'], { label:'display scale', allowFailure:true, timeout:1500 });
     const parsed = Number(String(probe.stdout || '').match(/(\d+(?:\.\d+)?)/)?.[1]);
     if (Number.isFinite(parsed) && parsed > 0) scale = parsed;
   }
-  if (!scale) scale = 1;
-  const rows = [];
-  for (const line of stdout.split('\n')) {
-    const match = line.match(/^(\S+) connected( primary)?(?: (\d+)x(\d+)\+(-?\d+)\+(-?\d+))?/);
-    if (match) rows.push({ name:match[1], display_name:match[1], primary:Boolean(match[2]), width:match[3]?Number(match[3]):null, height:match[4]?Number(match[4]):null, pixel_width:match[3]?Number(match[3]):null, pixel_height:match[4]?Number(match[4]):null, x:match[5]?Number(match[5]):null, y:match[6]?Number(match[6]):null, scale, backend:'xrandr' });
+  return scale || 1;
+}
+
+export async function resolveLinuxDisplayInventory({
+  wayland = isWaylandSession(),
+  mutterProbe = mutterDisplayInventory,
+  commandExistsFn = commandExists,
+  runFileFn = runFile,
+  env = process.env,
+} = {}) {
+  if (wayland) {
+    const mutter = await mutterProbe().catch(() => null);
+    if (Array.isArray(mutter) && mutter.length) return mutter;
+
+    if (commandExistsFn('wlr-randr')) {
+      const result = await runFileFn('wlr-randr', [], { label:'display inventory', allowFailure:true, timeout:2500, maxBuffer:4*1024*1024 });
+      if (result.code === 0) {
+        const rows = parseWlrRandrOutput(result.stdout);
+        if (rows.length) return rows;
+      }
+    }
   }
+
+  if (commandExistsFn('xrandr')) {
+    const result = await runFileFn('xrandr', ['--query'], { label:'display inventory', allowFailure:true, timeout:2500, maxBuffer:4*1024*1024 });
+    if (result.code === 0) {
+      const scale = await xrandrDisplayScale({ commandExistsFn, runFileFn, env });
+      const rows = parseXrandrDisplayOutput(result.stdout, scale);
+      if (rows.length) return rows;
+    }
+  }
+  return null;
+}
+
+let displayCapabilityCache = { value:false, expiresAt:0, pending:null };
+
+export async function displayInventoryAvailable(options) {
+  if (options && Object.keys(options).length) {
+    return Boolean((await resolveLinuxDisplayInventory(options))?.length);
+  }
+  const now = Date.now();
+  if (displayCapabilityCache.expiresAt > now) return displayCapabilityCache.value;
+  if (displayCapabilityCache.pending) return displayCapabilityCache.pending;
+  const pending = resolveLinuxDisplayInventory()
+    .then(rows => {
+      const value = Boolean(rows?.length);
+      displayCapabilityCache = { value, expiresAt:Date.now() + 5000, pending:null };
+      return value;
+    })
+    .catch(() => {
+      displayCapabilityCache = { value:false, expiresAt:Date.now() + 5000, pending:null };
+      return false;
+    });
+  displayCapabilityCache.pending = pending;
+  return pending;
+}
+
+export async function displayInventory() {
+  const rows = await resolveLinuxDisplayInventory();
+  if (!rows?.length) unavailable('Display inventory', 'GNOME Mutter DisplayConfig, wlr-randr or xrandr is required');
   return jsonResult(rows);
 }
 

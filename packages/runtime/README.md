@@ -84,7 +84,7 @@ Desktop capabilities additionally require an active graphical session (`DISPLAY`
 headless hosts do not advertise window/UI/input/clipboard/display/screenshot/launch/open/reveal/notification
 operations merely because desktop helper binaries happen to be installed. The universal `computer_snapshot`
 remains available on those hosts but skips unavailable desktop probes instead of reporting synthetic backend
-errors. On Linux, `screenshot_region` is advertised only when the current session has a real matching capture
+errors. Linux `display_inventory` follows the real monitor backend chain (GNOME Mutter DisplayConfig → `wlr-randr` → `xrandr`) and is hidden on Wayland when none of those backends can return a display. On Linux, `screenshot_region` is advertised only when the current session has a real matching capture
 backend (Wayland grim/GNOME/portal path or X11 ImageMagick), not merely because `ffmpeg` is installed.
 
 The generated hosted reference covers the current **10 hosted production definitions**, all model-visible
