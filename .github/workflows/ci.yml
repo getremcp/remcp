@@ -109,6 +109,11 @@ jobs:
         env:
           REMCP_LIVE_INSTALLED_APPS: "1"
         run: node --import ./packages/runtime/test/setup.mjs --test ./packages/runtime/test/installed-apps-live.test.mjs
+      - name: Verify macOS archive backend round trip
+        run: >-
+          node --import ./packages/runtime/test/setup.mjs --test
+          --test-name-pattern='archives can be created and extracted|archive creation passes option-like member names'
+          ./packages/runtime/test/tools-extended.test.mjs
 
   windows-installer:
     name: Windows PowerShell installer

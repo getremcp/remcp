@@ -830,8 +830,8 @@ export const toolDefinitions = [
   },
 ];
 
-export function coreToolSupported(definition) {
-  return !['create_archive', 'extract_archive'].includes(definition.name) || process.platform === 'linux';
+export function coreToolSupported(definition, { platform = process.platform } = {}) {
+  return !['create_archive', 'extract_archive'].includes(definition.name) || ['linux', 'darwin'].includes(platform);
 }
 
 export function supportedCoreTools() {

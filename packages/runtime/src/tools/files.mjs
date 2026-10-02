@@ -1449,17 +1449,16 @@ function archiveExpandedSize(lines, pattern, label, expectedEntries = null) {
   return total;
 }
 
-function tarEntrySize(line) {
+export function tarEntrySize(line) {
   const tokens = String(line || '').trim().split(/\s+/);
   for (const index of [2, 3, 4]) {
     const size = Number(tokens[index]);
     if (!Number.isSafeInteger(size) || size < 0) continue;
     const tail = tokens.slice(index + 1);
     const gnuDate = /^\d{4}-\d{2}-\d{2}$/.test(tail[0] || '');
-    const bsdDate = /^[A-Z][a-z]{2}$/.test(tail[0] || '')
-      && /^\d{1,2}$/.test(tail[1] || '')
-      && ((/^\d{2}:\d{2}(?::\d{2})?$/.test(tail[2] || '') && /^\d{4}$/.test(tail[3] || ''))
-        || /^\d{4}$/.test(tail[2] || ''));
+    const bsdMonthDay = /^[A-Z][a-z]{2}$/.test(tail[0] || '') && /^\d{1,2}$/.test(tail[1] || '');
+    const bsdTime = /^\d{2}:\d{2}(?::\d{2})?$/.test(tail[2] || '');
+    const bsdDate = bsdMonthDay && (bsdTime || /^\d{4}$/.test(tail[2] || ''));
     if (gnuDate || bsdDate) return size;
   }
   return null;

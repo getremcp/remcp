@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.139 — 2026-10-02
+
+- `create_archive` and `extract_archive` are now advertised on macOS in addition to Linux.
+- The tar verbose-output parser accepts native bsdtar month/day/time rows that omit the year for current-year entries, while retaining the existing archive expanded-size safety checks.
+- Public macOS release validation performs a real archive create/extract round trip. Windows archive tools remain intentionally hidden until a separately validated backend exists.
+- Tool names and MCP schemas are unchanged; macOS parity rises from 81 to 83 advertised tools on a fully capable host.
+
 ## 0.2.138 — 2026-10-02
 
 - `browser_tabs`, `browser_snapshot`, `browser_find`, and `browser_wait` now set `openWorldHint=true` while retaining `readOnlyHint=true` and `idempotentHint=true`.
