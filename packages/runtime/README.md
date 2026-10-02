@@ -40,7 +40,7 @@ support and emits `notifications/tools/list_changed` when that capability set ch
 | --- | --- |
 | Read | `read_file`, `read_files`, `read_multiple_files`, `read_image`, `read_binary`, `list_directory`, `get_file_info`, `hash_file`, `diff_files` |
 | Write / edit | `write_file`, `write_files`, `write_binary`, `apply_patch`, `set_permissions`, `edit_block`, `replace_lines`, `replace_in_files` |
-| Organise | `create_directory`, `move_file`, `copy_file`, `copy_paths`, `move_paths`, `move_to_trash`, `create_archive`, `extract_archive` |
+| Organise | `create_directory`, `move_file`, `copy_file`, `copy_paths`, `move_paths`, `move_to_trash`, `create_archive`, `extract_archive` (Linux/macOS; tar/zip backends are validated before use) |
 | Delete | `delete_path`, `delete_paths` |
 | Transfer | `read_binary` / `write_binary` stream any file as base64 chunks in both directions; `create_archive` / `extract_archive` move whole trees |
 | Screen | `take_screenshot` returns the desktop as an image on Linux, macOS, and Windows |
