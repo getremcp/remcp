@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.136 — 2026-10-02
+
+- `installed_apps` now normalizes Windows registry, macOS `system_profiler`, `dpkg-query`, and `rpm` inventories into one structured `data[]` contract with stable app name/version/publisher/path fields.
+- Stable top-level `backend`, `count`, `returned`, and `truncated` metadata make result limits explicit and remove platform-specific text parsing from callers.
+- Name filtering and de-duplication are shared across platforms. Windows no longer interpolates the filter into PowerShell.
+- Public release CI exercises the live native inventory on Linux, macOS, and Windows. Tool names remain unchanged at 83; the output-schema digest changes intentionally.
+
 ## 0.2.135 — 2026-10-02
 
 - Linux `audio` status is normalized across `wpctl`, `pactl`, and `amixer` into structured `volume`, `muted`, `action`, and `backend` fields; mutating audio actions re-read and return the verified state.

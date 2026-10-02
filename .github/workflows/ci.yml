@@ -45,6 +45,10 @@ jobs:
       - run: npm ci --no-audit --no-fund
       - run: npm run check
       - run: npm test
+      - name: Verify Linux installed-app inventory contract
+        env:
+          REMCP_LIVE_INSTALLED_APPS: "1"
+        run: node --import ./packages/runtime/test/setup.mjs --test ./packages/runtime/test/installed-apps-live.test.mjs
       - run: npm audit --omit=dev
       - name: Inspect the exact npm package contents
         run: |
@@ -101,6 +105,10 @@ jobs:
         run: node --import ./packages/runtime/test/setup.mjs --test ./packages/runtime/test/macos-network.test.mjs
       - name: Verify macOS launchd service scope backend
         run: node --import ./packages/runtime/test/setup.mjs --test ./packages/runtime/test/macos-service.test.mjs
+      - name: Verify macOS installed-app inventory contract
+        env:
+          REMCP_LIVE_INSTALLED_APPS: "1"
+        run: node --import ./packages/runtime/test/setup.mjs --test ./packages/runtime/test/installed-apps-live.test.mjs
 
   windows-installer:
     name: Windows PowerShell installer
@@ -124,6 +132,11 @@ jobs:
       - name: Verify Windows CoreAudio interop compiles
         shell: powershell
         run: node --import ./packages/runtime/test/setup.mjs --test ./packages/runtime/test/windows-audio.test.mjs
+      - name: Verify Windows installed-app inventory contract
+        shell: powershell
+        env:
+          REMCP_LIVE_INSTALLED_APPS: "1"
+        run: node --import ./packages/runtime/test/setup.mjs --test ./packages/runtime/test/installed-apps-live.test.mjs
       - name: Parse and validate with Windows PowerShell 5.1
         shell: powershell
         run: |

@@ -218,26 +218,82 @@ export async function networkTool(args) {
   unavailable('Listener inventory', 'ss or netstat is required');
 }
 
+function installedAppString(value) {
+  const normalized = value == null ? '' : String(value).trim();
+  return normalized || null;
+}
+
+export function normalizeInstalledApp(row = {}) {
+  const name = installedAppString(row.name ?? row.DisplayName ?? row._name);
+  if (!name) return null;
+  const signedBy = installedAppString(row.signed_by);
+  return {
+    name,
+    version:installedAppString(row.version ?? row.DisplayVersion),
+    publisher:installedAppString(row.publisher ?? row.Publisher),
+    path:installedAppString(row.path ?? row.InstallLocation),
+    ...(signedBy ? { signed_by:signedBy } : {}),
+  };
+}
+
+export function parseInstalledAppsTsv(output) {
+  return String(output || '').split(/\r?\n/).filter(Boolean).map(line => {
+    const [name = '', version = '', publisher = '', pathValue = ''] = line.split('\t');
+    return normalizeInstalledApp({ name, version, publisher, path:pathValue });
+  }).filter(Boolean);
+}
+
+export function installedAppsPayload(rows, { backend, filter = null, limit = 1000 } = {}) {
+  const wanted = optionalString(filter)?.toLowerCase() || null;
+  const boundedLimit = clamp(limit, 1000, 1, 10_000);
+  const seen = new Set();
+  const normalized = [];
+  for (const raw of Array.isArray(rows) ? rows : (rows ? [rows] : [])) {
+    const app = normalizeInstalledApp(raw);
+    if (!app) continue;
+    if (wanted && !app.name.toLowerCase().includes(wanted)) continue;
+    const key = [app.name.toLowerCase(), app.version || '', app.path || ''].join('\u0000');
+    if (seen.has(key)) continue;
+    seen.add(key);
+    normalized.push(app);
+  }
+  normalized.sort((left, right) => left.name.localeCompare(right.name, undefined, { sensitivity:'base' })
+    || String(left.version || '').localeCompare(String(right.version || ''), undefined, { sensitivity:'base' }));
+  const data = normalized.slice(0, boundedLimit);
+  return {
+    data,
+    backend:String(backend || 'unknown'),
+    count:normalized.length,
+    returned:data.length,
+    truncated:normalized.length > data.length,
+  };
+}
+
 export async function installedApps(args) {
   const limit = clamp(args.limit, 1000, 1, 10_000);
   const filter = optionalString(args.filter);
   if (process.platform === 'win32') {
-    const where = filter ? ` | Where-Object { $_.DisplayName -like '*${escapePowerShellSingle(filter)}*' }` : '';
-    const script = `$paths=@('HKLM:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*','HKLM:\\Software\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*','HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*');Get-ItemProperty $paths -ErrorAction SilentlyContinue${where}|Where-Object{$_.DisplayName}|Select-Object -First ${limit} DisplayName,DisplayVersion,Publisher,InstallLocation|Sort-Object DisplayName -Unique|ConvertTo-Json -Compress`;
-    return text((await runPowerShell(script, { label:'installed apps', timeout:30_000 })).stdout.trim() || '[]');
+    const script = "$paths=@('HKLM:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*','HKLM:\\Software\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*','HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*');Get-ItemProperty $paths -ErrorAction SilentlyContinue|Where-Object{$_.DisplayName}|Select-Object DisplayName,DisplayVersion,Publisher,InstallLocation|Sort-Object DisplayName,DisplayVersion -Unique|ConvertTo-Json -Compress";
+    const { stdout } = await runPowerShell(script, { label:'installed apps', timeout:30_000, maxBuffer:32*1024*1024 });
+    let parsed;
+    try {
+      parsed = JSON.parse(stdout.trim() || '[]');
+    } catch {
+      throw new Error('Windows installed-app inventory returned invalid JSON');
+    }
+    return jsonResult(installedAppsPayload(parsed, { backend:'windows-registry', filter, limit }));
   }
   if (process.platform === 'darwin') {
     const parsed = JSON.parse((await runFile('/usr/sbin/system_profiler', ['SPApplicationsDataType','-json'], { label:'installed apps', timeout:60_000, maxBuffer:64*1024*1024 })).stdout);
-    const apps = (parsed.SPApplicationsDataType || []).filter(app => !filter || String(app._name || '').toLowerCase().includes(filter.toLowerCase())).slice(0, limit);
-    return jsonResult(apps.map(app => ({ name:app._name, version:app.version || null, path:app.path || null, signed_by:app.signed_by || null })));
+    return jsonResult(installedAppsPayload(parsed.SPApplicationsDataType || [], { backend:'system_profiler', filter, limit }));
   }
   if (commandExists('dpkg-query')) {
     const { stdout } = await runFile('dpkg-query', ['-W','-f=${binary:Package}\t${Version}\t${Maintainer}\n'], { label:'installed apps', maxBuffer:32*1024*1024 });
-    return text(stdout.split('\n').filter(Boolean).filter(line => !filter || line.toLowerCase().includes(filter.toLowerCase())).slice(0, limit).join('\n'));
+    return jsonResult(installedAppsPayload(parseInstalledAppsTsv(stdout), { backend:'dpkg-query', filter, limit }));
   }
   if (commandExists('rpm')) {
     const { stdout } = await runFile('rpm', ['-qa','--qf','%{NAME}\t%{VERSION}-%{RELEASE}\t%{VENDOR}\n'], { label:'installed apps', maxBuffer:32*1024*1024 });
-    return text(stdout.split('\n').filter(Boolean).filter(line => !filter || line.toLowerCase().includes(filter.toLowerCase())).slice(0, limit).join('\n'));
+    return jsonResult(installedAppsPayload(parseInstalledAppsTsv(stdout), { backend:'rpm', filter, limit }));
   }
   unavailable('Installed application inventory', 'dpkg-query or rpm is required');
 }
