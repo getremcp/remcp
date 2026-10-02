@@ -5,6 +5,7 @@ import {
   installedAppsPayload,
   normalizeInstalledApp,
   parseInstalledAppsTsv,
+  windowsInstalledAppsPowerShell,
 } from '../src/extended/diagnostics.mjs';
 import { extendedToolDefinitions } from '../src/extended/catalog.mjs';
 
@@ -35,6 +36,16 @@ test('installed app records normalize Windows and macOS native fields', () => {
   });
 
   assert.equal(normalizeInstalledApp({ DisplayVersion:'1.0' }), null);
+});
+
+test('Windows installed-app PowerShell only inventories registry rows and leaves filtering/sorting to Node', () => {
+  const script = windowsInstalledAppsPowerShell();
+  assert.match(script, /HKLM:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall/);
+  assert.match(script, /WOW6432Node/);
+  assert.match(script, /HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall/);
+  assert.match(script, /foreach\(\$path in \$paths\).*Get-ItemProperty -Path \$path -ErrorAction SilentlyContinue/);
+  assert.match(script, /\[PSCustomObject\]@\{name=/);
+  assert.doesNotMatch(script, /Sort-Object|Select-Object|-First|-like/);
 });
 
 test('Linux package TSV is normalized into stable app records', () => {

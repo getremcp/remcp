@@ -269,12 +269,20 @@ export function installedAppsPayload(rows, { backend, filter = null, limit = 100
   };
 }
 
+export function windowsInstalledAppsPowerShell() {
+  return [
+    "$ErrorActionPreference='Stop'",
+    "$paths=@('HKLM:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*','HKLM:\\Software\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*','HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*')",
+    "$items=foreach($path in $paths){Get-ItemProperty -Path $path -ErrorAction SilentlyContinue}",
+    "$items|Where-Object{$_.DisplayName}|ForEach-Object{[PSCustomObject]@{name=[string]$_.DisplayName;version=[string]$_.DisplayVersion;publisher=[string]$_.Publisher;path=[string]$_.InstallLocation}}|ConvertTo-Json -Compress",
+  ].join(';');
+}
+
 export async function installedApps(args) {
   const limit = clamp(args.limit, 1000, 1, 10_000);
   const filter = optionalString(args.filter);
   if (process.platform === 'win32') {
-    const script = "$paths=@('HKLM:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*','HKLM:\\Software\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*','HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*');Get-ItemProperty $paths -ErrorAction SilentlyContinue|Where-Object{$_.DisplayName}|Select-Object DisplayName,DisplayVersion,Publisher,InstallLocation|Sort-Object DisplayName,DisplayVersion -Unique|ConvertTo-Json -Compress";
-    const { stdout } = await runPowerShell(script, { label:'installed apps', timeout:30_000, maxBuffer:32*1024*1024 });
+    const { stdout } = await runPowerShell(windowsInstalledAppsPowerShell(), { label:'installed apps', timeout:30_000, maxBuffer:32*1024*1024 });
     let parsed;
     try {
       parsed = JSON.parse(stdout.trim() || '[]');
