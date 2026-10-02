@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.137 — 2026-10-02
+
+- `environment.outputSchema` now matches the real stable runtime payload: `platform`, `arch`, `node`, `cwd`, `home`, `temp`, nullable `shell`, `path_entries[]`, and opt-in sanitized `environment`.
+- Removed stale schema fields `hostname`, `release`, `path`, and `env`, which were never emitted by `environmentTool`.
+- Regression coverage checks both payload and schema parity. The 83-tool count is unchanged; the tool-surface digest changes intentionally because the schema is corrected.
+
 ## 0.2.136 — 2026-10-02
 
 - `installed_apps` now normalizes Windows registry, macOS `system_profiler`, `dpkg-query`, and `rpm` inventories into one structured `data[]` contract with stable app name/version/publisher/path fields.
