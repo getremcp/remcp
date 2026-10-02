@@ -12,7 +12,7 @@ import { describeFilesystemFailure } from '../permissions.mjs';
 import { capturePortalScreenshot, isWaylandSession } from '../screenshot-portal.mjs';
 import { applyHunks, parseUnifiedDiff } from '../patch.mjs';
 import { countEvent, recordEvent } from '../telemetry.mjs';
-import { clampInteger, decodeText, displayPath, fail, globToRegExp, image, isInsideRoot, looksBinary, multi, pageLines, resolveSafePath, splitLines, text, throwIfCancelled } from '../util.mjs';
+import { clampInteger, decodeText, displayPath, fail, fitsOutput, globToRegExp, image, isInsideRoot, looksBinary, multi, pageLines, resolveSafePath, splitLines, text, throwIfCancelled } from '../util.mjs';
 
 const MAX_INLINE_FILE_BYTES = 20 * 1024 * 1024;
 // An image travels base64-encoded, which costs a third more bytes. The agent's stdio transport holds
@@ -785,16 +785,33 @@ export async function readBinaryTool(args) {
   try {
     const buffer = Buffer.alloc(end - start);
     if (buffer.length) await handle.read(buffer, 0, buffer.length, start);
-    const payload = JSON.stringify({
-      path: displayPath(absolute),
-      size: info.size,
-      offsetBytes: start,
-      lengthBytes: buffer.length,
-      nextOffsetBytes: end < info.size ? end : null,
-      complete: end >= info.size,
-      encoding: 'base64',
-      data: buffer.toString('base64'),
-    });
+    const renderPayload = lengthBytes => {
+      const actualEnd = start + lengthBytes;
+      return JSON.stringify({
+        path: displayPath(absolute),
+        size: info.size,
+        offsetBytes: start,
+        lengthBytes,
+        nextOffsetBytes: actualEnd < info.size ? actualEnd : null,
+        complete: actualEnd >= info.size,
+        encoding: 'base64',
+        data: buffer.subarray(0, lengthBytes).toString('base64'),
+      });
+    };
+    let returnedLength = buffer.length;
+    let payload = renderPayload(returnedLength);
+    if (!fitsOutput(payload)) {
+      let low = 0;
+      let high = returnedLength;
+      while (low < high) {
+        const candidate = Math.ceil((low + high) / 2);
+        if (fitsOutput(renderPayload(candidate))) low = candidate;
+        else high = candidate - 1;
+      }
+      returnedLength = low;
+      payload = renderPayload(returnedLength);
+      if (!fitsOutput(payload)) fail('Runtime output limit is too small to return read_binary metadata');
+    }
     return text(payload);
   } finally {
     await opened.close();
@@ -1775,14 +1792,31 @@ async function moveArchiveFile(source, destination) {
   }
 }
 
-function archiveTool() {
-  const probe = (name, versionArgs = ['--version']) => {
-    const result = spawnSync(name, versionArgs, { encoding: 'utf8' });
-    return !result.error && result.status === 0 ? name : null;
-  };
+function archiveCommandProbe(name, versionArgs = ['--version']) {
+  const result = spawnSync(name, versionArgs, { encoding: 'utf8' });
+  return !result.error && result.status === 0 ? name : null;
+}
+
+function archiveTool({ platform = process.platform, probe = archiveCommandProbe } = {}) {
+  const tarName = platform === 'win32' ? 'tar.exe' : 'tar';
+  // Windows ships libarchive/bsdtar as tar.exe. It can create/read ZIP as well as tar-family
+  // archives, so keeping one backend avoids introducing a second extraction/safety path.
+  if (platform === 'win32') return { tar: probe(tarName), zip:null, unzip:null };
   // Info-ZIP unzip (the default on Debian/Ubuntu) treats --version as an invalid combination and
   // exits 10 even though the binary is healthy. Its portable version probe is -v.
-  return { tar: probe('tar'), zip: probe('zip'), unzip: probe('unzip', ['-v']) };
+  return { tar: probe(tarName), zip: probe('zip'), unzip: probe('unzip', ['-v']) };
+}
+
+export function archiveBackendAvailable({ platform = process.platform, probe = archiveCommandProbe } = {}) {
+  if (platform === 'win32') return Boolean(archiveTool({ platform, probe }).tar);
+  return platform === 'linux' || platform === 'darwin';
+}
+
+export function zipArchiveBackendAvailable({ platform = process.platform, probe = archiveCommandProbe } = {}) {
+  const tools = archiveTool({ platform, probe });
+  if (platform === 'win32') return Boolean(tools.tar);
+  if (platform === 'linux' || platform === 'darwin') return Boolean(tools.zip && tools.unzip);
+  return false;
 }
 
 export async function createArchiveTool(args, extra = {}) {
@@ -1801,7 +1835,10 @@ export async function createArchiveTool(args, extra = {}) {
   const baseDir = path.dirname(resolved[0]);
   const names = resolved.map(entry => path.relative(baseDir, entry));
   if (names.some(name => !name || name.startsWith('..') || path.isAbsolute(name))) fail('Archive sources must share one parent directory');
-  const archiveNames = names.map(name => name.startsWith('-') ? `./${name}` : name);
+  const archiveNames = names.map(name => {
+    const portable = name.split(path.sep).join('/');
+    return portable.startsWith('-') ? `./${portable}` : portable;
+  });
   const suffix = format === 'zip' ? '.zip' : format === 'tar' ? '.tar' : '.tar.gz';
   const stagingDirectory = await mkdtemp(path.join(os.tmpdir(), 'remcp-archive-'));
   if (resolved.some(entry => !path.relative(entry, stagingDirectory).startsWith('..') && !path.isAbsolute(path.relative(entry, stagingDirectory)))) {
@@ -1822,9 +1859,15 @@ export async function createArchiveTool(args, extra = {}) {
        await copyTreeContents(resolved[index], snapshotPath, snapshotState);
      }
      if (format === 'zip') {
-       if (!tools.zip) fail('zip is not installed on this device; use format "tar.gz"');
-       const result = spawnSync(tools.zip, ['-r', '-q', '-y', staging, '--', ...archiveNames], { cwd: snapshotRoot, encoding: 'utf8', timeout: 120_000, maxBuffer: 16 * 1024 * 1024 });
-      if (result.status !== 0) fail(`zip failed: ${(result.stderr || result.stdout || '').trim() || `exit ${result.status}`}`);
+       if (process.platform === 'win32') {
+         if (!tools.tar) fail('Windows archive backend is unavailable: tar.exe is required');
+         const result = spawnSync(tools.tar, ['-a', '-c', '-f', staging, '--', ...archiveNames], { cwd: snapshotRoot, encoding: 'utf8', timeout: 120_000, maxBuffer: 16 * 1024 * 1024 });
+         if (result.status !== 0) fail(`tar.exe ZIP creation failed: ${(result.stderr || result.stdout || '').trim() || `exit ${result.status}`}`);
+       } else {
+         if (!tools.zip) fail('zip is not installed on this device; use format "tar.gz"');
+         const result = spawnSync(tools.zip, ['-r', '-q', '-y', staging, '--', ...archiveNames], { cwd: snapshotRoot, encoding: 'utf8', timeout: 120_000, maxBuffer: 16 * 1024 * 1024 });
+         if (result.status !== 0) fail(`zip failed: ${(result.stderr || result.stdout || '').trim() || `exit ${result.status}`}`);
+       }
     } else if (format === 'tar' || format === 'tar.gz' || format === 'tgz') {
       if (!tools.tar) fail('tar is not installed on this device');
       const flags = format === 'tar' ? '-cf' : '-czf';
@@ -1880,7 +1923,7 @@ export async function extractArchiveTool(args) {
     await recoverExtractionArtifacts(parent, destination, backupPrefix);
     const existingDestination = await lstat(destination).catch(() => null);
     if (existingDestination?.isSymbolicLink() || (existingDestination && !existingDestination.isDirectory())) fail('Archive destination is not a safe directory');
-    if (format === 'zip') {
+    if (format === 'zip' && process.platform !== 'win32') {
       if (!tools.unzip) fail('unzip is not installed on this device');
       const listing = spawnSync(tools.unzip, ['-Z', '-1', archiveSnapshot], { encoding: 'utf8', timeout: 30_000, maxBuffer: 16 * 1024 * 1024 });
       if (listing.error || listing.status !== 0) fail(`Could not inspect ZIP archive: ${(listing.stderr || listing.error?.message || `exit ${listing.status}`).trim()}`);
@@ -1895,7 +1938,7 @@ export async function extractArchiveTool(args) {
       const result = spawnSync(tools.unzip, ['-o', '-q', archiveSnapshot, '-d', staging], { encoding: 'utf8', timeout: 120_000, maxBuffer: 16 * 1024 * 1024 });
       if (result.status !== 0) fail(`unzip failed: ${(result.stderr || result.stdout || '').trim() || `exit ${result.status}`}`);
     } else {
-      if (!tools.tar) fail('tar is not installed on this device');
+      if (!tools.tar) fail(process.platform === 'win32' ? 'Windows archive backend is unavailable: tar.exe is required' : 'tar is not installed on this device');
       const listFlags = format === 'tar.gz' ? '-tzf' : format === 'tar.bz2' ? '-tjf' : format === 'tar.xz' ? '-tJf' : '-tf';
       const listing = spawnSync(tools.tar, [listFlags, archiveSnapshot], { encoding: 'utf8', timeout: 30_000, maxBuffer: 16 * 1024 * 1024 });
       if (listing.error || listing.status !== 0) fail(`Could not inspect archive: ${(listing.stderr || listing.error?.message || `exit ${listing.status}`).trim()}`);

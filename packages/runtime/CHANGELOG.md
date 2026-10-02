@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.140 — 2026-10-02
+
+- Windows `create_archive` / `extract_archive` are enabled when the native inbox `tar.exe` (libarchive/bsdtar) backend is available.
+- Windows ZIP creation/extraction uses the same validated tar backend as tar-family archives, preserving traversal, link/special-file, expanded-size, staging, post-extraction, and atomic-commit safety checks.
+- Archive member names are normalized to portable forward slashes before backend invocation.
+- `read_binary` now sizes each returned base64 chunk against the live output cap so the JSON envelope remains parseable under reduced per-call limits; `nextOffsetBytes` reflects the actual returned prefix.
+- Public Windows release CI exercises tar.gz, ZIP, and option-like filename round trips. Fully capable Windows now advertises all 83 runtime tools.
+
 ## 0.2.139 — 2026-10-02
 
 - `create_archive` and `extract_archive` are now advertised on macOS in addition to Linux.

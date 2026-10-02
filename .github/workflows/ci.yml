@@ -142,6 +142,12 @@ jobs:
         env:
           REMCP_LIVE_INSTALLED_APPS: "1"
         run: node --import ./packages/runtime/test/setup.mjs --test ./packages/runtime/test/installed-apps-live.test.mjs
+      - name: Verify Windows archive backend round trip
+        shell: powershell
+        run: >-
+          node --import ./packages/runtime/test/setup.mjs --test
+          --test-name-pattern='archives can be created and extracted|ZIP archives can be created and extracted|archive creation passes option-like member names'
+          ./packages/runtime/test/tools-extended.test.mjs
       - name: Parse and validate with Windows PowerShell 5.1
         shell: powershell
         run: |

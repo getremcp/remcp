@@ -4,9 +4,12 @@ import { chmodSync, existsSync, mkdirSync, readFileSync, statSync, symlinkSync, 
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { body, freshWorkspace, isError } from './helpers.mjs';
+import { applyLiveConfig, liveConfig } from '../src/config.mjs';
+import { zipArchiveBackendAvailable } from '../src/tools/files.mjs';
 
 const root = freshWorkspace('extended');
 const { invokeTool } = await import('../src/invoke.mjs');
+const zipArchiveReady = zipArchiveBackendAvailable();
 
 const TINY_PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
 
@@ -56,6 +59,28 @@ test('read_binary and write_binary transfer a file byte for byte in chunks', asy
   assert.equal(hashSource.split(' ')[1], hashCopy.split(' ')[1]);
 });
 
+test('read_binary keeps JSON valid when the live output cap is smaller than a 1 MiB base64 envelope', async () => {
+  const source = join(root, 'bounded-blob.bin');
+  const payload = Buffer.alloc(512 * 1024, 0xa5);
+  writeFileSync(source, payload);
+  const previous = liveConfig('maxOutputBytes');
+  applyLiveConfig('maxOutputBytes', 128 * 1024);
+  try {
+    const rendered = body(await invokeTool('read_binary', { path: source, length_bytes: payload.length }));
+    assert.doesNotMatch(rendered, /output truncated/);
+    const chunk = JSON.parse(rendered);
+    assert.equal(chunk.size, payload.length);
+    assert.equal(chunk.offsetBytes, 0);
+    assert.ok(chunk.lengthBytes > 0);
+    assert.ok(chunk.lengthBytes < payload.length);
+    assert.equal(chunk.complete, false);
+    assert.equal(chunk.nextOffsetBytes, chunk.lengthBytes);
+    assert.equal(Buffer.from(chunk.data, 'base64').length, chunk.lengthBytes);
+  } finally {
+    applyLiveConfig('maxOutputBytes', previous);
+  }
+});
+
 test('PDF split refuses an output filename that escapes output_dir', async () => {
   const source = join(root, 'split-fixture.pdf');
   const outputDir = join(root, 'split-output');
@@ -80,6 +105,22 @@ test('archives can be created and extracted', async () => {
   assert.equal(isError(extracted), false, body(extracted));
   const nested = join(out, 'archive-project', 'nested', 'b.txt');
   assert.equal(readFileSync(nested, 'utf8'), 'beta\n');
+});
+
+test('ZIP archives can be created and extracted through the platform archive backend', { skip: !zipArchiveReady }, async () => {
+  const project = join(root, 'archive-zip-project');
+  mkdirSync(join(project, 'nested'), { recursive: true });
+  writeFileSync(join(project, 'a.txt'), 'zip alpha\n');
+  writeFileSync(join(project, 'nested', 'b.txt'), 'zip beta\n');
+  const archive = join(root, 'bundle.zip');
+  const created = await invokeTool('create_archive', { paths:[project], destination:archive, format:'zip' });
+  assert.equal(isError(created), false, body(created));
+  assert.ok(statSync(archive).size > 0);
+  const out = join(root, 'extracted-zip');
+  const extracted = await invokeTool('extract_archive', { archive, destination:out });
+  assert.equal(isError(extracted), false, body(extracted));
+  assert.equal(readFileSync(join(out, 'archive-zip-project', 'a.txt'), 'utf8'), 'zip alpha\n');
+  assert.equal(readFileSync(join(out, 'archive-zip-project', 'nested', 'b.txt'), 'utf8'), 'zip beta\n');
 });
 
 test('archive creation passes option-like member names after the option terminator', async () => {
