@@ -835,7 +835,17 @@ elif action in ("select","toggle"):
  applied=target.queryAction().doAction(0)
  if applied is False: raise Exception(action+" accessibility action returned false")
 elif action=="focus":
- if target.queryComponent().grabFocus() is False: raise Exception("focus accessibility action returned false")
+ already_focused=False
+ try: already_focused=bool(target.getState().contains(pyatspi.STATE_FOCUSED))
+ except: pass
+ if not already_focused:
+  try:
+   if target.queryComponent().grabFocus() is False: raise Exception("focus accessibility action returned false")
+  except Exception as focus_error:
+   try:
+    if not target.getState().contains(pyatspi.STATE_FOCUSED): raise focus_error
+   except Exception:
+    raise focus_error
 elif action=="set_value":
  try:
   applied=target.queryEditableText().setTextContents(value)

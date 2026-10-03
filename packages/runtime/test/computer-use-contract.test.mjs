@@ -231,6 +231,11 @@ test('Linux semantic typing rejects false AT-SPI writes and auto typing fails sa
   );
   assert.match(
     linuxSource,
+    /already_focused=False[\s\S]{0,220}STATE_FOCUSED[\s\S]{0,260}if not already_focused:[\s\S]{0,220}grabFocus\(\)/,
+    'Linux semantic focus should be idempotent when AT-SPI already reports the target focused',
+  );
+  assert.match(
+    linuxSource,
     /grabFocus\(\) is False[\s\S]{0,120}raise Exception/,
     'Linux semantic focus must reject an explicit false AT-SPI focus result',
   );
