@@ -31,9 +31,9 @@ rename, or regenerate the files described here.
 | Production MCP | `https://remcp.site/mcp` |
 | Manifest | `plugin.json` |
 | MCP configuration | `mcp.json` |
-| Shared skills | 5 |
+| Repository skills | 5 total; 4 published to OpenAI |
 | Hosted tool surface | 15 advertised definitions with custom widgets enabled, of which 10 are model-visible; native-only mode exposes those same 10 model-facing definitions; 83 granular runtime operations remain available through grouped façade tools |
-| Rich UI | Production file editor/diff with syntax highlighting and save, fullscreen image viewer, and terminal output viewer. When custom widgets are enabled, file/image/terminal source tools carry their MCP Apps resource directly; three app-only recovery helpers can consume short-lived preview references without rerunning source actions |
+| Optional rich UI | Three dormant self-contained MCP Apps implement file editor/diff, image viewing, and terminal output. Production currently runs native-only with custom widgets disabled; if a future reviewed release enables them, file/image/terminal source tools carry their MCP Apps resource directly and app-only recovery helpers consume bounded preview references without rerunning source actions |
 | Authentication | OAuth authorization code + PKCE, OIDC/UserInfo metadata |
 | Public overview | [`docs/PLUGINS.md`](PLUGINS.md) |
 | Full tool reference | [`docs/TOOLS.md`](TOOLS.md) — current 10-tool production surface, optional 15-tool widget-enabled surface, and the operation lists that cover all 83 runtime capabilities |
@@ -70,7 +70,7 @@ rename, or regenerate the files described here.
 8. In the portal choose **With MCP → Universal**, enter `https://remcp.site/mcp`, configure OAuth, then **Scan Tools**.
 9. Let **Scan Tools** import the four OpenAI-published skills from the MCP skills extension. Confirm `run-and-watch-processes` is absent. If the portal explicitly asks for a bundle instead, upload `submission/remcp-plugin.zip`, which carries the same four-skill allowlist.
 10. Enter the three starter prompts and the 5 positive / 3 negative test cases from `chatgpt-app-submission.json`.
-11. Screenshots are currently omitted. They are optional. If you add them while the listing has three starter prompts, provide exactly 3 current ChatGPT PNG/JPEG captures (one per prompt), each exactly 706 px wide and 400–860 px high. Show the deployed file editor/diff, fullscreen image viewer, or terminal viewer as appropriate, using only synthetic `review-sandbox` data so no private computer screen appears in submission materials.
+11. Screenshots are currently omitted because this submission is native-only and does not advertise custom MCP Apps. Keep them omitted for 0.2.143. If a future reviewed release explicitly enables the three custom widgets, capture fresh ChatGPT screenshots from that deployed widget-enabled version using only synthetic `review-sandbox` data.
 12. Select only regions where the hosted service, support, privacy policy, and terms are ready.
 13. Review the final policy attestations manually and submit for review.
 
@@ -78,6 +78,6 @@ ReMCP keeps three self-contained MCP Apps implementations for file preview/edito
 
 ## Review-sensitive behavior
 
-ReMCP exposes powerful local computer operations. Tool metadata must remain literal and accurate. `start_process` and `interact_with_process` can reach the public internet, so their `openWorldHint` values must remain `true`; `read_file` reads local files only. Mutating and terminating tools must retain accurate destructive hints.
+ReMCP exposes powerful local computer operations. Tool metadata must remain literal and accurate. Hosted `run_terminal` is conservatively `openWorldHint: true` because operations such as `start_process` and `interact_with_process` can reach the public internet; `read_file` remains local and read-only. Grouped mutating/terminating façades must retain conservative destructive hints.
 
 The bundled skill tells the model not to request or process passwords, MFA codes, private keys, payment-card data, protected health information, or government identifiers. Reviewers should use only the seeded review sandbox and non-sensitive fixture data.

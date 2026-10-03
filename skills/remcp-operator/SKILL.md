@@ -7,6 +7,21 @@ description: General-purpose ReMCP operation for inspecting desktop/browser/syst
 
 Use ReMCP only when the request actually needs a paired computer. Do not invoke it for general knowledge, writing, weather, public web research, or conceptual questions that can be answered without the user's device.
 
+## Hosted compact tool routing
+
+The hosted `remcp.site/mcp` server advertises a compact façade. Treat the granular names in this skill and its references as operation names when their direct tool is not advertised:
+
+- `manage_files(operation=...)` for filesystem/search/archive operations;
+- `run_terminal(operation=...)` for process/session operations;
+- `control_computer(operation=...)` for desktop/window/UI/input/clipboard/launch operations;
+- `view_image(operation=...)` for `read_image`, `take_screenshot`, and `screenshot_region`;
+- `control_browser(operation=...)` for browser/CDP operations;
+- `manage_system(operation=...)` for system/runtime/process/service/log/network/app/environment/audio/power operations;
+- `manage_documents(operation=...)` for structured document operations;
+- `manage_account(operation=...)` for account/pairing operations.
+
+Put the granular operation's original arguments under the façade `parameters` object. `list_devices` and `read_file` remain direct hosted tools. If another compatible host explicitly advertises granular tools, use the advertised shape instead of wrapping them.
+
 ## Workflow
 
 1. Call `list_devices` unless the target device id is already unambiguous in the current conversation.

@@ -7,6 +7,8 @@ description: Use when the primary task is destructive filesystem work on a paire
 
 ReMCP executes immediately and has no approval prompt, so the care happens here.
 
+On the hosted `remcp.site/mcp` dependency, all filesystem operations named below are `manage_files` operations: call `manage_files` with the named granular operation in `operation` and its original arguments under `parameters`. `list_devices` remains a direct tool. If another compatible host explicitly advertises a granular filesystem tool, use that advertised shape directly.
+
 1. Identify exactly what will be affected. `get_file_info` for every target, plus
    `list_directory` when a glob or a directory is involved, and `hash_file` when you need to
    prove two files are the same.

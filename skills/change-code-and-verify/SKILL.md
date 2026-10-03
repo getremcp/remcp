@@ -7,6 +7,10 @@ description: Use when the primary task is to fix, implement, refactor, or update
 
 Make the smallest complete change that satisfies the request, preserve unrelated work, and prove the result before reporting completion.
 
+## Hosted compact tool routing
+
+On the hosted `remcp.site/mcp` dependency, use the advertised compact tools rather than trying to call hidden granular names directly: file operations such as `apply_patch`, `edit_block`, `replace_lines`, `replace_in_files`, and `write_file` go through `manage_files` with that value in `operation` and the original arguments under `parameters`; process operations such as `start_process`, `wait_for_process_output`, and `read_process_output` go through `run_terminal`; image/screenshot operations go through `view_image`. `list_devices` and `read_file` remain direct tools. If another compatible host explicitly advertises a granular operation as its own tool, calling that advertised granular tool directly is also valid.
+
 ## Workflow
 
 1. Resolve the target device with `list_devices` unless it is already unambiguous.

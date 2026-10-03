@@ -8,6 +8,8 @@ description: Use when the primary task is copying, moving, or backing up files/d
 ReMCP has no direct machine-to-machine copy: the bytes travel through this conversation, so size
 matters. Follow the size first, then choose the path.
 
+On the hosted `remcp.site/mcp` dependency, `get_file_info`, `read_binary`, `write_binary`, `create_archive`, `extract_archive`, and `hash_file` are `manage_files` operations: call `manage_files` with the granular name in `operation` and the operation's original arguments under `parameters`. `list_devices` remains direct. The JSON examples in the chunking reference show this hosted shape.
+
 1. `list_devices` and pick the source and the destination. Both must belong to the signed-in
    account; if the destination is offline, stop and say so.
 2. Size the payload: `get_file_info` on the source path. For a directory, inspect its entries,
