@@ -35,7 +35,7 @@ See [`TOOLS.md`](TOOLS.md) for the current 10-tool hosted production contract, t
 
 ## OpenAI migration path for this Claude-compatible package
 
-OpenAI does not import the Claude marketplace listing or its MCP configuration as the remote-server submission. For OpenAI, ReMCP is submitted as a **remote MCP plugin** using the stable public Streamable HTTP endpoint `https://remcp.site/mcp`; the same five skills are included/imported in that OpenAI draft. The Claude manifests remain useful for Claude Code and as a compatible source package, but Claude marketplace approval does not transfer to OpenAI.
+OpenAI does not import the Claude marketplace listing or its MCP configuration as the remote-server submission. For OpenAI, ReMCP is submitted as a **remote MCP plugin** using the stable public Streamable HTTP endpoint `https://remcp.site/mcp`; four reviewed skills are imported there. `run-and-watch-processes` stays in the Claude/non-OpenAI distribution because the OpenAI skill scanner classifies arbitrary process-execution guidance as security-sensitive. The Claude manifests remain useful for Claude Code and as a compatible source package, but Claude marketplace approval does not transfer to OpenAI.
 
 ## Files
 

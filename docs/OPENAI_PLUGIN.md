@@ -42,9 +42,7 @@ rename, or regenerate the files described here.
 
 - `plugin.json` — portable Agent Plugins manifest.
 - `mcp.json` — production Streamable HTTP MCP endpoint.
-- `skills/` — five skills exported over the MCP skills extension (`skills/list`, `skills/get`,
-  `resources/read` with SHA-256 digests): the operator guide, code change and verification,
-  process supervision, safe destructive operations, and transfers between machines.
+- `skills/` — the repository keeps five cross-client skills, but the OpenAI MCP skills extension publishes four reviewed skills (`skills/list`, `skills/get`, `resources/read` with SHA-256 digests): the operator guide, code change and verification, safe destructive operations, and transfers between machines. `run-and-watch-processes` remains available to non-OpenAI distributions only because the OpenAI skill scanner classifies arbitrary process-execution guidance as security-sensitive.
 - `assets/remcp-icon.png` — canonical square icon used directly for both the ChatGPT plugin logo and composer icon and for the browser/PWA icon pack; the public GitHub README uses the dedicated reviewed `assets/remcp-readme-logo.png` mark.
 - `chatgpt-app-submission.json` — generated tool annotations and 5 positive / 3 negative review cases.
 - `submission/plugin-form.md` — copy-ready portal values.
@@ -70,7 +68,7 @@ rename, or regenerate the files described here.
 6. Confirm the reviewer account has a verified email so UserInfo can return `email_verified: true`.
 7. Put the portal token at `https://remcp.site/.well-known/openai-apps-challenge` and verify it byte-for-byte.
 8. In the portal choose **With MCP → Universal**, enter `https://remcp.site/mcp`, configure OAuth, then **Scan Tools**.
-9. Let **Scan Tools** import the five skills from the MCP skills extension. If the portal explicitly asks for a bundle instead, upload `submission/remcp-plugin.zip`.
+9. Let **Scan Tools** import the four OpenAI-published skills from the MCP skills extension. Confirm `run-and-watch-processes` is absent. If the portal explicitly asks for a bundle instead, upload `submission/remcp-plugin.zip`, which carries the same four-skill allowlist.
 10. Enter the three starter prompts and the 5 positive / 3 negative test cases from `chatgpt-app-submission.json`.
 11. Screenshots are currently omitted. They are optional. If you add them while the listing has three starter prompts, provide exactly 3 current ChatGPT PNG/JPEG captures (one per prompt), each exactly 706 px wide and 400–860 px high. Show the deployed file editor/diff, fullscreen image viewer, or terminal viewer as appropriate, using only synthetic `review-sandbox` data so no private computer screen appears in submission materials.
 12. Select only regions where the hosted service, support, privacy policy, and terms are ready.
