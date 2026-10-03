@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.143 — 2026-10-03
+
+- No local runtime tool behavior or schema changes. This patch keeps the runtime package version aligned with the ReMCP 0.2.143 hosted/plugin release.
+- The 83-operation runtime surface remains unchanged; the release only makes the four OpenAI-published skills describe the compact hosted façade routing explicitly.
+
 ## 0.2.142 — 2026-10-03
 
 - No local runtime tool behavior or schema changes. This patch keeps the runtime package version aligned with the ReMCP 0.2.142 hosted/plugin release.
