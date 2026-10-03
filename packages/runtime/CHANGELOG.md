@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.144 — 2026-10-03
+
+- Linux ui_action focus is idempotent for controls that AT-SPI already reports as focused, avoiding GTK4/GLib focus errors from an unnecessary grabFocus() call.
+- A failed/throwing grabFocus() is accepted only when an immediate AT-SPI state re-read proves the target became focused; otherwise the operation remains fail-closed.
+- Live GNOME Text Editor verification reproduced the 0.2.143 failure and confirmed the patched handler succeeds on the same semantic text node. Tool names and schemas remain unchanged at 83 operations.
+
 ## 0.2.143 — 2026-10-03
 
 - No local runtime tool behavior or schema changes. This patch keeps the runtime package version aligned with the ReMCP 0.2.143 hosted/plugin release.
