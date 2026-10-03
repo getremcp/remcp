@@ -155,7 +155,9 @@ export function checkPlugin(root = fileURLToPath(new URL('..', import.meta.url))
     }
   };
   const skills = readdirSync(join(root, 'skills'), { withFileTypes: true }).filter(entry => entry.isDirectory());
-  assert.equal(skills.length, 5, 'all five ReMCP workflows must be exported');
+  assert.equal(skills.length, 5, 'the repository keeps all five cross-client ReMCP workflows');
+  const openAiExcludedSkills = new Set(['run-and-watch-processes']);
+  const publishedSkills = [];
   for (const { name } of skills) {
     const skillPath = `skills/${name}`;
     const md = read(`${skillPath}/SKILL.md`).toString();
@@ -167,8 +169,15 @@ export function checkPlugin(root = fileURLToPath(new URL('..', import.meta.url))
     assert.match(metadata, /value: "remcp"/);
     assert.match(metadata, /transport: "streamable_http"/);
     assert.match(metadata, /url: "https:\/\/remcp.site\/mcp"/);
+    if (openAiExcludedSkills.has(name)) continue;
+    publishedSkills.push(name);
     walk(skillPath);
   }
+  assert.deepEqual(
+    publishedSkills.sort(),
+    ['change-code-and-verify','remcp-operator','safe-destructive-operations','transfer-files-between-machines'],
+    'the OpenAI archive contains only the four reviewed skills',
+  );
   for (const file of files.filter(file => file.endsWith('.md'))) {
     for (const match of read(file).toString().matchAll(/\]\((references\/[^)#]+)(?:#[^)]*)?\)/g)) {
       assert.ok(files.includes(join(dirname(file), match[1])), `missing reference in ${file}: ${match[1]}`);
@@ -193,10 +202,10 @@ export function checkPlugin(root = fileURLToPath(new URL('..', import.meta.url))
   }
   assert.deepEqual([...entries.keys()].sort(), files.sort(), 'archive must contain the entire portable plugin');
   for (const file of files) assert.deepEqual(entries.get(file), read(file), `stale archive entry: ${file}`);
-  return { skills: skills.length, files: files.length, version: plugin.version };
+  return { skills: publishedSkills.length, repositorySkills: skills.length, files: files.length, version: plugin.version };
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const result = checkPlugin();
-  console.log(`Plugin ${result.version}: ${result.skills} skills, ${result.files} files; archive matches source.`);
+  console.log(`Plugin ${result.version}: ${result.skills} OpenAI skills (${result.repositorySkills} repository skills), ${result.files} archived files; archive matches the reviewed allowlist.`);
 }

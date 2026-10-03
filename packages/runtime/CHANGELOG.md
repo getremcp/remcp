@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.142 — 2026-10-03
+
+- No local runtime tool behavior or schema changes. This patch keeps the runtime package version aligned with the ReMCP 0.2.142 hosted/plugin release.
+- The 83-operation runtime surface remains unchanged; the OpenAI-specific change only narrows the published skill catalog.
+
 ## 0.2.141 — 2026-10-02
 
 - Linux `display_inventory` capability discovery now uses the same real backend resolver as execution instead of treating every Wayland session as supported.
