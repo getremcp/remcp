@@ -443,9 +443,9 @@ jobs:
             echo "Both packages are published with a signed provenance statement."
           } > "$notes"
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
-            gh release upload "$GITHUB_REF_NAME" submission/remcp-plugin.zip submission/remcp-skills-only.zip chatgpt-app-submission.json --clobber
+            gh release upload "$GITHUB_REF_NAME" submission/remcp-plugin.zip submission/remcp-openai-existing-plugin.zip submission/remcp-skills-only.zip chatgpt-app-submission.json --clobber
           else
-            gh release create "$GITHUB_REF_NAME" submission/remcp-plugin.zip submission/remcp-skills-only.zip chatgpt-app-submission.json --title "ReMCP $version" --notes-file "$notes" --verify-tag
+            gh release create "$GITHUB_REF_NAME" submission/remcp-plugin.zip submission/remcp-openai-existing-plugin.zip submission/remcp-skills-only.zip chatgpt-app-submission.json --title "ReMCP $version" --notes-file "$notes" --verify-tag
           fi
 
 
@@ -702,9 +702,9 @@ jobs:
             echo "Both packages are published with a signed provenance statement."
           } > "$notes"
           if gh release view "$tag" >/dev/null 2>&1; then
-            gh release upload "$tag" submission/remcp-plugin.zip submission/remcp-skills-only.zip chatgpt-app-submission.json --clobber
+            gh release upload "$tag" submission/remcp-plugin.zip submission/remcp-openai-existing-plugin.zip submission/remcp-skills-only.zip chatgpt-app-submission.json --clobber
           else
-            gh release create "$tag" submission/remcp-plugin.zip submission/remcp-skills-only.zip chatgpt-app-submission.json \
+            gh release create "$tag" submission/remcp-plugin.zip submission/remcp-openai-existing-plugin.zip submission/remcp-skills-only.zip chatgpt-app-submission.json \
               --title "ReMCP $version" --notes-file "$notes" --verify-tag
           fi
 

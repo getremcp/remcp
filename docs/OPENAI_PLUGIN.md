@@ -68,9 +68,9 @@ rename, or regenerate the files described here.
 6. Confirm the reviewer account has a verified email so UserInfo can return `email_verified: true`.
 7. Put the portal token at `https://remcp.site/.well-known/openai-apps-challenge` and verify it byte-for-byte.
 8. In the portal choose **With MCP → Universal**, enter `https://remcp.site/mcp`, configure OAuth, then **Scan Tools**.
-9. Let **Scan Tools** import the four OpenAI-published skills from the MCP skills extension. Confirm `run-and-watch-processes` is absent. If the portal explicitly asks for a bundle instead, upload `submission/remcp-plugin.zip`, which carries the same four-skill allowlist.
+9. Let **Scan Tools** import the four OpenAI-published skills from the MCP skills extension. Confirm `run-and-watch-processes` is absent. For a brand-new portable package use `submission/remcp-plugin.zip`. To update the existing ReMCP listing that OpenAI migrated from the legacy Apps form, upload `submission/remcp-openai-existing-plugin.zip`; it is byte-identical apart from the manifest `name`, which must match the migrated package id or the portal returns `plugin_name_mismatch`.
 10. Enter the three starter prompts and the 5 positive / 3 negative test cases from `chatgpt-app-submission.json`.
-11. Screenshots are currently omitted because this submission is native-only and does not advertise custom MCP Apps. Keep them omitted for 0.2.143. If a future reviewed release explicitly enables the three custom widgets, capture fresh ChatGPT screenshots from that deployed widget-enabled version using only synthetic `review-sandbox` data.
+11. Screenshots are currently omitted because this submission is native-only and does not advertise custom MCP Apps. Keep them omitted for 0.2.145. If a future reviewed release explicitly enables the three custom widgets, capture fresh ChatGPT screenshots from that deployed widget-enabled version using only synthetic `review-sandbox` data.
 12. Select only regions where the hosted service, support, privacy policy, and terms are ready.
 13. Review the final policy attestations manually and submit for review.
 

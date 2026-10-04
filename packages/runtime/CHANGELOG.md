@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.145 — 2026-10-04
+
+- No local runtime tool behavior or schema changes. This patch keeps @remcp/runtime aligned with the ReMCP 0.2.145 Plugin Directory metadata release.
+- The 83-operation runtime surface and MCP annotations remain unchanged; the release affects OpenAI package review/publication metadata only.
+
 ## 0.2.144 — 2026-10-03
 
 - Linux ui_action focus is idempotent for controls that AT-SPI already reports as focused, avoiding GTK4/GLib focus errors from an unnecessary grabFocus() call.
