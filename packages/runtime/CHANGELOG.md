@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.146 — 2026-10-04
+
+- No local runtime tool behavior or schema changes. This patch keeps `@remcp/runtime` aligned with the ReMCP 0.2.146 OpenAI submission-metadata release.
+- The 83-operation runtime surface and MCP annotations remain unchanged; the release only synchronizes reviewer-facing metadata required by the OpenAI Apps submission form.
+
 ## 0.2.145 — 2026-10-04
 
 - No local runtime tool behavior or schema changes. This patch keeps @remcp/runtime aligned with the ReMCP 0.2.145 Plugin Directory metadata release.
