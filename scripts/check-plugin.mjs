@@ -106,6 +106,29 @@ export function checkPlugin(root = fileURLToPath(new URL('..', import.meta.url))
   const files = ['plugin.json', 'mcp.json'];
   const iface = plugin.extensions['com.openai'].interface;
   assert.deepEqual(iface.capabilities, ['Read', 'Write'], 'OpenAI interface declares the read/write capability shown by the actual tool surface');
+  const openAi = plugin.extensions['com.openai'];
+  const review = openAi.review;
+  const publication = openAi.publication;
+  const hostedTools = new Set(['list_devices','manage_account','read_file','manage_files','run_terminal','control_computer','view_image','control_browser','manage_system','manage_documents']);
+  assert.equal(iface.supportURL, 'https://remcp.site/support', 'MCP directory submissions need the public HTTPS support page');
+  assert.equal(review?.test_cases?.positive?.length, 5, 'initial MCP review needs exactly five positive cases');
+  assert.equal(review?.test_cases?.negative?.length, 3, 'initial MCP review needs exactly three negative cases');
+  for (const testCase of review.test_cases.positive) {
+    assert.ok(testCase.description?.trim(), 'positive review cases need a description');
+    assert.ok(testCase.prompt?.trim(), 'positive review cases need a prompt');
+    assert.ok(testCase.expected_behavior?.trim(), 'positive review cases need expected_behavior');
+    const expectedTools = String(testCase.tools_triggered || '').split(',').map(value => value.trim()).filter(Boolean);
+    assert.ok(expectedTools.length > 0, 'positive review cases need tools_triggered');
+    for (const tool of expectedTools) assert.ok(hostedTools.has(tool), `review case references non-hosted tool: ${tool}`);
+  }
+  for (const testCase of review.test_cases.negative) {
+    assert.ok(testCase.description?.trim(), 'negative review cases need a description');
+    assert.ok(testCase.prompt?.trim(), 'negative review cases need a prompt');
+  }
+  assert.match(review.demo_recording_url, /^https:\/\//, 'MCP review needs an HTTPS demo recording URL');
+  assert.equal(review.commerce, false, 'ReMCP does not declare commerce');
+  assert.deepEqual(publication?.countries, [], 'an empty country allowlist means unrestricted publication');
+  assert.ok(String(publication?.release_notes || '').includes(`Plugin version: ${plugin.version}`), 'publication release notes must describe the exact plugin version');
   for (const asset of new Set([iface.logo, iface.composerIcon])) {
     assert.match(asset, /^\.\/assets\/[\w.-]+$/, 'icons must be bundled assets');
     files.push(asset.slice(2));
@@ -183,25 +206,42 @@ export function checkPlugin(root = fileURLToPath(new URL('..', import.meta.url))
       assert.ok(files.includes(join(dirname(file), match[1])), `missing reference in ${file}: ${match[1]}`);
     }
   }
-  // Validate the actual upload, not just the source tree. Our ZIP writer stores entries without
+  // Validate the actual uploads, not just the source tree. Our ZIP writer stores entries without
   // compression so this check runs in a bare checkout without installing an unzip dependency.
-  const zip = read('submission/remcp-plugin.zip');
-  const entries = new Map();
-  let offset = 0;
-  while (offset + 30 <= zip.length && zip.readUInt32LE(offset) === 0x04034b50) {
-    assert.equal(zip.readUInt16LE(offset + 8), 0, 'archive entries must be stored');
-    const size = zip.readUInt32LE(offset + 18);
-    const nameLength = zip.readUInt16LE(offset + 26);
-    const extraLength = zip.readUInt16LE(offset + 28);
-    const name = zip.subarray(offset + 30, offset + 30 + nameLength).toString();
-    const start = offset + 30 + nameLength + extraLength;
-    assert.ok(start + size <= zip.length, 'truncated ZIP entry');
-    assert.ok(!entries.has(name), `duplicate ZIP entry: ${name}`);
-    entries.set(name, zip.subarray(start, start + size));
-    offset = start + size;
-  }
+  const parseArchive = zip => {
+    const entries = new Map();
+    let offset = 0;
+    while (offset + 30 <= zip.length && zip.readUInt32LE(offset) === 0x04034b50) {
+      assert.equal(zip.readUInt16LE(offset + 8), 0, 'archive entries must be stored');
+      const size = zip.readUInt32LE(offset + 18);
+      const nameLength = zip.readUInt16LE(offset + 26);
+      const extraLength = zip.readUInt16LE(offset + 28);
+      const name = zip.subarray(offset + 30, offset + 30 + nameLength).toString();
+      const start = offset + 30 + nameLength + extraLength;
+      assert.ok(start + size <= zip.length, 'truncated ZIP entry');
+      assert.ok(!entries.has(name), `duplicate ZIP entry: ${name}`);
+      entries.set(name, zip.subarray(start, start + size));
+      offset = start + size;
+    }
+    return entries;
+  };
+
+  const entries = parseArchive(read('submission/remcp-plugin.zip'));
   assert.deepEqual([...entries.keys()].sort(), files.sort(), 'archive must contain the entire portable plugin');
   for (const file of files) assert.deepEqual(entries.get(file), read(file), `stale archive entry: ${file}`);
+
+  // OpenAI migrated the original Apps-form submission to a Plugin Directory package whose stable
+  // name is app-6aaaba1295a4819195a4987e18e43428. Updates to that existing listing must carry
+  // the migrated package name, while every other byte stays identical to the canonical archive.
+  const migratedEntries = parseArchive(read('submission/remcp-openai-existing-plugin.zip'));
+  assert.deepEqual([...migratedEntries.keys()].sort(), files.sort(), 'migrated OpenAI archive must contain the same portable plugin files');
+  for (const file of files.filter(file => file !== 'plugin.json')) {
+    assert.deepEqual(migratedEntries.get(file), entries.get(file), `migrated OpenAI archive drift: ${file}`);
+  }
+  const canonicalManifest = JSON.parse(entries.get('plugin.json').toString('utf8'));
+  const migratedManifest = JSON.parse(migratedEntries.get('plugin.json').toString('utf8'));
+  assert.equal(migratedManifest.name, 'app-6aaaba1295a4819195a4987e18e43428', 'migrated OpenAI archive must keep the existing portal package name');
+  assert.deepEqual({ ...migratedManifest, name:canonicalManifest.name }, canonicalManifest, 'migrated OpenAI archive may differ only by manifest name');
   return { skills: publishedSkills.length, repositorySkills: skills.length, files: files.length, version: plugin.version };
 }
 
