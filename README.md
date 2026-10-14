@@ -18,10 +18,9 @@
   <a href="https://remcp.site/install/chatgpt"><img alt="ChatGPT plugin" src="https://img.shields.io/badge/ChatGPT-plugin-1f2328?style=flat-square"></a>
   <a href="https://remcp.site/install/chatgpt"><img alt="Codex plugin" src="https://img.shields.io/badge/Codex-plugin-1f2328?style=flat-square"></a>
   <a href="https://remcp.site/install/claude"><img alt="Claude Code plugin" src="https://img.shields.io/badge/Claude%20Code-plugin-1f2328?style=flat-square"></a>
-  <a href="https://cursor.com/marketplace"><img alt="Cursor Marketplace" src="https://img.shields.io/badge/Cursor-marketplace-1f2328?style=flat-square"></a>
+  <a href="https://remcp.site/install/cursor"><img alt="Cursor MCP" src="https://img.shields.io/badge/Cursor-MCP%20setup-1f2328?style=flat-square"></a>
   <a href="docs/PLUGINS.md#gemini-cli"><img alt="Gemini CLI extension" src="https://img.shields.io/badge/Gemini%20CLI-extension-1f2328?style=flat-square"></a>
-  <a href="https://github.com/github/awesome-copilot/issues/3326"><img alt="GitHub Copilot CLI plugin" src="https://img.shields.io/badge/Copilot%20CLI-plugin-1f2328?style=flat-square"></a>
-  <a href="https://github.com/github/awesome-copilot/issues/3326"><img alt="VS Code Agent Plugin" src="https://img.shields.io/badge/VS%20Code-agent%20plugin-1f2328?style=flat-square"></a>
+  <a href="https://remcp.site/plugins"><img alt="MCP clients" src="https://img.shields.io/badge/MCP-client%20setup-1f2328?style=flat-square"></a>
   <a href="https://kiro.dev/powers/"><img alt="Kiro Power" src="https://img.shields.io/badge/Kiro-power-1f2328?style=flat-square"></a>
   <a href="https://github.com/cline/marketplace/pull/125"><img alt="Cline MCP Marketplace" src="https://img.shields.io/badge/Cline-MCP-1f2328?style=flat-square"></a>
   <a href="https://smithery.ai/servers/antonbaider/remcp"><img alt="Smithery directory" src="https://img.shields.io/badge/Smithery-directory-1f2328?style=flat-square"></a>
@@ -145,10 +144,9 @@ ReMCP publishes host-native metadata for coding agents plus directory records fo
 
 | Host / directory | User path | Status |
 | --- | --- | --- |
-| **Cursor** | Find **ReMCP** in Cursor Marketplace and install it. | published |
+| **Cursor** | Add `https://remcp.site/mcp` as a remote MCP server in Cursor settings, then authorize. | manual MCP setup |
 | **Gemini CLI** | Install from the Extension Gallery when indexed, or run `gemini extensions install https://github.com/antonbaider/remcp`. | gallery discovery enabled |
-| **GitHub Copilot CLI** | Install from the `awesome-copilot` default marketplace after external-plugin review. | submitted |
-| **VS Code Agent Plugins** | Browse `@agentPlugins` / **Chat: Plugins** after the same Awesome Copilot listing is accepted. | submitted |
+| **VS Code** | Configure the remote MCP endpoint in an MCP-capable client. | manual MCP setup |
 | **Kiro Powers** | Import `https://github.com/antonbaider/remcp` from **Add Custom Power → Import power from GitHub** while the curated listing is reviewed. | submitted |
 | **Cline** | Use the Cline MCP Marketplace after review; the current submission is tracked in [`cline/marketplace` PR #125](https://github.com/cline/marketplace/pull/125). | submitted |
 | **Smithery** | Open <https://smithery.ai/servers/antonbaider/remcp>. | published |

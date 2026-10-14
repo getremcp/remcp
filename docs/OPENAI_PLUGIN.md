@@ -19,7 +19,7 @@ plugin name.
 The rest of this document is for **developers and reviewers**.
 
 ReMCP ships a production OpenAI Plugins package for ChatGPT and Codex. It combines the hosted remote
-MCP server with five shared operational skills, review metadata, and three self-contained MCP Apps: a file editor/diff with syntax highlighting and in-chat save, a fullscreen image viewer layered on native MCP image/screenshot content, and a compact terminal-output viewer. Source tools remain data-first and own the corresponding app resource directly, so the same tool result hydrates UI; app-only render helpers exist only for late-mount recovery.
+MCP server with five shared operational skills, review metadata, and three self-contained MCP Apps: a file editor/diff with syntax highlighting and in-chat save, a fullscreen image viewer layered on native MCP image/screenshot content, and a compact terminal-output viewer. Source tools return native MCP text/images without attaching UI resources. If an operator enables optional MCP Apps, only the separately invoked render helpers bind UI, and the assistant must use them only when the user explicitly requests an interactive viewer.
 
 This is the **OpenAI-specific** package. Claude Code packaging lives beside it and does not replace,
 rename, or regenerate the files described here.
