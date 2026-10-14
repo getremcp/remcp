@@ -60,3 +60,18 @@ test('does not use a symlinked external sessions directory', { skip: process.pla
   symlinkSync(join(external, 'Default', 'Sessions'), join(dir, 'Default', 'Sessions'));
   assert.equal(shouldRestoreBrowserSession(dir), false);
 });
+
+test('refuses a linked Preferences file rather than reading an external file', { skip: process.platform === 'win32' ? 'Windows symlink creation requires developer mode' : false }, () => {
+  const dir = profile('Crashed');
+  const other = profile('Crashed');
+  rmSync(join(dir, 'Default', 'Preferences'));
+  symlinkSync(join(other, 'Default', 'Preferences'), join(dir, 'Default', 'Preferences'));
+  assert.equal(shouldRestoreBrowserSession(dir), false);
+});
+
+test('refuses a linked Tabs file rather than using the external tab session', { skip: process.platform === 'win32' ? 'Windows symlink creation requires developer mode' : false }, () => {
+  const dir = profile('Crashed', false);
+  const other = profile('Crashed');
+  symlinkSync(join(other, 'Default', 'Sessions', 'Tabs_123456'), join(dir, 'Default', 'Sessions', 'Tabs_123456'));
+  assert.equal(shouldRestoreBrowserSession(dir), false);
+});

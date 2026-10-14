@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { isIP } from 'node:net';
 import { lookup } from 'node:dns/promises';
-import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync } from 'node:fs';
+import { closeSync, constants as fsConstants, existsSync, fstatSync, mkdirSync, openSync, readFileSync, readdirSync } from 'node:fs';
 import { resolveSafePath } from '../util.mjs';
 import { clamp, commandExists, jsonResult, optionalString, requireEnum, spawnDetached, unavailable } from './common.mjs';
 
@@ -66,23 +66,46 @@ function browserDataDir() {
 // restore the session. Never parse, persist, or relay the sensitive tab URLs.
 // A clean user-initiated quit must not resurrect a deliberately closed session.
 export function shouldRestoreBrowserSession(profile) {
+  let prefsFd;
+  let sessionFd;
   try {
     const defaultProfile = path.join(profile, 'Default');
-    const prefsFile = path.join(defaultProfile, 'Preferences');
-    const prefsStat = lstatSync(prefsFile);
+    // Open first, then validate the file descriptor: checking the path with
+    // lstat before reading it creates a symlink-swap TOCTOU vulnerability.
+    prefsFd = openSync(path.join(defaultProfile, 'Preferences'),
+      fsConstants.O_RDONLY | (fsConstants.O_NOFOLLOW || 0));
+    const prefsStat = fstatSync(prefsFd);
     if (!prefsStat.isFile() || prefsStat.size > 4 * 1024 * 1024) return false;
-    const prefs = JSON.parse(readFileSync(prefsFile, 'utf8'));
+    const prefs = JSON.parse(readFileSync(prefsFd, 'utf8'));
     if (prefs?.profile?.exit_type !== 'Crashed') return false;
+
     const sessionDir = path.join(defaultProfile, 'Sessions');
-    if (!lstatSync(sessionDir).isDirectory()) return false;
-    return readdirSync(sessionDir).some(name => {
+    let readableDir = sessionDir;
+    if (process.platform !== 'win32') {
+      // Use the opened directory even if another process renames the path.
+      // O_NOFOLLOW refuses a linked Sessions directory on Unix platforms.
+      sessionFd = openSync(sessionDir,
+        fsConstants.O_RDONLY | (fsConstants.O_DIRECTORY || 0) | (fsConstants.O_NOFOLLOW || 0));
+      if (!fstatSync(sessionFd).isDirectory()) return false;
+      readableDir = `${process.platform === 'darwin' ? '/dev/fd' : '/proc/self/fd'}/${sessionFd}`;
+    }
+    return readdirSync(readableDir).some(name => {
       if (!/^Tabs_\d+$/.test(name)) return false;
-      const tabFile = lstatSync(path.join(sessionDir, name));
-      return tabFile.isFile() && tabFile.size > 0;
+      let tabFd;
+      try {
+        tabFd = openSync(path.join(readableDir, name),
+          fsConstants.O_RDONLY | (fsConstants.O_NOFOLLOW || 0));
+        const stat = fstatSync(tabFd);
+        return stat.isFile() && stat.size > 0;
+      } catch { return false; }
+      finally { if (tabFd !== undefined) closeSync(tabFd); }
     });
   } catch {
     // A new, malformed or inaccessible profile must start fresh, not fail CDP.
     return false;
+  } finally {
+    if (sessionFd !== undefined) closeSync(sessionFd);
+    if (prefsFd !== undefined) closeSync(prefsFd);
   }
 }
 

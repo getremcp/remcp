@@ -4,6 +4,7 @@
 
 - Request Chromium-native `--restore-last-session` only when the dedicated ReMCP browser profile has a crashed exit marker and persisted tab session files.
 - Preserve intentional clean browser shutdown and first-run behavior; avoid following symlinked session directories or files.
+- Use atomic file-descriptor validation for local session metadata to avoid check-then-open file races (CodeQL TOCTOU).
 - Add cross-platform regression coverage for interrupted, clean, missing, malformed, new, and symlinked browser session profiles.
 - No new tools or MCP schema changes.
 
