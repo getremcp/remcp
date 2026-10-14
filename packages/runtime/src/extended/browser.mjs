@@ -5,6 +5,7 @@ import { isIP } from 'node:net';
 import { lookup } from 'node:dns/promises';
 import { closeSync, constants as fsConstants, existsSync, fstatSync, mkdirSync, openSync, readFileSync, readdirSync } from 'node:fs';
 import { resolveSafePath } from '../util.mjs';
+import { preserveInterruptedBrowserSession } from './browser-session-backup.mjs';
 import { clamp, commandExists, jsonResult, optionalString, requireEnum, spawnDetached, unavailable } from './common.mjs';
 
 const DEFAULT_ENDPOINT = 'http://127.0.0.1:9222';
@@ -148,6 +149,9 @@ async function ensureBrowserEndpoint(endpoint) {
       if (!executable) throw new Error('Browser control is unavailable: no supported Chrome, Edge, or Chromium executable was found');
       const profile = browserDataDir();
       mkdirSync(profile, { recursive:true, mode:0o700 });
+      // Chrome rotates its Sessions/ files on startup. Protect existing local
+      // evidence before a restart, including profiles with only Tabs_* left.
+      preserveInterruptedBrowserSession(profile);
       spawnDetached(executable, browserAutoLaunchArgs(profile));
       if (!await waitForBrowserEndpoint(5000)) throw new Error('ReMCP launched a browser but its local CDP endpoint did not become ready');
     })().finally(() => { browserLaunchPromise = null; });

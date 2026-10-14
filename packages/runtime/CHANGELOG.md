@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.149 — 2026-10-14
+
+- Automatically snapshot raw, local-only Chromium session files on crashed ReMCP CDP profiles before browser auto-launch; preserve orphaned tabs and prior snapshots without leaking URLs.
+- Fail closed if session evidence cannot be backed up safely, and cap file sizes, total data and snapshot count.
+- Add seven unit tests and document restoration limitations. No new runtime operations or MCP schema changes.
+
 ## 0.2.148 — 2026-10-14
 
 - Request Chromium-native `--restore-last-session` only when the dedicated ReMCP browser profile has a crashed exit marker and persisted tab session files.
