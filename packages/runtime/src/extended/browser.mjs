@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { isIP } from 'node:net';
 import { lookup } from 'node:dns/promises';
-import { existsSync, mkdirSync } from 'node:fs';
+import { closeSync, constants as fsConstants, existsSync, fstatSync, mkdirSync, openSync, readFileSync, readdirSync } from 'node:fs';
 import { resolveSafePath } from '../util.mjs';
 import { clamp, commandExists, jsonResult, optionalString, requireEnum, spawnDetached, unavailable } from './common.mjs';
 
@@ -60,6 +60,75 @@ function browserDataDir() {
   return path.join(process.env.XDG_DATA_HOME || path.join(os.homedir(), '.local', 'share'), 'remcp', 'browser-cdp');
 }
 
+// Browser sessions belong to the local user, not to the lifetime of the ReMCP
+// agent. The agent can be restarted by an npm update while Chrome is open.
+// If Chrome was interrupted and already persisted tabs, ask Chromium itself to
+// restore the session. Never parse, persist, or relay the sensitive tab URLs.
+// A clean user-initiated quit must not resurrect a deliberately closed session.
+export function shouldRestoreBrowserSession(profile) {
+  let prefsFd;
+  let sessionFd;
+  try {
+    const defaultProfile = path.join(profile, 'Default');
+    // Open first, then validate the file descriptor: checking the path with
+    // lstat before reading it creates a symlink-swap TOCTOU vulnerability.
+    prefsFd = openSync(path.join(defaultProfile, 'Preferences'),
+      fsConstants.O_RDONLY | (fsConstants.O_NOFOLLOW || 0));
+    const prefsStat = fstatSync(prefsFd);
+    if (!prefsStat.isFile() || prefsStat.size > 4 * 1024 * 1024) return false;
+    const prefs = JSON.parse(readFileSync(prefsFd, 'utf8'));
+    if (prefs?.profile?.exit_type !== 'Crashed') return false;
+
+    const sessionDir = path.join(defaultProfile, 'Sessions');
+    let readableDir = sessionDir;
+    if (process.platform !== 'win32') {
+      // Use the opened directory even if another process renames the path.
+      // O_NOFOLLOW refuses a linked Sessions directory on Unix platforms.
+      sessionFd = openSync(sessionDir,
+        fsConstants.O_RDONLY | (fsConstants.O_DIRECTORY || 0) | (fsConstants.O_NOFOLLOW || 0));
+      if (!fstatSync(sessionFd).isDirectory()) return false;
+      readableDir = `${process.platform === 'darwin' ? '/dev/fd' : '/proc/self/fd'}/${sessionFd}`;
+    }
+    return readdirSync(readableDir).some(name => {
+      if (!/^Tabs_\d+$/.test(name)) return false;
+      let tabFd;
+      try {
+        tabFd = openSync(path.join(readableDir, name),
+          fsConstants.O_RDONLY | (fsConstants.O_NOFOLLOW || 0));
+        const stat = fstatSync(tabFd);
+        return stat.isFile() && stat.size > 0;
+      } catch { return false; }
+      finally { if (tabFd !== undefined) closeSync(tabFd); }
+    });
+  } catch {
+    // A new, malformed or inaccessible profile must start fresh, not fail CDP.
+    return false;
+  } finally {
+    if (sessionFd !== undefined) closeSync(sessionFd);
+    if (prefsFd !== undefined) closeSync(prefsFd);
+  }
+}
+
+export function browserAutoLaunchArgs(profile, {
+  platform = process.platform,
+  display = process.env.DISPLAY,
+  waylandDisplay = process.env.WAYLAND_DISPLAY,
+} = {}) {
+  const restore = shouldRestoreBrowserSession(profile);
+  const args = [
+    '--remote-debugging-address=127.0.0.1',
+    '--remote-debugging-port=9222',
+    `--user-data-dir=${profile}`,
+    '--no-first-run',
+    '--no-default-browser-check',
+    // --restore-last-session only for an interrupted, persisted local profile.
+    // An explicit about:blank startup URL would suppress the normal restore.
+    ...(restore ? ['--restore-last-session'] : ['about:blank']),
+  ];
+  if (platform === 'linux' && !display && !waylandDisplay) args.unshift('--headless=new');
+  return args;
+}
+
 async function waitForBrowserEndpoint(timeoutMs = 5000) {
   const deadline = Date.now() + timeoutMs;
   do {
@@ -79,16 +148,7 @@ async function ensureBrowserEndpoint(endpoint) {
       if (!executable) throw new Error('Browser control is unavailable: no supported Chrome, Edge, or Chromium executable was found');
       const profile = browserDataDir();
       mkdirSync(profile, { recursive:true, mode:0o700 });
-      const args = [
-        '--remote-debugging-address=127.0.0.1',
-        '--remote-debugging-port=9222',
-        `--user-data-dir=${profile}`,
-        '--no-first-run',
-        '--no-default-browser-check',
-        'about:blank',
-      ];
-      if (process.platform === 'linux' && !process.env.DISPLAY && !process.env.WAYLAND_DISPLAY) args.unshift('--headless=new');
-      spawnDetached(executable, args);
+      spawnDetached(executable, browserAutoLaunchArgs(profile));
       if (!await waitForBrowserEndpoint(5000)) throw new Error('ReMCP launched a browser but its local CDP endpoint did not become ready');
     })().finally(() => { browserLaunchPromise = null; });
   }
