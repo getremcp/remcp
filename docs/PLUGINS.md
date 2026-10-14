@@ -73,15 +73,15 @@ in the technical Claude Code guide instead of the normal user flow.
 
 ## Cursor
 
-ReMCP is published in the Cursor Marketplace. The normal install flow is:
+Cursor supports remote MCP servers without requiring a marketplace listing. To connect ReMCP:
 
-1. Open <https://cursor.com/marketplace> or Cursor's **Customize** view.
-2. Search for **ReMCP**.
-3. Install the plugin.
-4. Authorize your ReMCP account when prompted.
-5. Ask Cursor Agent to use one of your paired computers.
+1. Pair a computer to your ReMCP account.
+2. Open Cursor's MCP settings and add an HTTP MCP server.
+3. Use `https://remcp.site/mcp` as the endpoint (or set the same URL in `mcp.json`).
+4. Complete the ReMCP OAuth authorization when prompted.
+5. Ask Cursor Agent to use a paired computer.
 
-The Cursor package uses the portable Agent Plugins 1.0 format, so the MCP server and ReMCP skills are carried by the plugin. Users do not copy an MCP URL or edit `mcp.json` for the marketplace install.
+See [the Cursor setup guide](https://remcp.site/install/cursor) and [Cursor MCP documentation](https://cursor.com/docs/mcp). A packaged plugin artifact is not evidence that a marketplace has approved its listing.
 
 ## Gemini CLI
 
@@ -97,19 +97,9 @@ gemini extensions install https://github.com/antonbaider/remcp
 Gemini CLI copies the extension locally. ReMCP's remote MCP entry uses OAuth discovery, so there is
 no static ReMCP token to paste into the extension.
 
-## GitHub Copilot CLI and VS Code
+## VS Code and other MCP-compatible clients
 
-ReMCP uses the same portable Agent Plugins 1.0 package for GitHub Copilot CLI and VS Code. The public
-external-plugin submission is tracked at:
-
-<https://github.com/github/awesome-copilot/issues/3326>
-
-After the Awesome Copilot review is accepted:
-
-- **Copilot CLI:** browse the `awesome-copilot` marketplace and install **ReMCP** from the plugin catalog.
-- **VS Code:** open Extensions and search `@agentPlugins`, or run **Chat: Plugins** from the Command Palette, then install **ReMCP**.
-
-Until the external listing is accepted, the submission page is the source of truth for review status.
+Use a client's remote MCP settings to configure `https://remcp.site/mcp` when supported, then authorize through ReMCP OAuth. Follow the client documentation for the exact configuration fields. This is a generic MCP integration path, not a claim of marketplace approval.
 
 ## Kiro Powers
 

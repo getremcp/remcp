@@ -10,8 +10,8 @@ ReMCP keeps one public source repository and publishes host-native discovery met
 | Claude Code | Claude Plugins directory | submitted, pending review |
 | Cursor | Cursor Marketplace | published |
 | Gemini CLI | Gemini CLI Extension Gallery + direct GitHub install | gallery discovery enabled; native extension validated |
-| GitHub Copilot CLI | Awesome Copilot default marketplace | external submission under review |
-| VS Code Agent Plugins | Awesome Copilot / `@agentPlugins` | same external submission and Agent Plugins 1.0 package |
+| GitHub Copilot CLI | Awesome Copilot default marketplace | rejected October 7, 2026 — not listed ([review decision](https://github.com/github/awesome-copilot/issues/3326)) |
+| VS Code Agent Plugins | Awesome Copilot / `@agentPlugins` | not listed; shared external submission was rejected October 7, 2026 |
 | Kiro Powers | Kiro Powers registry + direct GitHub import | submitted September 19, 2026; pending review |
 | Cline | Cline MCP Marketplace ([PR #125](https://github.com/cline/marketplace/pull/125)) | submitted in current `cline/marketplace`; pending review |
 | Smithery | smithery.ai/servers/antonbaider/remcp | published |
@@ -35,7 +35,7 @@ Gemini CLI requires `gemini-extension.json`. The extension uses `httpUrl` for th
 
 The Official MCP Registry keeps the GitHub-authenticated identity `io.github.getremcp/remcp` because GitHub resolves the project release URL `https://github.com/antonbaider/remcp` to the transferred canonical repository owned by `getremcp`. Project-facing source and release links use `antonbaider/remcp`; the former Registry identity `io.github.antonbaider/remcp` remains inactive. Release preflight still checks that legacy Registry identity and fails closed if it ever reappears for the same production remote. Manual `workflow_dispatch` runs remain validation-only and never publish Registry metadata.
 
-OpenAI/Codex local or workspace marketplace discovery uses `.agents/plugins/marketplace.json` with a structured local source pointing at the repository root. Claude-compatible hosts can use `.claude-plugin/marketplace.json`. GitHub Copilot CLI and VS Code can also register this repository through `.github/plugin/marketplace.json` while the Awesome Copilot listing is under review.
+OpenAI/Codex local or workspace marketplace discovery uses `.agents/plugins/marketplace.json` with a structured local source pointing at the repository root. Claude-compatible hosts can use `.claude-plugin/marketplace.json`. GitHub Copilot CLI and VS Code may still support explicitly configured portable packages, but the Awesome Copilot directory submission was rejected on October 7, 2026 because maintainers considered the broad remote-control attack surface unnecessary. Do not market these hosts as directory integrations; a new submission would need to address the security/product-fit feedback.
 
 ## Validation
 

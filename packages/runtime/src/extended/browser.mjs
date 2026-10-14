@@ -317,20 +317,41 @@ export async function browserCapabilityAvailable(endpoint, timeoutMs = 500) {
   }
 }
 
+// Validating every tab sequentially can require hundreds of serial DNS lookups,
+// making browser_tabs exceed the relay's deadline on machines with many tabs.
+// Keep DNS and security validation, but bound both the work and its concurrency.
+export async function filterBrowserTargets(list, { validate = assertResolvedPageUrl } = {}) {
+  if (!Array.isArray(list)) return [];
+  const candidates = [];
+  for (const item of list) {
+    if (!item || item.type !== 'page' || !item.webSocketDebuggerUrl) continue;
+    candidates.push(item);
+    if (candidates.length >= 1000) break;
+  }
+  const safe = new Array(candidates.length).fill(false);
+  let cursor = 0;
+  await Promise.all(Array.from({ length: Math.min(8, candidates.length) }, async () => {
+    while (cursor < candidates.length) {
+      const index = cursor++;
+      try {
+        await validate(candidates[index].url);
+        safe[index] = true;
+      } catch {
+        // Exclude unsafe/unresolvable pages without exposing them to the caller.
+      }
+    }
+  }));
+  const targets = [];
+  for (let i = 0; i < candidates.length && targets.length < 500; i++) {
+    if (safe[i]) targets.push(candidates[i]);
+  }
+  return targets;
+}
+
 export async function listBrowserTargets(endpoint) {
   assertBrowserRemoteEnabled();
   await ensureBrowserEndpoint(endpoint);
-  const list = await requestJson('/json/list', endpoint);
-  if (!Array.isArray(list)) return [];
-  const targets = [];
-  for (const item of list) {
-    if (!item || item.type !== 'page' || !item.webSocketDebuggerUrl) continue;
-    try {
-      await assertResolvedPageUrl(item.url);
-      targets.push(item);
-    } catch {}
-  }
-  return targets;
+  return filterBrowserTargets(await requestJson('/json/list', endpoint));
 }
 
 function validatedTargetWebSocketUrl(target, endpoint) {

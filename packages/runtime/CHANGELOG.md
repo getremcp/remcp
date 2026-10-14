@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.147 — 2026-10-14
+
+- Accelerated Chrome CDP tab discovery by validating existing page URLs with eight concurrent, bounded DNS/safety workers instead of sequential lookups.
+- Limited enumeration to 1,000 candidate pages and 500 returned tabs while retaining ordering and the existing private-network/unsafe-scheme safety policy.
+- Added regression coverage for concurrent discovery, ordered output, bounded work, and blocked pages; tool schemas and the 83-operation MCP surface remain unchanged.
+
 ## 0.2.146 — 2026-10-04
 
 - No local runtime tool behavior or schema changes. This patch keeps `@remcp/runtime` aligned with the ReMCP 0.2.146 OpenAI submission-metadata release.
