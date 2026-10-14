@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.148 — 2026-10-14
+
+- Request Chromium-native `--restore-last-session` only when the dedicated ReMCP browser profile has a crashed exit marker and persisted tab session files.
+- Preserve intentional clean browser shutdown and first-run behavior; avoid following symlinked session directories or files.
+- Add cross-platform regression coverage for interrupted, clean, missing, malformed, new, and symlinked browser session profiles.
+- No new tools or MCP schema changes.
+
 ## 0.2.147 — 2026-10-14
 
 - Accelerated Chrome CDP tab discovery by validating existing page URLs with eight concurrent, bounded DNS/safety workers instead of sequential lookups.

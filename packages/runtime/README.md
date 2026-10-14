@@ -64,6 +64,8 @@ discovery for new clients.
 
 For browser typing, `browser_text` is the visible DOM locator while `text` is the Unicode payload. `browser_action(action="scroll")` accepts page/element deltas or direction/wheel steps and scrolls the page or nearest scrollable ancestor; `scroll_into_view` remains the separate semantic reveal operation.
 
+When ReMCP auto-launches Chrome/Edge for local CDP, it uses a dedicated ReMCP browser profile. If that browser was interrupted (for example during an agent upgrade), and Chromium has saved tabs in that profile, the next launch requests Chromium's own last-session restoration instead of opening a new `about:blank` tab. A clean browser shutdown never triggers automatic reopening. This inspects only local session metadata, never reads or transmits tab URLs to ReMCP's relay. The browser itself controls which tabs can actually be recovered.
+
 For frontend QA, use semantic data to operate the page and rendered pixels to verify it: `browser_action(action="set_viewport")` sets an exact responsive-test viewport, `browser_wait` waits for the real application state, and `browser_snapshot(include_screenshot=true, selector=...)` recenters the component, returns its bounds, and attaches the real CDP-rendered viewport PNG. This intentionally treats screenshots as the visual oracle without making screenshot-driven coordinate guessing the primary control path.
 
 `set_config_value` remains deliberately narrow: it can change only `telemetryEnabled`,
