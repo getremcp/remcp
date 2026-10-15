@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.150 — 2026-10-15
+
+- Read-only browser tab discovery and semantic snapshots no longer auto-launch a separate Chromium browser when CDP is unavailable.
+- Give a clear Accessibility fallback (`ui_snapshot` / `ui_find`) without changing existing typed `structuredContent` for empty and non-empty lists.
+- Keep explicit navigation as the sole browser auto-launch entry point, with existing CDP loopback and target safety controls.
+- Add five regression tests. No new MCP tools or schemas; the 83-operation runtime catalog is preserved.
+
+
 ## 0.2.149 — 2026-10-14
 
 - Automatically snapshot raw, local-only Chromium session files on crashed ReMCP CDP profiles before browser auto-launch; preserve orphaned tabs and prior snapshots without leaking URLs.

@@ -379,12 +379,21 @@ jobs:
               --header 'Cache-Control: no-cache' \
               "https://registry.npmjs.org/$encoded/$version" >/dev/null 2>&1
           }
+          # Metadata can become visible before npm's CDN serves the tarball.
+          # A successful npm install needs actual archive bytes, not just JSON.
+          registry_archives_ready() {
+            for name in runtime remcp; do
+              curl --fail --silent --show-error --location --max-time 15 \
+                --header 'Cache-Control: no-cache' --output /dev/null \
+                "https://registry.npmjs.org/@remcp/$name/-/$name-$version.tgz" >/dev/null 2>&1 || return 1
+            done
+          }
           # npm trusted publishing can accept a version and then keep it in processing for several
           # minutes. Give the registry ten minutes to expose both exact versions, and bypass caches
-          # so a stale 404 cannot consume the whole readiness window.
+          # so a stale 404 cannot consume the whole readiness window. Require downloadable tarballs too.
           ready=0
           for attempt in {1..60}; do
-            if registry_has '@remcp%2Fruntime' && registry_has '@remcp%2Fremcp'; then
+            if registry_has '@remcp%2Fruntime' && registry_has '@remcp%2Fremcp' && registry_archives_ready; then
               ready=1
               break
             fi
@@ -645,8 +654,17 @@ jobs:
             curl --fail --silent --show-error --header 'Cache-Control: no-cache' \
               "https://registry.npmjs.org/$encoded/$version" >/dev/null 2>&1
           }
+          # Metadata can become visible before npm's CDN serves the tarball.
+          # A successful npm install needs actual archive bytes, not just JSON.
+          registry_archives_ready() {
+            for name in runtime remcp; do
+              curl --fail --silent --show-error --location --max-time 15 \
+                --header 'Cache-Control: no-cache' --output /dev/null \
+                "https://registry.npmjs.org/@remcp/$name/-/$name-$version.tgz" >/dev/null 2>&1 || return 1
+            done
+          }
           for attempt in {1..60}; do
-            if registry_has '@remcp%2Fruntime' && registry_has '@remcp%2Fremcp'; then
+            if registry_has '@remcp%2Fruntime' && registry_has '@remcp%2Fremcp' && registry_archives_ready; then
               break
             fi
             if (( attempt == 60 )); then
