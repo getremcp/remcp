@@ -40,7 +40,7 @@
           "Read a README from one of my ReMCP computers, summarize it without changing it, and show the native result here in chat.",
           "Inspect what is visible on one paired computer using semantic UI first, and use a screenshot only when visual proof adds value."
         ],
-        "brandColor": "#0A0A0C",
+        "brandColor": "#15191F",
         "brandColorDark": "#F2F2F2",
         "composerIcon": "./assets/remcp-icon.png",
         "logo": "./assets/remcp-icon.png",
