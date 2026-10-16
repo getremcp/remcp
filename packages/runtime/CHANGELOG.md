@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.151 — 2026-10-16
+
+- Modularize core and extended MCP catalogs, retaining all 83 operation schemas and handlers.
+- Extract Windows MSAA and macOS window-target code to small shared modules.
+- Preserve user-visible output and maintain existing desktop/browser security checks.
+- Refactor-only patch: no new MCP tool, access policy, or behavior change.
+
+
 ## 0.2.150 — 2026-10-15
 
 - Read-only browser tab discovery and semantic snapshots no longer auto-launch a separate Chromium browser when CDP is unavailable.

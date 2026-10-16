@@ -686,7 +686,7 @@ test('Linux direct app launch honors cwd rather than silently accepting it', { s
 });
 
 test('Windows adapter source keeps the rich UIA/MSAA path compatible with Windows PowerShell 5.1', async () => {
-  const windowsSource = await readFile(new URL('../src/extended/desktop-windows.mjs', import.meta.url), 'utf8');
+  const windowsSource = (await readFile(new URL('../src/extended/desktop-windows.mjs', import.meta.url), 'utf8')) + (await readFile(new URL('../src/extended/desktop-windows-msaa.mjs', import.meta.url), 'utf8'));
   const commonSource = await readFile(new URL('../src/extended/common.mjs', import.meta.url), 'utf8');
 
   for (const marker of [
