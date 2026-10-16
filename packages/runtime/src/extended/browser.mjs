@@ -414,8 +414,22 @@ export async function filterBrowserTargets(list, { validate = assertResolvedPage
 
 export async function listBrowserTargets(endpoint) {
   assertBrowserRemoteEnabled();
-  await ensureBrowserEndpoint(endpoint);
-  return filterBrowserTargets(await requestJson('/json/list', endpoint));
+  // Reading tabs and page semantics must not launch a separate Chromium/profile.
+  // Only an explicit browser_navigate(action=new_tab) can bootstrap an isolated browser.
+  const base = endpointUrl(endpoint); // keeps the CDP address loopback-only
+  let list;
+  try {
+    list = await requestJson('/json/list', endpoint, { timeout_ms: 1500 });
+  } catch (error) {
+    const message = String(error?.message || '');
+    // Keep HTTP/policy/oversize/malformed-response errors distinct from an unavailable CDP.
+    if (!/fetch failed|ECONNREFUSED|ECONNRESET|ETIMEDOUT|abort|timed out|network error/i.test(message)) throw error;
+    const configured = Boolean(endpoint || process.env.REMCP_CDP_URL);
+    const label = configured ? 'The configured CDP endpoint' : 'Browser CDP endpoint';
+    throw new Error(`${label} is unavailable at ${base.origin}. Read-only browser_tabs and browser_snapshot do not launch a browser. Use ui_snapshot and ui_find for the existing browser window; do not retry this CDP endpoint unchanged. Only browser_navigate(action=new_tab), when explicitly requested, may start a local isolated browser.`);
+  }
+  // Retain the current bounded concurrent DNS/security checks for up to 1000 tabs.
+  return filterBrowserTargets(list);
 }
 
 function validatedTargetWebSocketUrl(target, endpoint) {
@@ -855,12 +869,18 @@ async function callPageFunction(session, functionDeclaration, args = [], awaitPr
 
 export async function browserTabs(args = {}) {
   const targets = await listBrowserTargets(args.endpoint);
-  return jsonResult(targets.filter(item => item.type === 'page').slice(0, 500).map(item => ({
+  const pages = targets.filter(item => item.type === 'page').slice(0, 500).map(item => ({
     id: boundedText(item.id, 256),
     title: boundedText(item.title, 1000),
     url: boundedText(item.url, 4096),
     description: boundedText(item.description, 1000),
-  })));
+  }));
+  const result = jsonResult(pages);
+  // Keep the typed empty-array contract while providing a native fallback hint.
+  if (!pages.length) {
+    result.content = [{ type: 'text', text: 'CDP is connected, but no debuggable Chromium tabs are available. Use ui_snapshot and ui_find to inspect existing browser windows without CDP; only open a new tab when explicitly requested.' }];
+  }
+  return result;
 }
 
 async function waitForHistoryReady(session, expectedUrl, timeoutMs) {
