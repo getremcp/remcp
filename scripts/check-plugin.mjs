@@ -95,6 +95,29 @@ function assertPluginIconLegible(buffer, brandColor) {
   assert.ok(brightPixels / total >= 0.08, 'plugin icon must contain a substantial bright mark that contrasts on the brand background');
 }
 
+const COMPACT_HOSTED_TOOLS = Object.freeze([
+  'list_devices','manage_account','read_file','manage_files','run_terminal',
+  'control_computer','view_image','control_browser','manage_system','manage_documents',
+]);
+const REVIEW_ACCOUNT_TOOLS = Object.freeze([
+  'list_devices','who_am_i','create_pairing_command','get_recent_tool_calls',
+  'get_usage_statistics','get_configuration','ping_device','rename_device',
+  'enable_device','disable_device','remove_device',
+]);
+
+// Validate reviewer prompts against the actual public tool profile instead
+// of the historical 10-tool private catalog. Review mode needs the checked-in
+// runtime catalog, not a hard-coded list of 83 rapidly evolving operation names.
+export function hostedToolNamesForProfile(root, profile = 'compact') {
+  if (profile === 'compact') return new Set(COMPACT_HOSTED_TOOLS);
+  assert.equal(profile, 'review', 'unknown REMCP_PUBLIC_TOOL_PROFILE');
+  const raw = JSON.parse(readFileSync(join(root, 'src/tool-catalog.json'), 'utf8'));
+  assert.ok(Array.isArray(raw) && raw.length === 83, 'review profile requires the pinned 83-operation runtime catalog');
+  const names = [...REVIEW_ACCOUNT_TOOLS, ...raw.map(tool => tool.name)];
+  assert.equal(new Set(names).size, 94, 'review profile must have 94 unique, independently reviewable tools');
+  return new Set(names);
+}
+
 export function checkPlugin(root = fileURLToPath(new URL('..', import.meta.url))) {
   const read = file => readFileSync(join(root, file));
   const plugin = JSON.parse(read('plugin.json'));
@@ -109,7 +132,7 @@ export function checkPlugin(root = fileURLToPath(new URL('..', import.meta.url))
   const openAi = plugin.extensions['com.openai'];
   const review = openAi.review;
   const publication = openAi.publication;
-  const hostedTools = new Set(['list_devices','manage_account','read_file','manage_files','run_terminal','control_computer','view_image','control_browser','manage_system','manage_documents']);
+  const hostedTools = hostedToolNamesForProfile(root, String(process.env.REMCP_PUBLIC_TOOL_PROFILE || 'compact').trim());
   assert.equal(iface.supportURL, 'https://remcp.site/support', 'MCP directory submissions need the public HTTPS support page');
   assert.equal(review?.test_cases?.positive?.length, 5, 'initial MCP review needs exactly five positive cases');
   assert.equal(review?.test_cases?.negative?.length, 3, 'initial MCP review needs exactly three negative cases');

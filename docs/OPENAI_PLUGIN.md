@@ -16,6 +16,14 @@ OpenAI direct plugin detail URLs contain a platform-generated opaque connector i
 final ReMCP direct URL must be copied from the published directory card rather than guessed from the
 plugin name.
 
+> **Public review blocker (October 2026):** current production is still on the compact
+> 10-tool private-connection profile, which does not meet the public directory's
+> independent-tool exposure rule. Before resubmitting, stage and verify the 94-tool
+> `REMCP_PUBLIC_TOOL_PROFILE=review` configuration, regenerate the release submission
+> artifacts under that profile, run scans and reviewer sandbox tests, then use the
+> new Plugins ZIP submission flow. See [review-tool-profile.md](runbooks/openai-review-tool-profile.md).
+> Do not claim the current private ZIP is already an approved public plugin.
+
 The rest of this document is for **developers and reviewers**.
 
 ReMCP ships a production OpenAI Plugins package for ChatGPT and Codex. It combines the hosted remote
