@@ -12,7 +12,7 @@ import { browserAction, browserCapabilityAvailable, browserSnapshot } from './br
 import { findOcrText, ocrImage } from './ocr.mjs';
 
 
-import { adapter, cachedUiNodes, clipboard, keyboard, latestUiSnapshot, listWindows, pointer, resultValue, sleep, uiAction, uiSnapshot, windowAction, withResolvedUiLabel } from './desktop-core.mjs';
+import { adapter, cachedUiNodes, clipboard, keyboard, invalidateUiSnapshotCache, listWindows, pointer, resultValue, sleep, uiAction, uiSnapshot, windowAction, withResolvedUiLabel } from './desktop-core.mjs';
 
 export function matches(node, args) {
   const id = optionalString(args.id);
@@ -151,7 +151,7 @@ export async function waitForUi(args = {}) {
     do {
       attempts += 1;
       // A wait must observe fresh state, not repeatedly query the same 5-second cache.
-      latestUiSnapshot = null;
+      invalidateUiSnapshotCache();
       evaluation = await uiConditionMatches(args, condition);
       if (evaluation.matched) {
         return jsonResult({
@@ -177,13 +177,13 @@ export async function waitForUi(args = {}) {
     });
   }
 
-  latestUiSnapshot = null;
+  invalidateUiSnapshotCache();
   const baseline = state === 'changed' ? await uiMatches(args) : [];
   const baselineFingerprint = state === 'changed' ? uiFingerprint(baseline) : null;
   let nodes = baseline;
   do {
     attempts += 1;
-    latestUiSnapshot = null;
+    invalidateUiSnapshotCache();
     nodes = await uiMatches(args);
     const changed = state === 'changed' && uiFingerprint(nodes) !== baselineFingerprint;
     if ((state === 'present' && nodes.length) || (state === 'absent' && !nodes.length) || changed) {
