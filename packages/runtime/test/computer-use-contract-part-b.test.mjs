@@ -1,3 +1,6 @@
+import { readDesktopSource } from './helpers/desktop-source.mjs';
+import { readBrowserSource } from './helpers/browser-source.mjs';
+import { readLinuxSource } from './helpers/linux-source.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, readFile, rm, stat } from 'node:fs/promises';
@@ -16,7 +19,7 @@ const tool = name => {
 
 
 test('native Wayland window geometry actions verify the observed result before success', async () => {
-  const linuxSource = await readFile(new URL('../src/extended/desktop-linux.mjs', import.meta.url), 'utf8');
+  const linuxSource = await readLinuxSource();
   const body = linuxSource.match(/async function nativeWaylandWindowAction\(row, action, args\) \{[\s\S]*?(?=export async function windowAction)/)?.[0] || '';
 
   assert.match(
@@ -37,7 +40,7 @@ test('native Wayland window geometry actions verify the observed result before s
 });
 
 test('native Wayland global window actions require verified target focus and close verifies the target disappeared', async () => {
-  const linuxSource = await readFile(new URL('../src/extended/desktop-linux.mjs', import.meta.url), 'utf8');
+  const linuxSource = await readLinuxSource();
   const body = linuxSource.match(/async function nativeWaylandWindowAction\(row, action, args\) \{[\s\S]*?(?=export async function windowAction)/)?.[0] || '';
 
   assert.match(
@@ -68,8 +71,8 @@ test('native Wayland global window actions require verified target focus and clo
 });
 
 test('type_text prefers window-scoped semantic replacement before Wayland compositor focus', async () => {
-  const desktopSource = await readFile(new URL('../src/extended/desktop.mjs', import.meta.url), 'utf8');
-  const linuxSource = await readFile(new URL('../src/extended/desktop-linux.mjs', import.meta.url), 'utf8');
+  const desktopSource = await readDesktopSource();
+  const linuxSource = await readLinuxSource();
   const typeBody = desktopSource.match(/export async function typeText\(args = \{\}\) \{[\s\S]*?(?=async function uiElementCenter)/)?.[0] || '';
 
   assert.match(
@@ -94,7 +97,7 @@ test('type_text prefers window-scoped semantic replacement before Wayland compos
 });
 
 test('Linux ui_action falls back to a bounded pointer click only for click/invoke', async () => {
-  const linuxSource = await readFile(new URL('../src/extended/desktop-linux.mjs', import.meta.url), 'utf8');
+  const linuxSource = await readLinuxSource();
 
   assert.match(
     linuxSource,
@@ -120,8 +123,8 @@ test('Linux ui_action falls back to a bounded pointer click only for click/invok
 });
 
 test('Linux accessibility retries false-empty AT-SPI walks before using the conservative fallback depth', async () => {
-  const linuxSource = await readFile(new URL('../src/extended/desktop-linux.mjs', import.meta.url), 'utf8');
-  const desktopSource = await readFile(new URL('../src/extended/desktop.mjs', import.meta.url), 'utf8');
+  const linuxSource = await readLinuxSource();
+  const desktopSource = await readDesktopSource();
 
   assert.match(
     linuxSource,
@@ -146,7 +149,7 @@ test('Linux accessibility retries false-empty AT-SPI walks before using the cons
 });
 
 test('browser_find derives native HTML roles when no explicit ARIA role is present', async () => {
-  const browserSource = await readFile(new URL('../src/extended/browser.mjs', import.meta.url), 'utf8');
+  const browserSource = await readBrowserSource();
 
   assert.match(browserSource, /function semanticRole\(el\)/);
   assert.match(browserSource, /\^h\[1-6\]\$/);
@@ -284,7 +287,7 @@ test('Linux Wayland cursor telemetry fails closed instead of reporting stale XWa
     else process.env.WAYLAND_DISPLAY = previousWaylandDisplay;
   }
 
-  const desktopSource = await readFile(new URL('../src/extended/desktop.mjs', import.meta.url), 'utf8');
+  const desktopSource = await readDesktopSource();
   assert.match(
     desktopSource,
     /const parsedCursor = parse\(cursorResult, \{ x:null, y:null \}\);/,
