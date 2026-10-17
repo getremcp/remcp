@@ -41,3 +41,30 @@ test('browser discovery preserves the built-in private-address and unsafe-scheme
   ]);
   assert.deepEqual(result.map(item => item.id), ['https', 'blank']);
 });
+
+
+test('shared-host tab discovery still enforces per-URL scheme and credentials checks', async () => {
+  const pages = [
+    tab('safe0','https://example.test/doc1'),
+    tab('userinfo','https://username:password@example.test/doc2'),
+    tab('safe1','https://example.test/doc3'),
+    tab('unsafe-scheme','file:///tmp/private'),
+    tab('loopback','http://127.0.0.1:3000/private'),
+    tab('safe2','https://example.test/doc4'),
+    tab('blank','about:blank'),
+  ];
+  const result = await filterBrowserTargets(pages);
+  assert.deepEqual(result.map(page => page.id),['safe0','safe1','safe2','blank']);
+});
+
+test('custom URL-specific filters do not silently cache by shared hostname', async () => {
+  const pages = Array.from({ length:40 }, (_,i)=>tab('id'+i,'https://example.test/' + i));
+  let invoked=0;
+  const result=await filterBrowserTargets(pages,{validate:async url=>{
+    invoked++;
+    if(url.endsWith('/9'))throw Error('blocked path');
+  }});
+  assert.equal(invoked,40,'URL-specific security policies must run on every page');
+  assert.equal(result.length,39);
+  assert.ok(!result.some(page=>page.url.endsWith('/9')));
+});

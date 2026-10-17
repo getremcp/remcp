@@ -326,8 +326,10 @@ export async function createGuardedNewTab(url, args) {
 }
 
 export async function withTarget(args, callback) {
+  // chooseTarget already validated this exact discovered URL during this call.
+  // The actual page URL is independently checked before and after the action.
+  // Avoid a redundant DNS check for the same target metadata.
   const target = await chooseTarget(args);
-  await assertResolvedPageUrl(target.url);
   const endpoint = endpointUrl(args.endpoint);
   const production = process.env.NODE_ENV === 'production';
   const key = production ? productionSessionKey(endpoint, target) : '';

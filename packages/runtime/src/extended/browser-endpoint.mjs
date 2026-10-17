@@ -396,12 +396,33 @@ export async function filterBrowserTargets(list, { validate = assertResolvedPage
     if (candidates.length >= 1000) break;
   }
   const safe = new Array(candidates.length).fill(false);
+  // A single tab-list request may contain hundreds of pages on the same host.
+  // Every URL is still checked independently for scheme, credentials and private
+  // targets; the bounded DNS/allowlist decision is shared *only within this call*.
+  // Never cache across requests: every new call must revalidate DNS rebinding.
+  const sharedHostChecks = validate === assertResolvedPageUrl ? new Map() : null;
   let cursor = 0;
   await Promise.all(Array.from({ length: Math.min(8, candidates.length) }, async () => {
     while (cursor < candidates.length) {
       const index = cursor++;
       try {
-        await validate(candidates[index].url);
+        const rawUrl = candidates[index].url;
+        if (sharedHostChecks) {
+          const parsedUrl = safePageUrl(rawUrl);
+          // about:blank has no DNS and should not alias a real host.
+          const host = parsedUrl === 'about:blank' ? null : normalizedHost(new URL(parsedUrl).hostname);
+          if (host) {
+            if (!sharedHostChecks.has(host)) {
+              sharedHostChecks.set(host, Promise.resolve().then(() => validate(parsedUrl)));
+            }
+            await sharedHostChecks.get(host);
+          } else {
+            await validate(parsedUrl);
+          }
+        } else {
+          // Custom validators can have URL/path-specific policy: do not coalesce.
+          await validate(rawUrl);
+        }
         safe[index] = true;
       } catch {
         // Exclude unsafe/unresolvable pages without exposing them to the caller.
