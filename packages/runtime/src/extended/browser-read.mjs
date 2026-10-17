@@ -212,6 +212,11 @@ export function findExpression(args) {
       const tag = el.tagName.toLowerCase();
       if (/^h[1-6]$/.test(tag)) return 'heading';
       if (tag === 'button') return 'button';
+      // HTML landmark elements have implicit ARIA roles even without a role attribute.
+      if (tag === 'nav') return 'navigation';
+      if (tag === 'main') return 'main';
+      if (tag === 'aside') return 'complementary';
+      if (tag === 'article') return 'article';
       if (tag === 'a' && el.hasAttribute('href')) return 'link';
       if (tag === 'textarea') return 'textbox';
       if (tag === 'select') return el.multiple || el.size > 1 ? 'listbox' : 'combobox';

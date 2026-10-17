@@ -207,8 +207,13 @@ test('browser_find ranks exact semantic text targets ahead of ancestor text cont
   append(section, makeElement('h1', 'Sign in to ReMCP'));
   const button = append(section, makeElement('button', 'Continue with Google'));
   append(button, makeElement('span', 'Continue with Google'));
+  const navigation = append(body, makeElement('nav', 'Docs and status'));
+  const sidebar = append(body, makeElement('aside', 'Sidebar'));
+  const article = append(body, makeElement('article', 'Release notes'));
+  const explicitOverride = append(body, makeElement('nav', 'Override', { role:'none' }));
 
-  const all = [html, body, main, section, ...section.children, ...button.children];
+  const all = [html, body, main, section, ...section.children, ...button.children,
+    navigation, sidebar, article, explicitOverride];
   const document = {
     documentElement: html,
     querySelectorAll(selector) {
@@ -232,6 +237,13 @@ test('browser_find ranks exact semantic text targets ahead of ancestor text cont
   assert.equal(buttonMatches.length, 1);
   assert.equal(buttonMatches[0].tag, 'button');
   assert.equal(buttonMatches[0].role, 'button');
+  assert.deepEqual(run({ role:'navigation' }).map(item => item.tag), ['nav'],
+    'an unannotated HTML <nav> must be discoverable as navigation');
+  assert.deepEqual(run({ role:'main' }).map(item => item.tag), ['main']);
+  assert.deepEqual(run({ role:'complementary' }).map(item => item.tag), ['aside']);
+  assert.deepEqual(run({ role:'article' }).map(item => item.tag), ['article']);
+  assert.deepEqual(run({ role:'none' }).map(item => item.text), ['Override'],
+    'an explicit ARIA role must take precedence over the native semantic role');
 });
 
 test('headless Linux computer_snapshot skips desktop probes without false error noise', { skip: process.platform !== 'linux' }, async () => {
