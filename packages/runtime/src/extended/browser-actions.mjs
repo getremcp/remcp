@@ -12,6 +12,7 @@ import { clamp, commandExists, jsonResult, optionalString, requireEnum, spawnDet
 import { assertBrowserRemoteEnabled, assertSafeEvaluationExpression } from './browser-endpoint.mjs';
 import { callPageFunction, evaluate, withTarget } from './browser-session.mjs';
 import { browserNavigate, browserSnapshot, browserTabs, findExpression } from './browser-read.mjs';
+import { executeBrowserWorkflow, validateBrowserWorkflow } from './browser-workflow.mjs';
 
 export async function browserFind(args) {
   if (!(args.selector || args.text || args.role)) throw new Error('browser_find requires selector, text, or role; use browser_snapshot to enumerate page structure');
@@ -89,11 +90,26 @@ export const PAGE_ELEMENT_ACTION = `function(selector, needle, action, value) {
     el.dispatchEvent(new Event('input', {bubbles:true}));
     el.dispatchEvent(new Event('change', {bubbles:true}));
   }
-  const b = el.getBoundingClientRect();
-  if (action === 'click' && (!b.width || !b.height)) throw new Error('Element has no clickable bounds');
+  let b = el.getBoundingClientRect();
+  if (action === 'click') {
+    // An inline element can span several text fragments. Its bounding box center
+    // can point to a completely unrelated input (or even a destructive button).
+    // Only return a point whose actual hit target belongs to this element.
+    const rectangles = Array.from(el.getClientRects());
+    const safe = rectangles.find(rect => {
+      if (!rect.width || !rect.height) return false;
+      const x = rect.x + rect.width / 2, y = rect.y + rect.height / 2;
+      const target = document.elementFromPoint(x, y);
+      return target && (target === el || el.contains(target));
+    });
+    if (!safe) throw new Error('Element has no unobstructed clickable fragment');
+    b = safe;
+  }
   return {
     tag: el.tagName.toLowerCase(),
-    value: 'value' in el ? String(el.value) : '',
+    // Never expose password or credential field contents in tool responses.
+    value: 'value' in el && !el.matches('input[type="password"],input[autocomplete="current-password"],input[autocomplete="new-password"],input[autocomplete="one-time-code"]') ?
+      String(el.value) : '',
     x: b.x, y: b.y, width: b.width, height: b.height,
   };
 }`;
@@ -188,9 +204,17 @@ export function browserScrollDeltas(args = {}) {
 }
 
 export async function browserAction(args) {
-  const action = requireEnum(args.action, 'action', ['click', 'focus', 'type', 'set_value', 'select', 'scroll', 'scroll_into_view', 'upload', 'press', 'set_viewport', 'fill_form']);
+  const action = requireEnum(args.action, 'action', ['click', 'focus', 'type', 'set_value', 'select', 'scroll', 'scroll_into_view', 'upload', 'press', 'set_viewport', 'fill_form', 'workflow']);
   const formFields = action === 'fill_form' ? validateFormFields(args.fields) : null;
+  const workflowSteps = action === 'workflow' ?
+    validateBrowserWorkflow(args.steps, {validateFormFields}) : null;
   return withTarget(args, async (session, target) => {
+    if (action === 'workflow') {
+      const result = await executeBrowserWorkflow(session, workflowSteps, {
+        pageElementAction:PAGE_ELEMENT_ACTION, pageFillForm:PAGE_FILL_FORM,
+      });
+      return jsonResult({target_id:target.id, action, result});
+    }
     if (action === 'fill_form') {
       const result = await callPageFunction(session, PAGE_FILL_FORM, [formFields]);
       return jsonResult({target_id:target.id, action, result});
