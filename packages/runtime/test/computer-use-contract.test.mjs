@@ -1,3 +1,4 @@
+import { readLinuxSource } from './helpers/linux-source.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, readFile, rm, stat } from 'node:fs/promises';
@@ -164,7 +165,7 @@ test('Linux XWayland pixel geometry uses xwininfo absolute client coordinates', 
 });
 
 test('Linux Wayland inventory refreshes X11 rows after AT-SPI and XWayland focus avoids portal cycling when direct activation verifies', async () => {
-  const linuxSource = await readFile(new URL('../src/extended/desktop-linux.mjs', import.meta.url), 'utf8');
+  const linuxSource = await readLinuxSource();
   const listStart = linuxSource.indexOf('export async function listWindows() {');
   const listEnd = linuxSource.indexOf('async function windowMatch', listStart);
   const listBody = listStart >= 0 && listEnd > listStart ? linuxSource.slice(listStart, listEnd) : '';
@@ -206,7 +207,7 @@ test('Linux Wayland inventory refreshes X11 rows after AT-SPI and XWayland focus
 });
 
 test('Linux semantic typing rejects false AT-SPI writes and auto typing fails safely', async () => {
-  const linuxSource = await readFile(new URL('../src/extended/desktop-linux.mjs', import.meta.url), 'utf8');
+  const linuxSource = await readLinuxSource();
   const desktopSource = await readFile(new URL('../src/extended/desktop.mjs', import.meta.url), 'utf8');
 
   assert.match(
@@ -267,7 +268,7 @@ test('geometry-sensitive semantic actions refresh UI bounds instead of reusing t
 });
 
 test('Linux Wayland portal clicks keep a real press interval before release', async () => {
-  const linuxSource = await readFile(new URL('../src/extended/desktop-linux.mjs', import.meta.url), 'utf8');
+  const linuxSource = await readLinuxSource();
   const pointerBody = linuxSource.match(/export async function pointer\(args = \{\}\) \{[\s\S]*?(?=export async function dragDrop)/)?.[0] || '';
   assert.match(
     pointerBody,
@@ -316,7 +317,7 @@ test('Wayland EIS absolute pointer converts desktop coordinates into the selecte
 });
 
 test('Linux Wayland portal drag settles the source and preserves pressed state through one absolute target move', async () => {
-  const linuxSource = await readFile(new URL('../src/extended/desktop-linux.mjs', import.meta.url), 'utf8');
+  const linuxSource = await readLinuxSource();
   const dragBody = linuxSource.match(/export async function dragDrop\(args = \{\}\) \{[\s\S]*?(?=export async function scroll)/)?.[0] || '';
   assert.match(
     dragBody,
@@ -339,7 +340,7 @@ test('Linux Wayland portal drag settles the source and preserves pressed state t
 });
 
 test('Linux Wayland keyboard and key typing focus an explicit window target before dispatch', async () => {
-  const linuxSource = await readFile(new URL('../src/extended/desktop-linux.mjs', import.meta.url), 'utf8');
+  const linuxSource = await readLinuxSource();
 
   const keyboardBody = linuxSource.match(/export async function keyboard\(args = \{\}\) \{[\s\S]*?(?=export async function typeTextKeys)/)?.[0] || '';
   const typeBody = linuxSource.match(/export async function typeTextKeys\(value, args = \{\}\) \{[\s\S]*?(?=function buttonNumber)/)?.[0] || '';
