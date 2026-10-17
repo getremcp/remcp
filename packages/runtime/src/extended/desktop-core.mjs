@@ -20,6 +20,12 @@ export const adapter = process.platform === 'win32' ? windows : process.platform
 export const UI_CACHE_TTL_MS = 5_000;
 export let latestUiSnapshot = null;
 
+// ES module imports are read-only bindings. All snapshot invalidation must be
+// owned by this module so wait_for_ui can request a fresh tree safely.
+export function invalidateUiSnapshotCache() {
+  latestUiSnapshot = null;
+}
+
 export function suggestedUiAction(node = {}) {
   const role = String(node.role || '').toLowerCase();
   const patterns = Array.isArray(node.patterns) ? node.patterns.map(value => String(value).toLowerCase()) : [];
