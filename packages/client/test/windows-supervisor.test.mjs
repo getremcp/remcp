@@ -22,6 +22,12 @@ test('Windows wrapper preserves escaped percent signs in unusual private paths',
   assert.match(wrapper, /call "C:\\Users\\percent%%user\\remcp\.cmd"/);
 });
 
+test('POSIX runner fixtures simulating win32 preserve their absolute test prefix', () => {
+  const launcher = windowsServiceLauncherText('/tmp/remcp-test/bin/remcp.cmd', '/usr/local/bin/node');
+  assert.match(launcher, /NPM_CONFIG_PREFIX=\/tmp\/remcp-test\/bin/);
+  assert.match(launcher, /PATH=\/usr\/local\/bin;%PATH%/);
+});
+
 test('Scheduled Task recovery retains a single instance, battery operation, and unbounded uptime', () => {
   const command = windowsTaskReliabilityCommand('ReMCP Agent');
   assert.match(command, /New-ScheduledTaskSettingsSet/);

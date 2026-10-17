@@ -8,8 +8,12 @@ function windowsBatchValue(value) {
 }
 
 export function windowsServiceLauncherText(cliPath, nodePath) {
-  const prefix = path.win32.dirname(cliPath);
-  const nodeDir = path.win32.dirname(nodePath);
+  // Tests can simulate win32 from a POSIX runner with injected temporary paths.
+  // Native Windows paths always use win32 parsing; POSIX-shaped fixtures keep their roots.
+  const dirname = file => /^[A-Za-z]:[\\/]/.test(file) || file.includes('\\')
+    ? path.win32.dirname(file) : path.dirname(file);
+  const prefix = dirname(cliPath);
+  const nodeDir = dirname(nodePath);
   return [
     '@echo off',
     'setlocal DisableDelayedExpansion',
