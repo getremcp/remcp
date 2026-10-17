@@ -1,3 +1,4 @@
+import { readBrowserSource } from './helpers/browser-source.mjs';
 import { readLinuxSource } from './helpers/linux-source.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -147,7 +148,7 @@ test('Linux accessibility retries false-empty AT-SPI walks before using the cons
 });
 
 test('browser_find derives native HTML roles when no explicit ARIA role is present', async () => {
-  const browserSource = await readFile(new URL('../src/extended/browser.mjs', import.meta.url), 'utf8');
+  const browserSource = await readBrowserSource();
 
   assert.match(browserSource, /function semanticRole\(el\)/);
   assert.match(browserSource, /\^h\[1-6\]\$/);
