@@ -95,3 +95,82 @@ test('semantic element results redact credential input values', () => {
   assert.equal(result.value,'');
   assert.equal(JSON.stringify(result).includes('dont-leak-me'),false);
 });
+
+
+test('browser workflow origin is fixed for one task, without leaking target URLs', async () => {
+  const { assertWorkflowOrigin } = await import('../src/extended/browser-workflow.mjs');
+  assert.equal(assertWorkflowOrigin(null, 'about:blank'), 'null');
+  assert.equal(assertWorkflowOrigin('https://example.com', 'https://example.com/next?q=1'), 'https://example.com');
+  assert.throws(
+    () => assertWorkflowOrigin('https://example.com', 'https://other.example.net/credential'),
+    error => error.message === 'Browser workflow origin changed' && !error.message.includes('credential'),
+  );
+  assert.throws(
+    () => assertWorkflowOrigin('null', 'not a URL'),
+    /origin could not be verified/,
+  );
+});
+
+test('cross-origin redirect after a completed field edit blocks every later edit', async () => {
+  const secret='highly-confidential-form-value';
+  const steps=validate([
+    {action:'set_value',selector:'#first',value:secret},
+    {action:'set_value',selector:'#second',value:'do not write'},
+  ]);
+  let locationReads=0;
+  let writes=0;
+  const mock={async send(method, payload) {
+    assert.equal(method, 'Runtime.evaluate');
+    if (payload.expression === 'location.href') {
+      locationReads++;
+      return {result:{value:locationReads===1?'about:blank':'https://unexpected.example.test/redirect'}};
+    }
+    if (payload.expression.includes('workflow_origin_changed')) {
+      writes++;
+      return {result:{value:true}};
+    }
+    throw new Error('unexpected CDP operation');
+  }};
+  await assert.rejects(
+    executeBrowserWorkflow(mock, steps, {pageElementAction:'function(){return true}',pageFillForm:'function(){return true}'}),
+    error=>error.message.includes('step 2') && error.message.includes('1 steps completed') &&
+      !error.message.includes(secret) && !error.message.includes('unexpected.example.test'),
+  );
+  assert.equal(writes,1,'second field cannot be written after cross-origin navigation');
+});
+
+test('origin is checked in the same page-evaluation as a write to avoid a redirect race', async () => {
+  const steps=validate([{action:'set_value',selector:'#account',value:'private-account'}]);
+  const statements=[];
+  const mock={async send(method,payload){
+    assert.equal(method,'Runtime.evaluate');
+    if(payload.expression==='location.href')return {result:{value:'about:blank'}};
+    statements.push(payload.expression);
+    assert.throws(
+      ()=>runInNewContext(payload.expression,{
+        location:{origin:'https://unrelated.example.test'},
+      }),
+      /workflow_origin_changed/,
+    );
+    throw new Error('workflow_origin_changed');
+  }};
+  await assert.rejects(
+    executeBrowserWorkflow(mock,steps,{pageElementAction:'function(){return true}',pageFillForm:'function(){return true}'}),
+    error=>error.message.includes('step 1') && !error.message.includes('private-account'),
+  );
+  assert.equal(statements.length,1);
+  assert.ok(statements[0].includes('location.origin'));
+});
+
+test('workflow wait never treats an element on a redirected origin as a match', async () => {
+  const steps=validate([{action:'wait_for',condition:'selector',selector:'#confirmed',timeout_ms:150}]);
+  const mock={async send(method,payload){
+    if(payload.expression==='location.href')return {result:{value:'about:blank'}};
+    return {result:{value:{url:'https://other.example.test/receipt',matched:true}}};
+  }};
+  await assert.rejects(
+    executeBrowserWorkflow(mock,steps,{}),
+    error=>error.message.includes('step 1') && error.message.includes('Condition not satisfied') &&
+      !error.message.includes('other.example.test'),
+  );
+});

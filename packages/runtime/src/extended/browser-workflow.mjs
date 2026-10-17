@@ -2,7 +2,7 @@
 // A workflow is explicitly requested by the caller after inspecting the page.
 // No arbitrary JavaScript, cross-target access, file uploads or implicit submits.
 import { assertResolvedPageUrl } from './browser-endpoint.mjs';
-import { callPageFunction, evaluate } from './browser-session.mjs';
+import { evaluate } from './browser-session.mjs';
 
 const ACTIONS = new Set(['fill_form','set_value','select','focus','click','wait_for']);
 const CONDITIONS = new Set(['selector','text','url_contains','load']);
@@ -45,7 +45,28 @@ export function validateBrowserWorkflow(steps, { validateFormFields }) {
   });
 }
 
-async function waitForStep(session, step, started) {
+// A workflow is a single-page plan. Redirects across origins require a new
+// snapshot and a separate deliberate action, even if both URLs are public.
+export function assertWorkflowOrigin(expectedOrigin, currentUrl) {
+  let currentOrigin;
+  try { currentOrigin = new URL(currentUrl).origin; }
+  catch { throw new Error('Browser workflow page origin could not be verified'); }
+  if (expectedOrigin !== null && currentOrigin !== expectedOrigin) {
+    throw new Error('Browser workflow origin changed');
+  }
+  return currentOrigin;
+}
+
+// Enforce the origin in the exact same page JS evaluation that writes a field.
+// Caller-supplied selectors/values stay JSON data, not arbitrary JavaScript.
+async function guardedPageFunction(session, trustedFunction, args, origin) {
+  const expression = '(() => { if (location.origin !== ' + JSON.stringify(origin) +
+    ') throw new Error("workflow_origin_changed"); return (' + trustedFunction +
+    ')(...' + JSON.stringify(args) + '); })()';
+  return evaluate(session, expression);
+}
+
+async function waitForStep(session, step, started, expectedOrigin) {
   const deadline = Math.min(started + 12000, Date.now() + step.timeout_ms);
   const expression = step.condition === 'selector' ?
     'Boolean(document.querySelector('+JSON.stringify(step.criterion)+'))'
@@ -67,7 +88,8 @@ async function waitForStep(session, step, started) {
       await new Promise(resolve=>setTimeout(resolve, 75));
       continue;
     }
-    // Never accept a match on a private or unsafe page.
+    // Never accept a match on an unsafe page or an unexpected origin.
+    assertWorkflowOrigin(expectedOrigin, state?.url);
     await assertResolvedPageUrl(state?.url);
     if (state?.matched) return;
     await new Promise(resolve=>setTimeout(resolve, 75));
@@ -80,25 +102,28 @@ export async function executeBrowserWorkflow(session, steps, {
 }) {
   const started = Date.now();
   const completed = [];
+  let boundOrigin = null;
   for (let index = 0; index < steps.length; index++) {
     const step = steps[index];
     if (Date.now() - started > 12000) throw new Error('Workflow exceeded 12 second budget after '+completed.length+' steps');
     try {
       const currentUrl = await evaluate(session, 'location.href');
+      const currentOrigin = assertWorkflowOrigin(boundOrigin, currentUrl);
       await assertResolvedPageUrl(currentUrl);
+      if (boundOrigin === null) boundOrigin = currentOrigin;
       if (step.action === 'fill_form') {
-        await callPageFunction(session,pageFillForm,[step.fields]);
+        await guardedPageFunction(session,pageFillForm,[step.fields],boundOrigin);
       } else if (step.action === 'wait_for') {
-        await waitForStep(session,step,started);
+        await waitForStep(session,step,started,boundOrigin);
       } else if (step.action === 'click') {
-        const bounds=await callPageFunction(session,pageElementAction,[step.selector,null,'click','']);
+        const bounds=await guardedPageFunction(session,pageElementAction,[step.selector,null,'click',''],boundOrigin);
         const x=Number(bounds.x)+Number(bounds.width)/2;
         const y=Number(bounds.y)+Number(bounds.height)/2;
         await session.send('Input.dispatchMouseEvent',{type:'mouseMoved',x,y,button:'none'});
         await session.send('Input.dispatchMouseEvent',{type:'mousePressed',x,y,button:'left',clickCount:1});
         await session.send('Input.dispatchMouseEvent',{type:'mouseReleased',x,y,button:'left',clickCount:1});
       } else {
-        await callPageFunction(session,pageElementAction,[step.selector,null,step.action,step.value??'']);
+        await guardedPageFunction(session,pageElementAction,[step.selector,null,step.action,step.value??''],boundOrigin);
       }
       completed.push({index:index+1,action:step.action,ok:true});
     } catch (error) {
