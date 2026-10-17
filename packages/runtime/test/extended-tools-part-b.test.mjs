@@ -1,3 +1,4 @@
+import { readBrowserSource } from './helpers/browser-source.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
@@ -238,7 +239,7 @@ test('record_screen fails closed on a headless Linux X11 host before invoking ff
 });
 
 test('browser_snapshot restores page scroll after selector screenshot capture', async () => {
-  const source = await readFile(new URL('../src/extended/browser.mjs', import.meta.url), 'utf8');
+  const source = await readBrowserSource();
   assert.match(source, /originalScrollX=scrollX, originalScrollY=scrollY/);
   assert.match(source, /finally\s*\{/);
   assert.match(source, /window\.scrollTo\(\{left:\$\{restoreScroll\.x\},top:\$\{restoreScroll\.y\}/);
