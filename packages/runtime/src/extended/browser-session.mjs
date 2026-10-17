@@ -390,24 +390,9 @@ export async function evaluate(session, expression, awaitPromise = true) {
 }
 
 export async function callPageFunction(session, functionDeclaration, args = [], awaitPromise = true) {
-  const global = await session.send('Runtime.evaluate', {
-    expression: 'globalThis',
-    returnByValue: false,
-    awaitPromise: false,
-  });
-  if (global.exceptionDetails || !global.result?.objectId) {
-    throw new Error(global.exceptionDetails?.exception?.description || global.exceptionDetails?.text || 'Could not access the page execution context');
-  }
-  const result = await session.send('Runtime.callFunctionOn', {
-    objectId: global.result.objectId,
-    functionDeclaration,
-    arguments: args.map(value => ({ value })),
-    returnByValue: true,
-    awaitPromise,
-    userGesture: true,
-  });
-  if (result.exceptionDetails) {
-    throw new Error(result.exceptionDetails.exception?.description || result.exceptionDetails.text || 'JavaScript function call failed');
-  }
-  return result.result?.value;
+  // These declarations are trusted internal browser actions. JSON arguments
+  // stay data, never raw page code. One CDP Runtime.evaluate call replaces
+  // Runtime.evaluate(globalThis) + Runtime.callFunctionOn (two serial RTTs).
+  const expression = '(' + functionDeclaration + ')(...' + JSON.stringify(args) + ')';
+  return evaluate(session, expression, awaitPromise);
 }

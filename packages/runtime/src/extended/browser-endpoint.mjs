@@ -386,11 +386,12 @@ export async function browserCapabilityAvailable(endpoint, timeoutMs = 500) {
 // Validating every tab sequentially can require hundreds of serial DNS lookups,
 // making browser_tabs exceed the relay's deadline on machines with many tabs.
 // Keep DNS and security validation, but bound both the work and its concurrency.
-export async function filterBrowserTargets(list, { validate = assertResolvedPageUrl } = {}) {
+export async function filterBrowserTargets(list, { validate = assertResolvedPageUrl, targetId = null } = {}) {
   if (!Array.isArray(list)) return [];
   const candidates = [];
   for (const item of list) {
     if (!item || item.type !== 'page' || !item.webSocketDebuggerUrl) continue;
+    if (targetId && item.id !== targetId) continue;
     candidates.push(item);
     if (candidates.length >= 1000) break;
   }
@@ -414,7 +415,7 @@ export async function filterBrowserTargets(list, { validate = assertResolvedPage
   return targets;
 }
 
-export async function listBrowserTargets(endpoint) {
+export async function listBrowserTargets(endpoint, { targetId = null } = {}) {
   assertBrowserRemoteEnabled();
   // Reading tabs and page semantics must not launch a separate Chromium/profile.
   // Only an explicit browser_navigate(action=new_tab) can bootstrap an isolated browser.
@@ -431,7 +432,7 @@ export async function listBrowserTargets(endpoint) {
     throw new Error(`${label} is unavailable at ${base.origin}. Read-only browser_tabs and browser_snapshot do not launch a browser. Use ui_snapshot and ui_find for the existing browser window; do not retry this CDP endpoint unchanged. Only browser_navigate(action=new_tab), when explicitly requested, may start a local isolated browser.`);
   }
   // Retain the current bounded concurrent DNS/security checks for up to 1000 tabs.
-  return filterBrowserTargets(list);
+  return filterBrowserTargets(list, { targetId });
 }
 
 export function validatedTargetWebSocketUrl(target, endpoint) {
@@ -449,8 +450,10 @@ export function validatedTargetWebSocketUrl(target, endpoint) {
 }
 
 export async function chooseTarget(args = {}) {
-  const targets = (await listBrowserTargets(args.endpoint)).filter(item => item.type === 'page' && item.webSocketDebuggerUrl);
   const id = optionalString(args.target_id || args.targetId);
+  // Explicit target IDs are returned by browser_tabs. Never DNS-resolve every
+  // unrelated tab merely to act on one target: validate only its actual URL.
+  const targets = await listBrowserTargets(args.endpoint, { targetId:id });
   const title = optionalString(args.title);
   const urlContains = optionalString(args.url_contains || args.urlContains);
   const matched = targets.find(item =>
