@@ -1,6 +1,6 @@
 {
   "name": "@remcp/remcp",
-  "version": "0.2.158",
+  "version": "0.2.159",
   "description": "ReMCP device client: pair a computer with ReMCP and run the outbound-only agent that hosts the local MCP runtime.",
   "type": "module",
   "license": "MIT",
@@ -18,7 +18,7 @@
     "README.md"
   ],
   "scripts": {
-    "check": "node --check bin/remcp.mjs && node --check src/agent-responder.mjs && node --check src/agent-update-monitor.mjs && node --check src/agent-update.mjs && node --check src/agent-utilities.mjs && node --check src/agent.mjs && node --check src/cli.mjs && node --check src/cli/config.mjs && node --check src/cli/connect.mjs && node --check src/cli/doctor.mjs && node --check src/cli/env.mjs && node --check src/cli/npm-global.mjs && node --check src/cli/service-inventory.mjs && node --check src/cli/service.mjs && node --check src/cli/shell.mjs && node --check src/cli/update.mjs && node --check src/fs-access.mjs && node --check src/npm.mjs && node --check src/runtime.mjs && node --check src/version.mjs",
+    "check": "node --check bin/remcp.mjs && node --check src/agent-responder.mjs && node --check src/agent-update-monitor.mjs && node --check src/agent-update.mjs && node --check src/agent-utilities.mjs && node --check src/agent.mjs && node --check src/cli.mjs && node --check src/cli/config.mjs && node --check src/cli/connect.mjs && node --check src/cli/doctor.mjs && node --check src/cli/env.mjs && node --check src/cli/npm-global.mjs && node --check src/cli/service-inventory.mjs && node --check src/cli/service.mjs && node --check src/cli/shell.mjs && node --check src/cli/update.mjs && node --check src/cli/windows-supervisor.mjs && node --check src/fs-access.mjs && node --check src/npm.mjs && node --check src/runtime.mjs && node --check src/version.mjs",
     "test": "node --test test/*.test.mjs"
   },
   "dependencies": {
