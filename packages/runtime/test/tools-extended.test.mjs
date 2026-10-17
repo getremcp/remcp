@@ -1,3 +1,4 @@
+import { readFilesSource } from './helpers/files-source.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { chmodSync, existsSync, mkdirSync, readFileSync, statSync, symlinkSync, truncateSync, writeFileSync } from 'node:fs';
@@ -237,8 +238,8 @@ exit $status
 });
 
 test('archive file overlay is committed atomically instead of truncating a checked pathname', () => {
-  const source = readFileSync(new URL('../src/tools/files.mjs', import.meta.url), 'utf8');
-  const match = source.match(/async function copyOpenRegularFile\([\s\S]*?\n\}\n\nasync function copyTreeContents/);
+  const source = readFilesSource();
+  const match = source.match(/async function copyOpenRegularFile\([\s\S]*?\n\}\n\n(?:export )?async function copyTreeContents/);
   assert.ok(match, 'archive copy implementation is present');
   const copy = match[0];
   assert.doesNotMatch(copy, /lstat\(destinationPath\)/, 'no check/use race is used to decide whether a destination is safe');

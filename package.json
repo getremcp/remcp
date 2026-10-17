@@ -1,6 +1,6 @@
 {
   "name": "remcp",
-  "version": "0.2.154",
+  "version": "0.2.155",
   "private": true,
   "description": "ReMCP: secure remote MCP bridge. Device client and first-party local runtime.",
   "type": "module",
@@ -13,7 +13,7 @@
     "node": ">=22.5.0"
   },
   "scripts": {
-    "check": "node scripts/check-plugin.mjs && node scripts/check-claude-plugin.mjs && node scripts/check-distribution.mjs && npm run check --workspaces --if-present",
+    "check": "node scripts/check-source-size.mjs && node scripts/check-plugin.mjs && node scripts/check-claude-plugin.mjs && node scripts/check-distribution.mjs && npm run check --workspaces --if-present",
     "claude:check": "node scripts/check-claude-plugin.mjs",
     "distribution:check": "node scripts/check-distribution.mjs",
     "eval:tool-selection": "node scripts/score-tool-selection-eval.mjs",
