@@ -76,7 +76,14 @@ function assertPluginIconLegible(buffer, brandColor) {
   assert.ok(match, 'brandColor must be available before validating the plugin icon');
   const brand = match.slice(1).map(value => Number.parseInt(value, 16));
   let brandPixels = 0;
-  let brightPixels = 0;
+  let contrastingPixels = 0;
+  // For neutral gray brands, enforce legibility by actual relative luminance,
+  // not an arbitrary requirement that the symbol must be almost white.
+  const luminance = (rgb) => rgb.map(value => {
+    const v = value / 255;
+    return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+  }).reduce((sum, channel, index) => sum + channel * [0.2126, 0.7152, 0.0722][index], 0);
+  const bgLuminance = luminance(brand);
   let transparentPixels = 0;
   let total = 0;
   for (const row of decoded.rows) {
@@ -87,12 +94,16 @@ function assertPluginIconLegible(buffer, brandColor) {
       total += 1;
       if (alpha < 250) transparentPixels += 1;
       if (rgb.every((value, channel) => Math.abs(value - brand[channel]) <= 4)) brandPixels += 1;
-      if (rgb.every(value => value >= 235) && alpha >= 250) brightPixels += 1;
+      if (alpha >= 250) {
+        const fg = luminance(rgb);
+        const contrast = (Math.max(bgLuminance, fg) + 0.05) / (Math.min(bgLuminance, fg) + 0.05);
+        if (contrast >= 4.5) contrastingPixels += 1;
+      }
     }
   }
   assert.equal(transparentPixels, 0, 'plugin icon must be opaque so a dark transparent mark cannot disappear on dark ChatGPT surfaces');
   assert.ok(brandPixels / total >= 0.45, 'plugin icon must visibly use the declared brandColor as its background');
-  assert.ok(brightPixels / total >= 0.08, 'plugin icon must contain a substantial bright mark that contrasts on the brand background');
+  assert.ok(contrastingPixels / total >= 0.08, 'plugin icon must contain a substantial legible mark contrasting at least 4.5:1 against the brand background');
 }
 
 const COMPACT_HOSTED_TOOLS = Object.freeze([
