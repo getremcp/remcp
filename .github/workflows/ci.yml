@@ -276,6 +276,21 @@ jobs:
             if ($taskXml -notmatch '<LogonType>InteractiveToken</LogonType>') {
               throw 'ReMCP Agent Scheduled Task is not configured for the interactive user session.'
             }
+            [xml]$taskDefinition = $taskXml
+            $taskSettings = $taskDefinition.Task.Settings
+            if ($taskSettings.ExecutionTimeLimit -ne 'PT0S') {
+              throw 'Windows must not stop the persistent agent after the default 72-hour task deadline.'
+            }
+            if ($taskSettings.MultipleInstancesPolicy -ne 'IgnoreNew') {
+              throw 'Windows must not create duplicate ReMCP background agents.'
+            }
+            if ($taskSettings.DisallowStartIfOnBatteries -ne 'false' -or
+                $taskSettings.StopIfGoingOnBatteries -ne 'false') {
+              throw 'Windows must allow ReMCP to stay online when a laptop switches to battery.'
+            }
+            if ($taskSettings.RestartOnFailure.Count -lt 1 -or $taskSettings.RestartOnFailure.Interval -ne 'PT1M') {
+              throw 'Windows must retry a failed persistent task after one minute.'
+            }
 
             $launcher = Join-Path $env:REMCP_CONFIG_DIR 'remcp-agent.cmd'
             if (!(Test-Path -LiteralPath $launcher -PathType Leaf)) {
@@ -293,6 +308,11 @@ jobs:
             }
             if (!$launcherText.Contains($expectedCallLine)) {
               throw 'Scheduled Task launcher does not invoke the private ReMCP CLI as a service.'
+            }
+            if ($launcherText -notmatch ':remcp_restart' -or
+                $launcherText -notmatch 'goto remcp_restart' -or
+                $launcherText -notmatch 'ping.exe -n 6 127.0.0.1') {
+              throw 'Windows agent launcher must recover automatically when the agent exits.'
             }
 
             Write-Host "Windows bootstrap E2E OK: private Node $nodeVersion, ReMCP $runtimeVersion, Scheduled Task uses the private runtime; no system Node/npm/npx/winget required."

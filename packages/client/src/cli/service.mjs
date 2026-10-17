@@ -15,6 +15,7 @@ import { PACKAGE_NAME, VERSION } from '../version.mjs';
 import { saveConfig } from './config.mjs';
 import { configDir, home, linuxServiceFile, linuxServiceLauncherFile, macLogFile, macServiceFile, macServiceLabel, npm, windowsServiceLauncherFile, windowsTaskName } from './env.mjs';
 import { output, run } from './shell.mjs';
+import { windowsServiceLauncherText, windowsTaskReliabilityCommand } from './windows-supervisor.mjs';
 
 export function quoteSystemd(value) {
   return `"${String(value).replaceAll('\\', '\\\\').replaceAll('"', '\\"')}"`;
@@ -233,22 +234,8 @@ export function installMacService(cliPath = globalCliPath(), { restart = true, n
   return 'bootstrapped';
 }
 
-function windowsBatchValue(value) {
-  return String(value).replaceAll('%', '%%');
-}
-
 export function writeWindowsServiceLauncher(cliPath = globalCliPath(), nodePath = process.execPath) {
-  const prefix = path.dirname(cliPath);
-  const nodeDir = path.dirname(nodePath);
-  const launcher = [
-    '@echo off',
-    'setlocal DisableDelayedExpansion',
-    `set "NPM_CONFIG_PREFIX=${windowsBatchValue(prefix)}"`,
-    `set "PATH=${windowsBatchValue(nodeDir)};%PATH%"`,
-    `call "${windowsBatchValue(cliPath)}" start --service`,
-    'exit /b %ERRORLEVEL%',
-    '',
-  ].join('\r\n');
+  const launcher = windowsServiceLauncherText(cliPath, nodePath);
   fs.mkdirSync(configDir, { recursive:true, mode:0o700 });
   const temporary = `${windowsServiceLauncherFile}.${process.pid}.${Date.now()}.tmp`;
   fs.writeFileSync(temporary, launcher, { mode:0o700 });
@@ -263,6 +250,9 @@ export function installWindowsService(cliPath = globalCliPath(), { nodePath = pr
   // instead of changing it afterwards: schtasks /Change can request the account password even when
   // the task already belongs to the current user, which turns a one-command install into a prompt.
   run('schtasks.exe', ['/Create', '/TN', windowsTaskName, '/TR', command, '/SC', 'ONLOGON', '/RL', 'HIGHEST', '/IT', '/F']);
+  // The default Windows task policy expires long-running tasks and stops them on battery.
+  // Apply guarded failure recovery without changing the interactive-user principal/session.
+  run('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', windowsTaskReliabilityCommand(windowsTaskName)]);
   run('schtasks.exe', ['/Run', '/TN', windowsTaskName]);
 }
 
