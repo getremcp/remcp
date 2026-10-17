@@ -1,3 +1,4 @@
+import { readDesktopSource } from './helpers/desktop-source.mjs';
 import { readLinuxSource } from './helpers/linux-source.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -208,7 +209,7 @@ test('Linux Wayland inventory refreshes X11 rows after AT-SPI and XWayland focus
 
 test('Linux semantic typing rejects false AT-SPI writes and auto typing fails safely', async () => {
   const linuxSource = await readLinuxSource();
-  const desktopSource = await readFile(new URL('../src/extended/desktop.mjs', import.meta.url), 'utf8');
+  const desktopSource = await readDesktopSource();
 
   assert.match(
     linuxSource,
@@ -253,7 +254,7 @@ test('Linux semantic typing rejects false AT-SPI writes and auto typing fails sa
 });
 
 test('geometry-sensitive semantic actions refresh UI bounds instead of reusing the 5-second cache', async () => {
-  const desktopSource = await readFile(new URL('../src/extended/desktop.mjs', import.meta.url), 'utf8');
+  const desktopSource = await readDesktopSource();
   assert.ok(
     desktopSource.includes("const matches = await uiMatches({ id, limit: 1, max_nodes: 5000, max_depth: 32, refresh:true });"),
     'drag_drop element ids must resolve from a fresh UI snapshot',
