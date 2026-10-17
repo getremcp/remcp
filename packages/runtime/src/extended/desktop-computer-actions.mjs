@@ -72,6 +72,17 @@ export function computerActionWindowTextArgs(args = {}) {
   };
 }
 
+// A UI element ID is scoped to the native accessibility tree. If it becomes
+// stale, never reinterpret a remaining name, selector, OCR hint or x/y as a
+// different target: refind that element in the same window first.
+export function hasPinnedUiElement(args = {}) {
+  return Boolean(args.id || args.automation_id || args.automationId);
+}
+
+function stalePinnedUiElement() {
+  return new Error('Pinned UI element could not be resolved; use ui_snapshot and ui_find to refresh its ID. No browser, OCR, window or coordinate fallback was attempted.');
+}
+
 export async function computerAction(args = {}) {
   const legacy = ['ui','pointer','window','type','keyboard','scroll','drag','clipboard','launch_app','open_path','reveal_path','notification'];
   const universal = [
@@ -89,6 +100,7 @@ export async function computerAction(args = {}) {
   const hasOcr = Boolean(ocrNeedle);
   const hasCoordinates = Number.isFinite(Number(args.x)) && Number.isFinite(Number(args.y));
   const automatic = target === 'auto';
+  const pinnedUi = automatic && hasPinnedUiElement(args);
 
   if (action === 'batch') {
     const steps = Array.isArray(args.steps) ? args.steps : [];
@@ -170,7 +182,10 @@ export async function computerAction(args = {}) {
     const failures = [];
     if (hasUi) {
       try { return await typeText({ ...args, method:'accessibility' }); }
-      catch (error) { failures.push(`accessibility: ${String(error?.message || error).slice(0, 300)}`); }
+      catch (error) {
+        if (pinnedUi) throw stalePinnedUiElement();
+        failures.push(`accessibility: ${String(error?.message || error).slice(0, 300)}`);
+      }
     }
     if (hasBrowser) {
       if (await browserCapabilityAvailable(args.endpoint, 300)) {
@@ -203,7 +218,10 @@ export async function computerAction(args = {}) {
       let uiError = null;
       if (hasUi) {
         try { return await scroll(args); }
-        catch (error) { uiError = error; }
+        catch (error) {
+          if (pinnedUi) throw stalePinnedUiElement();
+          uiError = error;
+        }
       }
       if (hasBrowser) {
         if (await browserCapabilityAvailable(args.endpoint, 300)) return browserComputerAction(args, 'scroll');
@@ -244,7 +262,10 @@ export async function computerAction(args = {}) {
     let uiError = null;
     if (hasUi) {
       try { return await uiAction({ ...args, action:uiActionName }); }
-      catch (error) { uiError = error; }
+      catch (error) {
+        if (pinnedUi) throw stalePinnedUiElement();
+        uiError = error;
+      }
     }
     if (hasBrowser) return browserComputerAction(args, uiActionName);
     if (uiError) throw uiError;
@@ -288,7 +309,10 @@ export async function computerAction(args = {}) {
       const failures = [];
       if (hasUi) {
         try { return await uiAction({ ...args, action:'click' }); }
-        catch (error) { failures.push(`accessibility: ${String(error?.message || error).slice(0, 300)}`); }
+        catch (error) {
+        if (pinnedUi) throw stalePinnedUiElement();
+        failures.push(`accessibility: ${String(error?.message || error).slice(0, 300)}`);
+      }
       }
       if (hasBrowser) {
         if (await browserCapabilityAvailable(args.endpoint, 300)) {

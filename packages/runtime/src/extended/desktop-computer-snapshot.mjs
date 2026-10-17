@@ -9,6 +9,7 @@ import * as linux from './desktop-linux.mjs';
 import * as macos from './desktop-macos.mjs';
 import * as windows from './desktop-windows.mjs';
 import { browserAction, browserCapabilityAvailable, browserSnapshot } from './browser.mjs';
+import { probeBrowserReadiness } from './browser-readiness.mjs';
 import { findOcrText, ocrImage } from './ocr.mjs';
 
 
@@ -20,7 +21,7 @@ export async function computerSnapshot(args = {}) {
   const screenshotRequested = args.include_screenshot !== false || args.include_ocr === true;
   const captureScreenshot = desktopAvailable && screenshotRequested;
   const includeUi = args.include_ui !== false;
-  const [windowsResult, displaysResult, uiResult, clipboardResult, cursorResult, shotResult] = await Promise.allSettled([
+  const [windowsResult, displaysResult, uiResult, clipboardResult, cursorResult, shotResult, readinessResult] = await Promise.allSettled([
     desktopAvailable ? listWindows() : Promise.resolve(null),
     desktopAvailable ? displayInventory() : Promise.resolve(null),
     includeUi && desktopAvailable
@@ -35,6 +36,7 @@ export async function computerSnapshot(args = {}) {
     desktopAvailable ? clipboard({ action:'read' }) : Promise.resolve(null),
     desktopAvailable ? cursorPosition() : Promise.resolve(null),
     captureScreenshot ? computerScreenshotTask(args) : Promise.resolve(null),
+    args.browser_readiness === true ? probeBrowserReadiness() : Promise.resolve(null),
   ]);
   const parse = (result, fallback = null) => {
     if (result.status !== 'fulfilled' || !result.value || result.value.isError === true) return fallback;
@@ -112,9 +114,11 @@ export async function computerSnapshot(args = {}) {
   const activeLabel = [activeApp?.app, activeApp?.window, activeWindow?.app, activeWindow?.title].filter(Boolean).join(' ');
   const browserRequested = args.include_browser === true
     || (args.include_browser !== false && /chrome|chromium|edge|brave/i.test(activeLabel));
+  const readiness = args.browser_readiness === true && readinessResult.status === 'fulfilled'
+    ? objectRecord(readinessResult.value) : null;
   let browser = null;
   let browserError = null;
-  if (browserRequested && await browserCapabilityAvailable(undefined, 400)) {
+  if (browserRequested && (readiness ? readiness.ready : await browserCapabilityAvailable(undefined, 400))) {
     const hint = browserTitleHint(activeWindow);
     try {
       const browserResult = await browserSnapshot({
@@ -184,6 +188,7 @@ export async function computerSnapshot(args = {}) {
     cursor,
     ui,
     ...(browser ? { browser } : {}),
+    ...(args.browser_readiness === true ? { browser_readiness:readiness || { status:'invalid_response', ready:false, candidate_pages:0, next_step:'use_native_accessibility' } } : {}),
     ...(ocr ? { ocr } : {}),
     fallback_chain: {
       accessibility: { requested:includeUi, available:includeUi && desktopAvailable && uiResult.status === 'fulfilled' && Boolean(uiResult.value), nodes:uiNodes.length },

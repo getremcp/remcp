@@ -164,6 +164,7 @@ export const OUTPUT_FIELDS = Object.freeze({
     cursor:outputObject('Pointer position when available.'),
     clipboard:outputObject('Clipboard metadata only unless clipboard content was explicitly requested.'),
     browser:outputObject('Optional browser DOM/CDP snapshot.'),
+    browser_readiness:outputObject('Optional bounded local CDP readiness status and fallback hint; no tab titles or URLs.'),
     ocr:outputObject('Optional OCR words/metadata.'),
     fallback_chain:outputObject('Which semantic/DOM/OCR/coordinate layers were requested and available.'),
     errors:outputArray(outputObject(), 'Non-fatal sub-capture errors.'),
