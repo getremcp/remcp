@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.153 — 2026-10-17
+
+- Split document, diagnostics, Wayland portal input and libei sender into bounded modules with compatible exports.
+- Preserve the 83-tool catalog, protocol schemas and default-deny permissions.
+- Partition oversized runtime test modules and add ephemeral workspace cleanup regression tests.
+- Include all newly imported modules in the published runtime package.
+
 ## 0.2.151 — 2026-10-16
 
 - Modularize core and extended MCP catalogs, retaining all 83 operation schemas and handlers.
