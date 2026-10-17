@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
-import { createWaylandRemoteDesktopSession, portalPointerMotionAbsolute, portalTypeText, waylandPortalCandidate } from '../src/wayland-remote-desktop.mjs';
+import { createWaylandRemoteDesktopSession, portalPointerMotionAbsolute, portalTypeText, waylandPortalCandidate, portalShortcut, portalPointerButton, portalScroll } from '../src/wayland-remote-desktop.mjs';
 
 const PORTAL_PATH = '/org/freedesktop/portal/desktop';
 const REMOTE = 'org.freedesktop.portal.RemoteDesktop';
@@ -185,4 +185,48 @@ test('absolute pointer motion fails closed on legacy portal backends', async () 
     portalPointerMotionAbsolute(10, 20, { state:{ backend:'xdg-dbus' } }),
     /requires the EIS Remote Desktop backend/,
   );
+});
+
+test('EIS shortcut sends modifier down/up events in safe order', async () => {
+  const sent = [];
+  const state = { backend:'xdg-eis', send:async payload => { sent.push(payload); } };
+  await portalShortcut('Ctrl+Shift+A', { state });
+  assert.deepEqual(sent, [
+    { op:'key', keycode:29, pressed:true },
+    { op:'key', keycode:42, pressed:true },
+    { op:'key', keycode:30, pressed:true },
+    { op:'key', keycode:30, pressed:false },
+    { op:'key', keycode:42, pressed:false },
+    { op:'key', keycode:29, pressed:false },
+  ]);
+});
+
+test('Wayland EIS pointer buttons and wheel steps preserve their wire protocol', async () => {
+  const sent = [];
+  const state = { backend:'xdg-eis', send:async payload => { sent.push(payload); } };
+  await portalPointerButton('right', true, { state });
+  await portalPointerButton('right', false, { state });
+  await portalScroll(241, -119, { state });
+  assert.deepEqual(sent, [
+    { op:'button', button:0x111, pressed:true },
+    { op:'button', button:0x111, pressed:false },
+    { op:'scroll', dx:240, dy:-120 },
+  ]);
+});
+
+test('legacy XDG portal uses DBus input without spawning a second session', async () => {
+  const calls = [];
+  const state = {
+    backend:'xdg-dbus', session:'/session/fixture',
+    remote:{
+      async NotifyPointerButton(...args) { calls.push(['button', ...args]); },
+      async NotifyPointerAxisDiscrete(...args) { calls.push(['axis', ...args]); },
+    },
+  };
+  await portalPointerButton('middle', true, { state });
+  await portalScroll(0, 240, { state });
+  assert.deepEqual(calls, [
+    ['button', '/session/fixture', {}, 0x112, 1],
+    ['axis', '/session/fixture', {}, 0, 2],
+  ]);
 });
