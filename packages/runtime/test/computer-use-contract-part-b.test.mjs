@@ -1,3 +1,4 @@
+import { readDesktopSource } from './helpers/desktop-source.mjs';
 import { readBrowserSource } from './helpers/browser-source.mjs';
 import { readLinuxSource } from './helpers/linux-source.mjs';
 import test from 'node:test';
@@ -70,7 +71,7 @@ test('native Wayland global window actions require verified target focus and clo
 });
 
 test('type_text prefers window-scoped semantic replacement before Wayland compositor focus', async () => {
-  const desktopSource = await readFile(new URL('../src/extended/desktop.mjs', import.meta.url), 'utf8');
+  const desktopSource = await readDesktopSource();
   const linuxSource = await readLinuxSource();
   const typeBody = desktopSource.match(/export async function typeText\(args = \{\}\) \{[\s\S]*?(?=async function uiElementCenter)/)?.[0] || '';
 
@@ -123,7 +124,7 @@ test('Linux ui_action falls back to a bounded pointer click only for click/invok
 
 test('Linux accessibility retries false-empty AT-SPI walks before using the conservative fallback depth', async () => {
   const linuxSource = await readLinuxSource();
-  const desktopSource = await readFile(new URL('../src/extended/desktop.mjs', import.meta.url), 'utf8');
+  const desktopSource = await readDesktopSource();
 
   assert.match(
     linuxSource,
@@ -286,7 +287,7 @@ test('Linux Wayland cursor telemetry fails closed instead of reporting stale XWa
     else process.env.WAYLAND_DISPLAY = previousWaylandDisplay;
   }
 
-  const desktopSource = await readFile(new URL('../src/extended/desktop.mjs', import.meta.url), 'utf8');
+  const desktopSource = await readDesktopSource();
   assert.match(
     desktopSource,
     /const parsedCursor = parse\(cursorResult, \{ x:null, y:null \}\);/,
