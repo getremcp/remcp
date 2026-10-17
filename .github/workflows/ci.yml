@@ -789,7 +789,7 @@ jobs:
 
           encoded="$(encode "$name")"
           current_url="https://registry.modelcontextprotocol.io/v0/servers/$encoded/versions/$version"
-          current_status="$(curl --silent --show-error --output /tmp/remcp-registry-current.json --write-out '%{http_code}' "$current_url")"
+          current_status="$(curl --connect-timeout 5 --max-time 20 --silent --show-error --output /tmp/remcp-registry-current.json --write-out '%{http_code}' "$current_url")"
           if [[ "$current_status" == 200 ]]; then
              verify_record "$name" "$version" "$title" "$description" "$website" "$repository" "$repository_source" "$remote" "$remote_type"
 
@@ -806,7 +806,7 @@ jobs:
           if [[ "$name" == 'io.github.getremcp/remcp' ]]; then
             legacy_encoded="$(encode "$legacy_name")"
             legacy_url="https://registry.modelcontextprotocol.io/v0/servers/$legacy_encoded/versions/latest"
-            legacy_status="$(curl --silent --show-error --output /tmp/remcp-registry-legacy.json --write-out '%{http_code}' "$legacy_url")"
+            legacy_status="$(curl --connect-timeout 5 --max-time 20 --silent --show-error --output /tmp/remcp-registry-legacy.json --write-out '%{http_code}' "$legacy_url")"
             if [[ "$legacy_status" == 200 ]]; then
               legacy_remote="$(node -e "const fs=require('fs');const x=JSON.parse(fs.readFileSync('/tmp/remcp-registry-legacy.json','utf8'));process.stdout.write(x.server?.remotes?.[0]?.url||'')")"
               if [[ "$legacy_remote" == "$remote" ]]; then
