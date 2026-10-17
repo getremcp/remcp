@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.154 — 2026-10-17
+
+**ReMCP Gray v2 brand parity release.** The runtime tool contract remains at 83 operations with unchanged permissions and I/O semantics. The coordinated public client and OpenAI submission assets receive the owner-provided gray identity.
+
+
 ## 0.2.153 — 2026-10-17
 
 - Split document, diagnostics, Wayland portal input and libei sender into bounded modules with compatible exports.
