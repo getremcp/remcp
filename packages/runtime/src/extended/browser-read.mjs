@@ -1,3 +1,4 @@
+import { snapshotDelta } from './browser-snapshot-diff.mjs';
 import process from 'node:process';
 import os from 'node:os';
 import path from 'node:path';
@@ -9,7 +10,7 @@ import { preserveInterruptedBrowserSession } from './browser-session-backup.mjs'
 import { clamp, commandExists, jsonResult, optionalString, requireEnum, spawnDetached, unavailable } from './common.mjs';
 
 
-import { assertResolvedBrowserUrl, assertResolvedPageUrl, boundedText, ensureBrowserEndpoint, listBrowserTargets, requestJson } from './browser-endpoint.mjs';
+import { assertResolvedBrowserUrl, assertResolvedPageUrl, boundedText, endpointUrl, ensureBrowserEndpoint, listBrowserTargets, requestJson } from './browser-endpoint.mjs';
 import { createGuardedNewTab, evaluate, withTarget } from './browser-session.mjs';
 
 export async function browserTabs(args = {}) {
@@ -112,13 +113,17 @@ export async function browserSnapshot(args) {
       child_ids: Array.isArray(node.childIds) ? node.childIds.slice(0, 200).map(id => boundedText(id, 256)) : [],
       backend_dom_node_id: node.backendDOMNodeId || null,
     }));
+    const delta = snapshotDelta(simplified,target,limit,{
+      from:args.diff_from,
+      endpoint:endpointUrl(args.endpoint).origin,
+    });
     const payload = {
       target_id: target.id,
       title: target.title,
       url: target.url,
       count: simplified.length,
       truncated: nodes.length > limit,
-      nodes: simplified,
+      ...delta,
     };
     if (!args.include_screenshot) return jsonResult(payload);
 

@@ -2,16 +2,11 @@ import { toolHandlers } from './catalog.mjs';
 import { extendedToolHandlers } from './extended/catalog.mjs';
 import { describeFilesystemFailure } from './permissions.mjs';
 import { recordEvent } from './telemetry.mjs';
+import { classifyRuntimeToolError } from './error-classes.mjs';
 import { ToolError, text } from './util.mjs';
 
 export function hasTool(name) {
   return toolHandlers.has(name) || extendedToolHandlers.has(name);
-}
-
-function errorKind(error) {
-  if (error instanceof ToolError) return 'tool_error';
-  const code = error?.code;
-  return typeof code === 'string' && code ? code.slice(0, 32) : 'runtime_error';
 }
 
 export async function invokeTool(name, args = {}, extra = {}) {
@@ -26,10 +21,10 @@ export async function invokeTool(name, args = {}, extra = {}) {
   }
   try {
     const result = await definition.handler(args || {}, extra || {});
-    recordEvent('tool_call', { tool: definition.name, durationMs: performance.now() - started, success: result?.isError !== true });
+    recordEvent('tool_call', { tool: definition.name, durationMs: performance.now() - started, success: result?.isError !== true, ...(result?.isError === true ? { errorKind:'tool_error' } : {}) });
     return result;
   } catch (error) {
-    recordEvent('tool_call', { tool: definition.name, durationMs: performance.now() - started, success: false, errorKind: errorKind(error) });
+    recordEvent('tool_call', { tool: definition.name, durationMs: performance.now() - started, success: false, errorKind: classifyRuntimeToolError(error, definition.name) });
     if (error instanceof ToolError) return text(error.message, true);
     return text(`Tool ${name} failed: ${describeFilesystemFailure(error, { path: error?.path })}`, true);
   }
