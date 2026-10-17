@@ -98,6 +98,57 @@ export const PAGE_ELEMENT_ACTION = `function(selector, needle, action, value) {
   };
 }`;
 
+// Bounded form mutation: validate every target before changing any field.
+// Values are intentionally excluded from the return object and tool logs.
+export const PAGE_FILL_FORM = `function(fields) {
+  const targets = fields.map(field => {
+    const el = document.querySelector(field.selector);
+    if (!el || !el.getClientRects().length || el.disabled || el.readOnly ||
+        el.matches('input[type="file"],input[type="submit"],input[type="reset"],button')) {
+      throw new Error('Form field unavailable or not editable: ' + field.selector);
+    }
+    const tag = el.tagName.toLowerCase();
+    if (!['input','textarea','select'].includes(tag)) throw new Error('Unsupported form field: ' + field.selector);
+    if (tag === 'select' && !Array.from(el.options).some(option => option.value === String(field.value))) {
+      throw new Error('No matching select option: ' + field.selector);
+    }
+    return {el,tag,value:field.value};
+  });
+  const summary = [];
+  for (const {el,tag,value} of targets) {
+    const checkbox = tag === 'input' && ['checkbox','radio'].includes(el.type);
+    const prop = checkbox ? 'checked' : 'value';
+    let prototype = Object.getPrototypeOf(el);
+    let setter;
+    while (prototype && !setter) {
+      setter = Object.getOwnPropertyDescriptor(prototype, prop)?.set;
+      prototype = Object.getPrototypeOf(prototype);
+    }
+    const next = checkbox ? Boolean(value) : String(value);
+    if (setter) setter.call(el, next); else el[prop] = next;
+    el.dispatchEvent(new Event('input', {bubbles:true}));
+    el.dispatchEvent(new Event('change', {bubbles:true}));
+    summary.push({tag, changed:true});
+  }
+  return {filled:summary.length, fields:summary};
+}`;
+
+export function validateFormFields(fields) {
+  if (!Array.isArray(fields) || fields.length < 1 || fields.length > 20) {
+    throw new Error('fill_form requires 1 to 20 fields');
+  }
+  return fields.map(field => {
+    const selector = typeof field?.selector === 'string' ? field.selector.trim() : '';
+    if (!selector || selector.length > 512 || !Object.hasOwn(field,'value') ||
+        !['string','boolean','number'].includes(typeof field.value) ||
+        (typeof field.value === 'number' && !Number.isFinite(field.value))) {
+      throw new Error('Each form field requires a CSS selector and a string/boolean/number value');
+    }
+    if (String(field.value).length > 16384) throw new Error('Form field value exceeds 16384 characters');
+    return {selector, value:field.value};
+  });
+}
+
 export function browserActionLocatorText(args = {}, action = '') {
   const explicit = optionalString(args.browser_text || args.match_text);
   if (explicit) return explicit;
@@ -137,8 +188,13 @@ export function browserScrollDeltas(args = {}) {
 }
 
 export async function browserAction(args) {
-  const action = requireEnum(args.action, 'action', ['click', 'focus', 'type', 'set_value', 'select', 'scroll', 'scroll_into_view', 'upload', 'press', 'set_viewport']);
+  const action = requireEnum(args.action, 'action', ['click', 'focus', 'type', 'set_value', 'select', 'scroll', 'scroll_into_view', 'upload', 'press', 'set_viewport', 'fill_form']);
+  const formFields = action === 'fill_form' ? validateFormFields(args.fields) : null;
   return withTarget(args, async (session, target) => {
+    if (action === 'fill_form') {
+      const result = await callPageFunction(session, PAGE_FILL_FORM, [formFields]);
+      return jsonResult({target_id:target.id, action, result});
+    }
     if (action === 'set_viewport') {
       const width = clamp(args.width, 1280, 200, 8192);
       const height = clamp(args.height, 720, 200, 8192);
