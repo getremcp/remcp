@@ -244,6 +244,24 @@ export function productionSessionKey(endpoint, target) {
   return `${endpoint.origin}|${String(target.id)}`;
 }
 
+// A target returned by browser_tabs is already bound to a validated CDP
+// WebSocket. Reuse its guarded live session for subsequent exact-ID actions
+// instead of rediscovering every unrelated Chrome tab on each keypress/click.
+export function findGuardedCachedTarget(args, endpoint) {
+  if (process.env.NODE_ENV !== 'production') return null;
+  const id = optionalString(args?.target_id || args?.targetId);
+  if (!id || args?.title || args?.url_contains || args?.urlContains) return null;
+  const key = endpoint.origin + '|' + id;
+  const record = productionBrowserSessions.get(key);
+  if (!record?.guardInstalled || !record.target || record.targetId !== id
+      || record.target.id !== id || record.session?.closed
+      || record.session?.socket?.readyState !== 1) return null;
+  try {
+    if (validatedTargetWebSocketUrl(record.target, endpoint) !== record.session.url) return null;
+  } catch { return null; }
+  return { key, record, target:record.target };
+}
+
 export function closeProductionSession(key, record) {
   if (!record) return;
   if (record.timer) clearTimeout(record.timer);
@@ -257,10 +275,10 @@ export function closeProductionSession(key, record) {
   if (productionBrowserSessions.get(key) === record) productionBrowserSessions.delete(key);
 }
 
-export function retainProductionSession(key, session, removeGuard, targetId, endpoint, ownedTarget = false) {
+export function retainProductionSession(key, session, removeGuard, targetId, endpoint, ownedTarget = false, target = null) {
   const existing = productionBrowserSessions.get(key);
   if (existing) closeProductionSession(key, existing);
-  const record = { session, removeGuard, targetId, endpoint, ownedTarget, timer:null };
+  const record = { session, removeGuard, targetId, endpoint, ownedTarget, target, guardInstalled:true, timer:null };
   productionBrowserSessions.set(key, record);
   const schedule = () => {
     if (record.timer) clearTimeout(record.timer);
@@ -299,7 +317,7 @@ export async function createGuardedNewTab(url, args) {
     removeGuard = await installBrowserRequestGuard(session, { closeRootTarget:() => closeBrowserTarget(endpoint, target.id) });
     if (process.env.NODE_ENV === 'production') {
       productionKey = productionSessionKey(endpoint, target);
-      productionRecord = retainProductionSession(productionKey, session, removeGuard, target.id, endpoint, true);
+      productionRecord = retainProductionSession(productionKey, session, removeGuard, target.id, endpoint, true, target);
     }
     await session.send('Page.enable');
     const loaded = session.waitFor('Page.loadEventFired', clamp(args.timeout_ms, 15_000, 500, 120_000)).catch(() => null);
@@ -325,15 +343,16 @@ export async function createGuardedNewTab(url, args) {
   }
 }
 
-export async function withTarget(args, callback) {
+export async function withTarget(args = {}, callback) {
   // chooseTarget already validated this exact discovered URL during this call.
   // The actual page URL is independently checked before and after the action.
   // Avoid a redundant DNS check for the same target metadata.
-  const target = await chooseTarget(args);
   const endpoint = endpointUrl(args.endpoint);
+  const cached = findGuardedCachedTarget(args, endpoint);
+  const target = cached?.target || await chooseTarget(args);
   const production = process.env.NODE_ENV === 'production';
   const key = production ? productionSessionKey(endpoint, target) : '';
-  let record = production ? productionBrowserSessions.get(key) : null;
+  let record = cached?.record || (production ? productionBrowserSessions.get(key) : null);
   if (record?.session?.closed || (record?.session?.socket && record.session.socket.readyState !== 1)) {
     closeProductionSession(key, record);
     record = null;
@@ -344,7 +363,7 @@ export async function withTarget(args, callback) {
     try {
       session = await new CdpSession(target.webSocketDebuggerUrl, clamp(args.timeout_ms, 10_000, 100, 120_000)).open();
       removeGuard = await installBrowserRequestGuard(session);
-      if (production) record = retainProductionSession(key, session, removeGuard, target.id, endpoint);
+      if (production) record = retainProductionSession(key, session, removeGuard, target.id, endpoint, false, target);
     } catch (error) {
       removeGuard();
       if (session) {
@@ -358,7 +377,9 @@ export async function withTarget(args, callback) {
   try {
     const currentUrl = await evaluate(session, 'location.href');
     await assertResolvedPageUrl(currentUrl);
-    const result = await callback(session, target);
+    // A reused target's discovery metadata can be old after navigation.
+    // Pass the just-verified live URL without an extra CDP round-trip.
+    const result = await callback(session, { ...target, url:currentUrl });
     const finalUrl = await evaluate(session, 'location.href').catch(() => { throw new Error('Browser page URL could not be verified after the operation'); });
     await assertResolvedPageUrl(finalUrl);
     return result;
