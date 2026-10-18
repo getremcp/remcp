@@ -98,18 +98,62 @@ export async function browserNavigate(args = {}) {
   });
 }
 
+// CDP accessibility can include an input's current value even when it is
+// masked on screen. The protected AX property must be checked before the
+// node is mirrored to structuredContent or snapshot diff state.
+export function safeAccessibilityValue(node) {
+  const props = Array.isArray(node?.properties) ? node.properties : [];
+  const protectedControl = props.some(item => item?.name === 'protected'
+    && (item?.value?.value === true || String(item?.value?.value) === 'true'));
+  const role = String(node?.role?.value || '').toLowerCase();
+  if (protectedControl || role === 'password' || role === 'passwordtext') return '';
+  return boundedText(node?.value?.value, 1000);
+}
+
+// Chromium's AX tree can repeat editable input values in descendant
+// StaticText/InlineTextBox names. Blank the complete editable subtree before
+// storing a snapshot diff or sending structured content to the MCP host.
+export function sensitiveAccessibilityDescendants(nodes) {
+  const indexed = new Map(nodes.map(node => [node.nodeId, node]));
+  const secret = new Set();
+  const queue = [];
+  for (const node of nodes) {
+    const role = String(node.role?.value || '').toLowerCase();
+    const properties = Array.isArray(node.properties) ? node.properties : [];
+    const editable = properties.some(item => item?.name === 'editable'
+      && ![false,'false',null].includes(item?.value?.value));
+    const protectedNode = properties.some(item => item?.name === 'protected'
+      && [true,'true'].includes(item?.value?.value));
+    if (['textbox','searchbox','combobox','password','passwordtext','spinbutton'].includes(role)
+      || editable || protectedNode) {
+      secret.add(node.nodeId);
+      for (const id of node.childIds || []) queue.push(id);
+    }
+  }
+  while (queue.length) {
+    const id = queue.pop();
+    if (secret.has(id)) continue;
+    secret.add(id);
+    for (const child of indexed.get(id)?.childIds || []) queue.push(child);
+  }
+  return secret;
+}
+
 export async function browserSnapshot(args) {
   return withTarget(args, async (session, target) => {
     await session.send('Accessibility.enable');
     const { nodes = [] } = await session.send('Accessibility.getFullAXTree');
     const limit = clamp(args.max_nodes, 1500, 1, 10_000);
+    const redacted = sensitiveAccessibilityDescendants(nodes);
     const simplified = nodes.slice(0, limit).map(node => ({
       node_id: boundedText(node.nodeId, 256),
       ignored: Boolean(node.ignored),
       role: boundedText(node.role?.value, 256),
-      name: boundedText(node.name?.value, 1000),
-      value: boundedText(node.value?.value, 1000),
-      description: boundedText(node.description?.value, 1000),
+      name: redacted.has(node.nodeId) && !['textbox','searchbox','combobox','spinbutton'].includes(
+        String(node.role?.value||'').toLowerCase()
+      ) ? '' : boundedText(node.name?.value, 1000),
+      value: redacted.has(node.nodeId) ? '' : safeAccessibilityValue(node),
+      description: redacted.has(node.nodeId) ? '' : boundedText(node.description?.value, 1000),
       child_ids: Array.isArray(node.childIds) ? node.childIds.slice(0, 200).map(id => boundedText(id, 256)) : [],
       backend_dom_node_id: node.backendDOMNodeId || null,
     }));
@@ -285,9 +329,19 @@ export function findExpression(args) {
     } else {
       selected = selected.slice(0, ${limit});
     }
+    // Credentials are never sent back in browser_find; even a normal
+    // text input can carry an OTP or API token via its name/autocomplete.
+    function isSensitiveControl(el) {
+      const tag = el.tagName.toLowerCase();
+      if (tag !== 'input' && tag !== 'textarea') return false;
+      if (tag === 'input' && String(el.type || '').toLowerCase() === 'password') return true;
+      const description = ['id','name','autocomplete'].map(key => el.getAttribute(key) || '').join(' ');
+      return /(?:password|passwd|passcode|one.time.code|otp|secret|api.?key|auth.?token|access.?token|recovery.?code)/i.test(description);
+    }
     return selected.map(({ el }) => {
       const b = el.getBoundingClientRect();
-      return { selector: cssPath(el), tag: el.tagName.toLowerCase(), role: semanticRole(el), name: el.getAttribute('aria-label') || el.getAttribute('name') || '', text: visibleText(el).slice(0, 500), value: 'value' in el ? String(el.value).slice(0, 500) : '', x: b.x, y: b.y, width: b.width, height: b.height, disabled: Boolean(el.disabled) };
+      const sensitive = isSensitiveControl(el);
+      return { selector: cssPath(el), tag: el.tagName.toLowerCase(), role: semanticRole(el), name: el.getAttribute('aria-label') || el.getAttribute('name') || '', text: sensitive ? '' : visibleText(el).slice(0, 500), value: !sensitive && 'value' in el ? String(el.value).slice(0, 500) : '', x: b.x, y: b.y, width: b.width, height: b.height, disabled: Boolean(el.disabled) };
     });
   })()`;
 }

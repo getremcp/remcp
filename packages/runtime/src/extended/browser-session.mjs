@@ -290,8 +290,35 @@ export function retainProductionSession(key, session, removeGuard, targetId, end
   return record;
 }
 
+// New Chromium windows may report CDP readiness before their session restore
+// finishes. Only cold-start navigation pays this bounded settling cost; all
+// warm clicks, existing tabs and browser reads keep their current fast path.
+export const COLD_BROWSER_SETTLE_MS = 1200;
+export const COLD_TARGET_VERIFY_MS = 700;
+
+export class BrowserTargetDisappearedError extends Error {
+  constructor() {
+    super('Browser CDP target disappeared during startup; the requested tab was not retained. Retry once after checking browser readiness.');
+    this.name = 'BrowserTargetDisappearedError';
+    this.code = 'BROWSER_TARGET_DISAPPEARED';
+    this.retryable = true;
+  }
+}
+
+export async function assertCreatedTargetAvailable(targetId, endpoint, {
+  request = requestJson, pause = ms => new Promise(resolve => setTimeout(resolve, ms)),
+  verifyAfterMs = 0,
+} = {}) {
+  if (verifyAfterMs > 0) await pause(verifyAfterMs);
+  const targets = await request('/json/list', endpoint, { timeout_ms:2000 });
+  if (!Array.isArray(targets) || !targets.some(item => item?.id === targetId && item?.type === 'page')) {
+    throw new BrowserTargetDisappearedError();
+  }
+}
+
 export async function createGuardedNewTab(url, args) {
-  await ensureBrowserEndpoint(args.endpoint);
+  const autoLaunched = await ensureBrowserEndpoint(args.endpoint);
+  if (autoLaunched) await new Promise(resolve => setTimeout(resolve, COLD_BROWSER_SETTLE_MS));
   const created = await requestJson('/json/new', args.endpoint, { method:'PUT', timeout_ms:args.timeout_ms });
   if (!created?.id) throw new Error('Browser did not return a new page target');
   const endpoint = endpointUrl(args.endpoint);
@@ -325,6 +352,12 @@ export async function createGuardedNewTab(url, args) {
     if (loaded) await loaded;
     const finalUrl = await evaluate(session, 'location.href');
     await assertResolvedPageUrl(finalUrl);
+    // A successful Page.navigate is not enough: Chrome's cold-start session
+    // restoration can asynchronously close its targets. Fail rather than
+    // returning a stale ID the next MCP tool call cannot use.
+    await assertCreatedTargetAvailable(target.id, endpoint, {
+      verifyAfterMs:autoLaunched ? COLD_TARGET_VERIFY_MS : 0,
+    });
     return { target, navigation, finalUrl };
   } catch (error) {
     operationFailed = true;

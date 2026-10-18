@@ -98,8 +98,8 @@ export async function waitForBrowserEndpoint(timeoutMs = 5000) {
 
 export async function ensureBrowserEndpoint(endpoint) {
   assertBrowserRemoteEnabled();
-  if (endpoint || process.env.REMCP_CDP_URL) return;
-  if (await browserCapabilityAvailable(undefined, 250)) return;
+  if (endpoint || process.env.REMCP_CDP_URL) return false;
+  if (await browserCapabilityAvailable(undefined, 250)) return false;
   if (!browserLaunchPromise) {
     browserLaunchPromise = (async () => {
       const executable = browserExecutable();
@@ -112,9 +112,10 @@ export async function ensureBrowserEndpoint(endpoint) {
       if (selected.isolated) console.warn('ReMCP browser: using an isolated recovery profile; existing session and backups are preserved, and sign-in state is not copied.');
       spawnDetached(executable, browserAutoLaunchArgs(selected.profile));
       if (!await waitForBrowserEndpoint(5000)) throw new Error('ReMCP launched a browser but its local CDP endpoint did not become ready');
+      return true;
     })().finally(() => { browserLaunchPromise = null; });
   }
-  await browserLaunchPromise;
+  return browserLaunchPromise;
 }
 
 export async function browserControlAvailable(endpoint, timeoutMs = 500) {
@@ -193,11 +194,17 @@ export function isPrivateBrowserHost(hostname) {
 }
 
 export function endpointUrl(value) {
+  if (value != null && typeof value !== 'string' && !(value instanceof URL)) {
+    throw new Error('endpoint must be a valid local http(s) URL');
+  }
   let url;
-  try { url = new URL(optionalString(value) || process.env.REMCP_CDP_URL || DEFAULT_ENDPOINT); }
-  catch { throw new Error('endpoint must be a valid local http(s) URL'); }
+  try {
+    const provided = value instanceof URL ? value.href : optionalString(value);
+    url = new URL(provided || process.env.REMCP_CDP_URL || DEFAULT_ENDPOINT);
+  } catch { throw new Error('endpoint must be a valid local http(s) URL'); }
   if (!['http:', 'https:'].includes(url.protocol)) throw new Error('endpoint must use http or https');
   if (!isLoopbackHost(url.hostname)) throw new Error('Browser CDP endpoint must be loopback-only');
+  if (url.username || url.password) throw new Error('Browser CDP endpoint must not contain credentials');
   return url;
 }
 
