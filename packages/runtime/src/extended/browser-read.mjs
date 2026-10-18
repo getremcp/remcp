@@ -14,7 +14,7 @@ import { assertResolvedBrowserUrl, assertResolvedPageUrl, boundedText, endpointU
 import { createGuardedNewTab, evaluate, withTarget } from './browser-session.mjs';
 
 export async function browserTabs(args = {}) {
-  const targets = await listBrowserTargets(args.endpoint);
+  const targets = await listBrowserTargets(args.endpoint, { readOnlySingleFlight:true });
   const pages = targets.filter(item => item.type === 'page').slice(0, 500).map(item => ({
     id: boundedText(item.id, 256),
     title: boundedText(item.title, 1000),
