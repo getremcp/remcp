@@ -1,5 +1,6 @@
 import path from 'node:path';
 import process from 'node:process';
+import { scanSessionDirectory, verifySessionDirectory } from './browser-session-directory.mjs';
 import { closeSync, fchmodSync, constants, fstatSync, fsyncSync, lstatSync, mkdirSync, mkdtempSync, openSync, readFileSync, readSync, readdirSync, rmSync, writeFileSync, writeSync } from 'node:fs';
 
 const MAX_FILE_BYTES = 32 * 1024 * 1024;
@@ -95,12 +96,14 @@ export function preserveInterruptedBrowserSession(profile) {
       catch (error) { if (error?.code === 'ENOENT') return { saved: false, reason: 'no-sessions' }; throw error; }
       if (!fstatSync(dirFd).isDirectory()) throw new Error('Session directory is unsafe');
     }
-    const readableDir = dirFd === undefined ? sessionDir : `${process.platform === 'darwin' ? '/dev/fd' : '/proc/self/fd'}/${dirFd}`;
+    const { readable: readableDir, names } = scanSessionDirectory(sessionDir, dirFd);
     const files = [];
     let total = 0;
-    for (const name of readdirSync(readableDir).sort()) {
+    for (const name of names.sort()) {
+      verifySessionDirectory(sessionDir, dirFd);
       if (!/^(?:Session|Tabs)_\d+$/.test(name)) continue;
       const details = ownedRegularFile(path.join(readableDir, name), MAX_FILE_BYTES);
+      verifySessionDirectory(sessionDir, dirFd);
       if (!details) throw new Error('Session file is unsafe, empty or oversized');
       total += details.size;
       files.push({ name, ...details });
@@ -125,7 +128,11 @@ export function preserveInterruptedBrowserSession(profile) {
     if (snapshots.length >= MAX_SNAPSHOTS) throw new Error('Session recovery snapshot limit reached');
     const snapshotDir = mkdtempSync(path.join(recoveryDir, 'snapshot-'));
     try {
-      for (const file of files) rawCopy(path.join(readableDir, file.name), path.join(snapshotDir, file.name), file);
+      for (const file of files) {
+        verifySessionDirectory(sessionDir, dirFd);
+        rawCopy(path.join(readableDir, file.name), path.join(snapshotDir, file.name), file);
+        verifySessionDirectory(sessionDir, dirFd);
+      }
       writeFileSync(path.join(snapshotDir, 'manifest.json'), JSON.stringify({ fingerprint, count: files.length, hasWindowSession: files.some(f => f.name.startsWith('Session_')) }), { flag: 'wx', mode: 0o600 });
       return { saved: true, reason: 'saved', count: files.length, bytes: total };
     } catch (error) {
