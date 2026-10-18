@@ -6,6 +6,7 @@ import { lookup } from 'node:dns/promises';
 import { closeSync, constants as fsConstants, existsSync, fstatSync, mkdirSync, openSync, readFileSync, readdirSync } from 'node:fs';
 import { resolveSafePath } from '../util.mjs';
 import { preserveInterruptedBrowserSession } from './browser-session-backup.mjs';
+import { shareBrowserDiscovery } from './browser-discovery-flight.mjs';
 import { clamp, commandExists, jsonResult, optionalString, requireEnum, spawnDetached, unavailable } from './common.mjs';
 
 
@@ -436,14 +437,16 @@ export async function filterBrowserTargets(list, { validate = assertResolvedPage
   return targets;
 }
 
-export async function listBrowserTargets(endpoint, { targetId = null } = {}) {
+export async function listBrowserTargets(endpoint, { targetId = null, readOnlySingleFlight = false, validate = assertResolvedPageUrl } = {}) {
   assertBrowserRemoteEnabled();
   // Reading tabs and page semantics must not launch a separate Chromium/profile.
   // Only an explicit browser_navigate(action=new_tab) can bootstrap an isolated browser.
   const base = endpointUrl(endpoint); // keeps the CDP address loopback-only
   let list;
   try {
-    list = await requestJson('/json/list', endpoint, { timeout_ms: 1500 });
+    const load = () => requestJson('/json/list', endpoint, { timeout_ms: 1500 });
+    list = readOnlySingleFlight && !base.username && !base.password
+      ? await shareBrowserDiscovery(base.origin, load) : await load();
   } catch (error) {
     const message = String(error?.message || '');
     // Keep HTTP/policy/oversize/malformed-response errors distinct from an unavailable CDP.
@@ -453,7 +456,7 @@ export async function listBrowserTargets(endpoint, { targetId = null } = {}) {
     throw new Error(`${label} is unavailable at ${base.origin}. Read-only browser_tabs and browser_snapshot do not launch a browser. Use ui_snapshot and ui_find for the existing browser window; do not retry this CDP endpoint unchanged. Only browser_navigate(action=new_tab), when explicitly requested, may start a local isolated browser.`);
   }
   // Retain the current bounded concurrent DNS/security checks for up to 1000 tabs.
-  return filterBrowserTargets(list, { targetId });
+  return filterBrowserTargets(list, { targetId, validate });
 }
 
 export function validatedTargetWebSocketUrl(target, endpoint) {
