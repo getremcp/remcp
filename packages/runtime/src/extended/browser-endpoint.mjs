@@ -5,7 +5,7 @@ import { isIP } from 'node:net';
 import { lookup } from 'node:dns/promises';
 import { closeSync, constants as fsConstants, existsSync, fstatSync, mkdirSync, openSync, readFileSync, readdirSync } from 'node:fs';
 import { resolveSafePath } from '../util.mjs';
-import { preserveInterruptedBrowserSession } from './browser-session-backup.mjs';
+import { selectSafeBrowserLaunchProfile } from './browser-session-backup.mjs';
 import { shareBrowserDiscovery } from './browser-discovery-flight.mjs';
 import { clamp, commandExists, jsonResult, optionalString, requireEnum, spawnDetached, unavailable } from './common.mjs';
 
@@ -154,8 +154,9 @@ export async function ensureBrowserEndpoint(endpoint) {
       mkdirSync(profile, { recursive:true, mode:0o700 });
       // Chrome rotates its Sessions/ files on startup. Protect existing local
       // evidence before a restart, including profiles with only Tabs_* left.
-      preserveInterruptedBrowserSession(profile);
-      spawnDetached(executable, browserAutoLaunchArgs(profile));
+      const selected = selectSafeBrowserLaunchProfile(profile);
+      if (selected.isolated) console.warn('ReMCP browser: using an isolated recovery profile; existing session and backups are preserved, and sign-in state is not copied.');
+      spawnDetached(executable, browserAutoLaunchArgs(selected.profile));
       if (!await waitForBrowserEndpoint(5000)) throw new Error('ReMCP launched a browser but its local CDP endpoint did not become ready');
     })().finally(() => { browserLaunchPromise = null; });
   }

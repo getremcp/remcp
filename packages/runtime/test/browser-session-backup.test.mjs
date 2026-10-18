@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { chmodSync, lstatSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, symlinkSync, truncateSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { preserveInterruptedBrowserSession } from '../src/extended/browser-session-backup.mjs';
+import { preserveInterruptedBrowserSession, selectSafeBrowserLaunchProfile } from '../src/extended/browser-session-backup.mjs';
 
 const cleanup = [];
 afterEach(() => { for (const p of cleanup.splice(0)) rmSync(p, { recursive: true, force: true }); });
@@ -80,4 +80,52 @@ test('refuses oversized evidence instead of exhausting the filesystem', () => {
   const p = profile();
   truncateSync(join(p.dir, 'Tabs_1111'), 33 * 1024 * 1024);
   assert.throws(() => preserveInterruptedBrowserSession(p.home), /oversized/i);
+});
+
+function exhaustSnapshots(dir) {
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  for (let i = 0; i < 12; i++) {
+    const snapshot = join(dir, 'snapshot-test' + i);
+    mkdirSync(snapshot);
+    writeFileSync(join(snapshot, 'manifest.json'), JSON.stringify({ fingerprint: 'old-' + i }));
+  }
+}
+
+test('saturated snapshots switch to a single isolated profile without losing old sessions', () => {
+  const p = profile();
+  const original = readFileSync(join(p.dir, 'Tabs_1111'));
+  exhaustSnapshots(p.recovery);
+  const before = readdirSync(p.recovery);
+  const selected = selectSafeBrowserLaunchProfile(p.home);
+  assert.deepEqual(selected, { profile: p.home + '-isolated', isolated: true });
+  assert.deepEqual(readFileSync(join(p.dir, 'Tabs_1111')), original);
+  assert.deepEqual(readdirSync(p.recovery), before);
+  assert.equal(readdirSync(selected.profile).length, 0);
+  assert.deepEqual(selectSafeBrowserLaunchProfile(p.home), selected, 'restart reuses the same isolated profile');
+  assert.deepEqual(readdirSync(p.recovery), before, 'restart does not create further old snapshots');
+});
+
+test('an unsafe interrupted session fails closed and does not switch profiles', { skip: process.platform === 'win32' }, () => {
+  const p = profile({ tabs: false });
+  symlinkSync(join(p.dir, 'Session_2222'), join(p.dir, 'Tabs_1111'));
+  assert.throws(() => selectSafeBrowserLaunchProfile(p.home), /unsafe/i);
+  assert.throws(() => lstatSync(p.home + '-isolated'), /ENOENT/);
+});
+
+test('a linked fallback profile is rejected without following the link', { skip: process.platform === 'win32' }, () => {
+  const p = profile({ crashed: false });
+  symlinkSync(p.dir, p.home + '-isolated');
+  assert.throws(() => selectSafeBrowserLaunchProfile(p.home), /unsafe|ELOOP|directory/i);
+});
+
+test('an isolated profile at capacity also fails closed without multiplying profiles', () => {
+  const p = profile();
+  exhaustSnapshots(p.recovery);
+  const isolated = p.home + '-isolated';
+  mkdirSync(join(isolated, 'Default', 'Sessions'), { recursive: true });
+  writeFileSync(join(isolated, 'Default', 'Preferences'), JSON.stringify({ profile: { exit_type: 'Crashed' } }));
+  writeFileSync(join(isolated, 'Default', 'Sessions', 'Tabs_1234'), 'valid-saved-tab');
+  exhaustSnapshots(isolated + '-recovery');
+  assert.throws(() => selectSafeBrowserLaunchProfile(p.home), /snapshot limit/);
+  assert.throws(() => lstatSync(isolated + '-isolated'), /ENOENT/);
 });
