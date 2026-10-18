@@ -1,4 +1,9 @@
 import assert from 'node:assert/strict';
+import { spawn, spawnSync } from 'node:child_process';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { setTimeout as delay } from 'node:timers/promises';
 import test from 'node:test';
 import { windowsServiceLauncherText, windowsTaskReliabilityCommand } from '../src/cli/windows-supervisor.mjs';
 
@@ -40,4 +45,54 @@ test('Scheduled Task recovery retains a single instance, battery operation, and 
   assert.match(command, /Set-ScheduledTask -TaskName \$taskName -Settings \$settings/);
   assert.match(command, /did not persist the ReMCP recovery policy/);
   assert.throws(() => windowsTaskReliabilityCommand("evil'; Stop-Computer"), /Invalid Windows task name/);
+});
+
+test('Windows launcher really restarts a failed child without another logon', {
+  skip: process.platform !== 'win32',
+  timeout: 30_000,
+}, async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'remcp-win-recovery-'));
+  const cli = join(directory, 'mock-remcp.cmd');
+  const wrapper = join(directory, 'agent-supervisor.cmd');
+  const logFile = join(directory, 'child-starts.txt');
+  writeFileSync(cli, '@echo off\r\n>>"%REMCP_RECOVERY_TEST_LOG%" echo launched\r\nexit /b 7\r\n');
+  writeFileSync(wrapper, windowsServiceLauncherText(cli, process.execPath));
+  const child = spawn(process.env.ComSpec || 'cmd.exe', ['/D', '/Q', '/C', wrapper], {
+    cwd: directory,
+    detached: true,
+    windowsHide: true,
+    stdio: 'ignore',
+    env: { ...process.env, REMCP_RECOVERY_TEST_LOG: logFile },
+  });
+  let spawnError;
+  child.on('error', error => { spawnError = error; });
+  try {
+    const deadline = Date.now() + 22_000;
+    let starts = 0;
+    while (Date.now() < deadline) {
+      if (spawnError) throw spawnError;
+      try {
+        starts = readFileSync(logFile, 'utf8').split(/\r?\n/).filter(Boolean).length;
+      } catch (error) {
+        if (error?.code !== 'ENOENT') throw error;
+      }
+      if (starts >= 2) break;
+      await delay(250);
+    }
+    assert.ok(starts >= 2, 'the launcher must recover after the child exits with status 7');
+    const stopped = spawnSync('taskkill.exe', ['/PID', String(child.pid), '/T', '/F'], {
+      windowsHide: true,
+      stdio: 'ignore',
+    });
+    assert.equal(stopped.status, 0, 'the supervisor must be stoppable by its owner');
+  } finally {
+    if (child.pid) {
+      spawnSync('taskkill.exe', ['/PID', String(child.pid), '/T', '/F'], {
+        windowsHide: true, stdio: 'ignore',
+      });
+    }
+    child.unref();
+    await delay(200);
+    rmSync(directory, { recursive: true, force: true });
+  }
 });
