@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.2.165 — 2026-10-18
+
+**Crash-session recovery without losing browser automation when the local snapshot budget fills.**
+
+- When the dedicated Chromium profile already has 12 interrupted-session backups, preserve its tabs and all evidence and start a single, owner-only isolated browser profile instead of failing to launch.
+- Reuse the isolated profile across subsequent starts; never copy credentials or account state. Emit a local warning that sign-in state is not shared.
+- Still fail closed on unsafe symlinks, oversized evidence, unowned recovery directories or exhausted isolated-profile recovery capacity. No automatic deletion of backups.
+- Keep 83 runtime operations, the ten hosted MCP definitions, URL/DNS/SSRF checks and authorization boundaries unchanged. Add regression tests for full-capacity and unsafe-profile cases.
+
 ## 0.2.154 — 2026-10-17
 
 **ReMCP Gray v2 brand parity release.** The runtime tool contract remains at 83 operations with unchanged permissions and I/O semantics. The coordinated public client and OpenAI submission assets receive the owner-provided gray identity.

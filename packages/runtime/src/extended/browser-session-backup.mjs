@@ -42,7 +42,8 @@ function safeDirectory(dir) {
   if (process.platform === 'win32' && lstatSync(dir).isSymbolicLink()) throw new Error('Unsafe recovery directory');
   const fd = openSync(dir, constants.O_RDONLY | DIRECTORY | NOFOLLOW);
   try {
-    if (!fstatSync(fd).isDirectory()) throw new Error('Unsafe recovery directory');
+    const stat = fstatSync(fd);
+    if (!stat.isDirectory() || (process.platform !== 'win32' && typeof process.getuid === 'function' && stat.uid !== process.getuid())) throw new Error('Unsafe recovery directory');
     if (process.platform !== 'win32') fchmodSync(fd, 0o700);
   } finally { closeSync(fd); }
 }
@@ -132,4 +133,29 @@ export function preserveInterruptedBrowserSession(profile) {
       throw error;
     }
   } finally { if (dirFd !== undefined) closeSync(dirFd); }
+}
+
+// Never overwrite an interrupted Chromium profile when its recovery evidence
+// is at capacity. One sibling profile keeps automation available while
+// retaining the original profile and all snapshot files untouched.
+export function selectSafeBrowserLaunchProfile(profile) {
+  const isolated = profile + '-isolated';
+  let prior = false;
+  try { lstatSync(isolated); prior = true; }
+  catch (error) { if (error?.code !== 'ENOENT') throw error; }
+  if (prior) {
+    safeDirectory(isolated);
+    preserveInterruptedBrowserSession(isolated);
+    return { profile: isolated, isolated: true };
+  }
+  try {
+    preserveInterruptedBrowserSession(profile);
+    return { profile, isolated: false };
+  } catch (error) {
+    if (error?.message !== 'Session recovery snapshot limit reached') throw error;
+    // Never prune user-owned session recovery evidence.
+    safeDirectory(isolated);
+    preserveInterruptedBrowserSession(isolated);
+    return { profile: isolated, isolated: true };
+  }
 }
