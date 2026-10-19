@@ -8,6 +8,7 @@ import { resolveSafePath } from '../util.mjs';
 import { selectSafeBrowserLaunchProfile } from './browser-session-backup.mjs';
 import { shouldRestoreBrowserSession } from './browser-session-directory.mjs';
 import { shareBrowserDiscovery } from './browser-discovery-flight.mjs';
+import { observeBrowserLaunchExit, browserLaunchExitHint } from './browser-launch-lifecycle.mjs';
 import { clamp, commandExists, jsonResult, optionalString, requireEnum, spawnDetached, unavailable } from './common.mjs';
 
 
@@ -110,7 +111,13 @@ export async function ensureBrowserEndpoint(endpoint) {
       // evidence before a restart, including profiles with only Tabs_* left.
       const selected = selectSafeBrowserLaunchProfile(profile);
       if (selected.isolated) console.warn('ReMCP browser: using an isolated recovery profile; existing session and backups are preserved, and sign-in state is not copied.');
-      spawnDetached(executable, browserAutoLaunchArgs(selected.profile));
+      const restore = shouldRestoreBrowserSession(selected.profile);
+      const startedAt = Date.now();
+      spawnDetached(executable, browserAutoLaunchArgs(selected.profile), {
+        onExit:value => observeBrowserLaunchExit(value, { startedAt, restore, isolated:selected.isolated }),
+        onError:({ code }) => observeBrowserLaunchExit({ error:code || 'UNKNOWN' },
+          { startedAt, restore, isolated:selected.isolated }),
+      });
       if (!await waitForBrowserEndpoint(5000)) throw new Error('ReMCP launched a browser but its local CDP endpoint did not become ready');
       return true;
     })().finally(() => { browserLaunchPromise = null; });
@@ -415,7 +422,7 @@ export async function listBrowserTargets(endpoint, { targetId = null, readOnlySi
     if (!/fetch failed|ECONNREFUSED|ECONNRESET|ETIMEDOUT|abort|timed out|network error/i.test(message)) throw error;
     const configured = Boolean(endpoint || process.env.REMCP_CDP_URL);
     const label = configured ? 'The configured CDP endpoint' : 'Browser CDP endpoint';
-    throw new Error(`${label} is unavailable at ${base.origin}. Read-only browser_tabs and browser_snapshot do not launch a browser. Use ui_snapshot and ui_find for the existing browser window; do not retry this CDP endpoint unchanged. Only browser_navigate(action=new_tab), when explicitly requested, may start a local isolated browser.`);
+    throw new Error(`${label} is unavailable at ${base.origin}. Read-only browser_tabs and browser_snapshot do not launch a browser. Use ui_snapshot and ui_find for the existing browser window; do not retry this CDP endpoint unchanged. Only browser_navigate(action=new_tab), when explicitly requested, may start a local isolated browser.${browserLaunchExitHint({ configured })}`);
   }
   // Retain the current bounded concurrent DNS/security checks for up to 1000 tabs.
   return filterBrowserTargets(list, { targetId, validate });
