@@ -125,6 +125,9 @@ export const PAGE_FILL_FORM = `function(fields) {
     }
     const tag = el.tagName.toLowerCase();
     if (!['input','textarea','select'].includes(tag)) throw new Error('Unsupported form field: ' + field.selector);
+    if (tag === 'input' && ['checkbox','radio'].includes(el.type) && typeof field.value !== 'boolean') {
+      throw new Error('Checkbox and radio fields require a boolean value: ' + field.selector);
+    }
     if (tag === 'select' && !Array.from(el.options).some(option => option.value === String(field.value))) {
       throw new Error('No matching select option: ' + field.selector);
     }
