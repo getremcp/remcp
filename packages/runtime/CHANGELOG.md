@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.169 — 2026-10-19
+
+- Emit redacted, bounded lifecycle events when ReMCP-owned Chrome exits and distinguish clean exit, nonzero exit, OS signal and spawn error.
+- On a missing default loopback CDP endpoint, include a fresh, explicitly non-causal hint only if the managed browser process recently exited. Never auto-launch browser_tabs/browser_snapshot, and never reveal URLs, tab content, Chrome arguments, credentials or profile paths.
+- Add detached subprocess, privacy, TTL and missing-listener regression tests.
+
 ## 0.2.165 — 2026-10-18
 
 **Crash-session recovery without losing browser automation when the local snapshot budget fills.**

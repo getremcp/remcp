@@ -238,6 +238,18 @@ export function spawnDetached(file, args = [], options = {}) {
     stdio: 'ignore',
     windowsHide: true,
   });
+  // Opt-in process lifecycle callbacks for long-lived detached services.
+  // Do not forward command arguments or OS error messages into telemetry.
+  if (typeof options.onExit === 'function') {
+    child.once('exit', (code, signal) => {
+      try { options.onExit({ pid: child.pid ?? null, code, signal }); } catch {}
+    });
+  }
+  if (typeof options.onError === 'function') {
+    child.once('error', error => {
+      try { options.onError({ pid: child.pid ?? null, code: String(error?.code || 'UNKNOWN') }); } catch {}
+    });
+  }
   child.unref();
   return child.pid;
 }
