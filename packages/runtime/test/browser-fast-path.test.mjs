@@ -73,6 +73,9 @@ test('fill_form preflights all fields, fires native events and never returns fie
   const perform=fields=>runInNewContext('('+PAGE_FILL_FORM+')('+JSON.stringify(fields)+')',fake);
   assert.throws(()=>perform([{selector:'#a',value:'unsafe'},{selector:'#missing',value:'x'}]),/not editable/);
   assert.equal(a.value,'','a partial form must never be written when validation fails');
+  assert.throws(()=>perform([{selector:'#a',value:'partial'},{selector:'#c',value:'false'}]),/boolean/);
+  assert.equal(a.value,'','ambiguous checkbox values must fail before any form is written');
+  assert.equal(checkbox.checked,false);
   const result=perform([{selector:'#a',value:'Проверка 🌍'},{selector:'#b',value:'pro'},{selector:'#c',value:true}]);
   assert.equal(a.value,'Проверка 🌍');
   assert.equal(b.value,'pro');
