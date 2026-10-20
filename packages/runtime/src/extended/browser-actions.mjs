@@ -24,7 +24,8 @@ export async function browserFind(args) {
 
 export const PAGE_SCROLL_ACTION = `function(selector, needle, deltaX, deltaY) {
   let target = selector ? document.querySelector(selector) : null;
-  if (!target && needle) {
+  // An explicit CSS target is authoritative: never reinterpret a stale selector as an unrelated text match.
+  if (!selector && needle) {
     const lower = String(needle).toLowerCase();
     target = Array.from(document.querySelectorAll('*')).find(node =>
       String(node.innerText || node.textContent || '').trim().toLowerCase().includes(lower)
@@ -65,7 +66,8 @@ export const PAGE_SCROLL_ACTION = `function(selector, needle, deltaX, deltaY) {
 
 export const PAGE_ELEMENT_ACTION = `function(selector, needle, action, value) {
   let el = selector ? document.querySelector(selector) : null;
-  if (!el && needle) {
+  // Do not click or type into a different control when the requested CSS selector has disappeared.
+  if (!selector && needle) {
     const lower = String(needle).toLowerCase();
     el = Array.from(document.querySelectorAll('*')).find(node =>
       String(node.innerText || node.textContent || '').trim().toLowerCase().includes(lower)
@@ -117,6 +119,7 @@ export const PAGE_ELEMENT_ACTION = `function(selector, needle, action, value) {
 // Bounded form mutation: validate every target before changing any field.
 // Values are intentionally excluded from the return object and tool logs.
 export const PAGE_FILL_FORM = `function(fields) {
+  const seen = new Set();
   const targets = fields.map(field => {
     const el = document.querySelector(field.selector);
     if (!el || !el.getClientRects().length || el.disabled || el.readOnly ||
@@ -131,10 +134,21 @@ export const PAGE_FILL_FORM = `function(fields) {
     if (tag === 'select' && !Array.from(el.options).some(option => option.value === String(field.value))) {
       throw new Error('No matching select option: ' + field.selector);
     }
-    return {el,tag,value:field.value};
+    // Different selectors may resolve to the same DOM element. Fail before
+    // writes rather than silently overwriting one field twice.
+    if (seen.has(el)) throw new Error('Form targets the same DOM element more than once');
+    seen.add(el);
+    return {el,tag,value:field.value,selector:field.selector};
   });
   const summary = [];
-  for (const {el,tag,value} of targets) {
+  for (const {el,tag,value,selector} of targets) {
+    // A synchronous input/change listener can replace later form controls.
+    // Never write to a detached or re-bound element from the preflight batch.
+    if (el.isConnected === false || document.querySelector(selector) !== el ||
+        el.disabled || el.readOnly || !el.getClientRects().length) {
+      throw new Error('Form field changed during fill; ' + summary.length +
+        ' field(s) may already be modified. Inspect page state before retrying');
+    }
     const checkbox = tag === 'input' && ['checkbox','radio'].includes(el.type);
     const prop = checkbox ? 'checked' : 'value';
     let prototype = Object.getPrototypeOf(el);
@@ -145,7 +159,17 @@ export const PAGE_FILL_FORM = `function(fields) {
     }
     const next = checkbox ? Boolean(value) : String(value);
     if (setter) setter.call(el, next); else el[prop] = next;
+    // Native setters and synchronous input handlers can re-render the current
+    // control too. Avoid sending any later event to an abandoned element.
+    const requireCurrent = () => {
+      if (el.isConnected === false || document.querySelector(selector) !== el) {
+        throw new Error('Form field changed during fill; ' + (summary.length + 1) +
+          ' field(s) may already be modified. Inspect page state before retrying');
+      }
+    };
+    requireCurrent();
     el.dispatchEvent(new Event('input', {bubbles:true}));
+    requireCurrent();
     el.dispatchEvent(new Event('change', {bubbles:true}));
     summary.push({tag, changed:true});
   }

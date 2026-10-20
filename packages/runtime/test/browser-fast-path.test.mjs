@@ -84,3 +84,88 @@ test('fill_form preflights all fields, fires native events and never returns fie
   assert.equal(JSON.stringify(result).includes('Проверка'),false);
   assert.deepEqual(events,['input','change','input','change','input','change']);
 });
+
+
+test('fill_form stops if a previous input handler replaced the next field', () => {
+  class Input {
+    constructor() { this.tagName='INPUT'; this.type='text'; this.value=''; this.isConnected=true; this.onEvent=null; }
+    getClientRects() { return [{width:12,height:20}]; }
+    matches() { return false; }
+    dispatchEvent(event) { this.onEvent?.(event); }
+  }
+  const a=new Input(), stale=new Input(), replacement=new Input();
+  const elements={'#a':a,'#b':stale};
+  a.onEvent=event => {
+    if (event.type==='input') {
+      stale.isConnected=false;
+      elements['#b']=replacement;
+    }
+  };
+  const fake={document:{querySelector:s=>elements[s]??null},Event:class{constructor(type){this.type=type;}}};
+  const fill=fields=>runInNewContext('('+PAGE_FILL_FORM+')('+JSON.stringify(fields)+')',fake);
+  assert.throws(()=>fill([{selector:'#a',value:'first'},{selector:'#b',value:'second'}]),
+    /Form field changed during fill.*1 field/);
+  assert.equal(a.value,'first', 'the first action may already have changed page state');
+  assert.equal(stale.value,'', 'a detached element must never be written');
+  assert.equal(replacement.value,'', 'a rerendered replacement needs a fresh explicit action');
+});
+
+test('fill_form rejects duplicate DOM targets before any field is changed', () => {
+  const field={
+    tagName:'INPUT',type:'text',value:'',isConnected:true,
+    getClientRects(){return [{width:12,height:20}];},
+    matches(){return false;},
+    dispatchEvent(){},
+  };
+  const fake={
+    document:{querySelector:s=>s==='#name'||s==='input[name=name]'?field:null},
+    Event:class{constructor(type){this.type=type;}},
+  };
+  const fill=fields=>runInNewContext('('+PAGE_FILL_FORM+')('+JSON.stringify(fields)+')',fake);
+  assert.throws(()=>fill([{selector:'#name',value:'first'},{selector:'input[name=name]',value:'second'}]),
+    /same DOM element more than once/);
+  assert.equal(field.value,'');
+});
+
+test('fill_form never dispatches change on a field detached by its input listener', () => {
+  const events=[];
+  const field={
+    tagName:'INPUT',type:'text',value:'',isConnected:true,
+    getClientRects(){return [{width:12,height:20}];},
+    matches(){return false;},
+    dispatchEvent(event) {
+      events.push(event.type);
+      if(event.type==='input') { this.isConnected=false; }
+    },
+  };
+  let current=field;
+  const fake={
+    document:{querySelector:()=>current},
+    Event:class{constructor(type){this.type=type;}},
+  };
+  const fill=fields=>runInNewContext('('+PAGE_FILL_FORM+')('+JSON.stringify(fields)+')',fake);
+  assert.throws(()=>fill([{selector:'#field',value:'new'}]),/Form field changed during fill/);
+  assert.deepEqual(events,['input'], 'the detached control must not receive change');
+  assert.equal(field.value,'new', 'the first field mutation may already have occurred');
+});
+
+test('fill_form stops before dispatching events when a native setter detaches its own field', () => {
+  const events=[];
+  const field={
+    tagName:'INPUT',type:'text',isConnected:true,
+    getClientRects(){return [{width:12,height:20}];},
+    matches(){return false;},
+    dispatchEvent(event){events.push(event.type);},
+  };
+  Object.defineProperty(field,'value',{
+    get(){return this._value??'';},
+    set(value){this._value=value;this.isConnected=false;},
+  });
+  const fake={
+    document:{querySelector:()=>field},
+    Event:class{constructor(type){this.type=type;}},
+  };
+  const fill=fields=>runInNewContext('('+PAGE_FILL_FORM+')('+JSON.stringify(fields)+')',fake);
+  assert.throws(()=>fill([{selector:'#field',value:'new'}]),/Form field changed during fill/);
+  assert.deepEqual(events,[]);
+});
