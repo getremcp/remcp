@@ -127,9 +127,15 @@ export async function executeBrowserWorkflow(session, steps, {
       }
       completed.push({index:index+1,action:step.action,ok:true});
     } catch (error) {
-      // Don't echo form values or page text in an error.
+      // Don't echo form values or page text in an error. Even if no *step*
+      // completed, fill_form may have written earlier fields before a
+      // synchronous page handler invalidated the next target.
+      const recovery = step.action === 'wait_for' ? 'Condition not satisfied.'
+        : step.action === 'fill_form'
+          ? 'This step may have partially modified fields. Inspect the page before any retry.'
+          : 'Inspect the page before retrying.';
       throw new Error('Browser workflow stopped at step '+(index+1)+' ('+step.action+'); '+
-        completed.length+' steps completed. '+(step.action==='wait_for'?'Condition not satisfied.':'Inspect the page before retrying.'));
+        completed.length+' steps completed. '+recovery);
     }
   }
   return {completed:completed.length,steps:completed,elapsed_ms:Date.now()-started};

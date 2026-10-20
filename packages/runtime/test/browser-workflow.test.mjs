@@ -1,5 +1,5 @@
 import { runInNewContext } from 'node:vm';
-import { PAGE_ELEMENT_ACTION } from '../src/extended/browser-actions.mjs';
+import { PAGE_ELEMENT_ACTION, PAGE_SCROLL_ACTION } from '../src/extended/browser-actions.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { validateBrowserWorkflow, executeBrowserWorkflow } from '../src/extended/browser-workflow.mjs';
@@ -173,4 +173,60 @@ test('workflow wait never treats an element on a redirected origin as a match', 
     error=>error.message.includes('step 1') && error.message.includes('Condition not satisfied') &&
       !error.message.includes('other.example.test'),
   );
+});
+
+test('failed batched workflow warns about possible partial writes without exposing entered values', async () => {
+  const secret='private-batch-value-sentinel';
+  const steps=validate([{action:'fill_form',fields:[
+    {selector:'#first',value:secret},{selector:'#second',value:'next'},
+  ]}]);
+  const mock={async send(_method,payload) {
+    if(payload.expression==='location.href')return {result:{value:'about:blank'}};
+    throw new Error('Form field changed during fill; 1 field may be modified '+secret);
+  }};
+  await assert.rejects(
+    executeBrowserWorkflow(mock,steps,{pageFillForm:'function(){return true}'}),
+    error=>error.message.includes('step 1') &&
+      /partial|may have been modified/i.test(error.message) &&
+      /inspect/i.test(error.message) && !error.message.includes(secret),
+  );
+});
+
+
+test('explicit stale selector never silently falls back to a visible text match', () => {
+  const other={
+    tagName:'BUTTON',textContent:'Delete all',value:'',scrollIntoView(){},focus(){},
+    matches(){return false;},
+    getBoundingClientRect(){return {x:0,y:0,width:50,height:20};},
+    getClientRects(){return [{x:0,y:0,width:50,height:20}];},
+    contains(){return false;},
+  };
+  const fake={document:{
+    querySelector(){return null;},
+    querySelectorAll(){return [other];},
+    elementFromPoint(){return other;},
+  }};
+  const invoke=(selector,needle,action='click')=>
+    runInNewContext('('+PAGE_ELEMENT_ACTION+')('+JSON.stringify(selector)+','+
+      JSON.stringify(needle)+','+JSON.stringify(action)+',"")',fake);
+  assert.throws(()=>invoke('#missing','Delete all'),/Element not found/);
+  assert.throws(()=>invoke('#missing','Delete all','set_value'),/Element not found/);
+  assert.equal(invoke(null,'Delete all').tag,'button','text-only legacy lookup remains valid');
+});
+
+test('explicit stale scroll selector never redirects scroll to another text match', () => {
+  const scroller={scrollTop:0,scrollLeft:0,scrollWidth:700,clientWidth:100,
+    scrollHeight:900,clientHeight:100,parentElement:null,tagName:'DIV'};
+  const other=scroller; other.textContent='Delete all';
+  const page={scrollTop:0,scrollLeft:0,tagName:'HTML'};
+  const fake={document:{
+    querySelector(){return null;},
+    querySelectorAll(){return [other];},
+    documentElement:page,scrollingElement:page,
+  },getComputedStyle(){return {overflowX:'auto',overflowY:'auto'};}};
+  const run=(selector,needle)=>runInNewContext('('+PAGE_SCROLL_ACTION+')('+JSON.stringify(selector)+','+
+    JSON.stringify(needle)+',0,120)',fake);
+  assert.throws(()=>run('#missing','Delete all'),/Element not found/);
+  assert.equal(scroller.scrollTop,0);
+  assert.equal(run(null,'Delete all').target,'div');
 });
