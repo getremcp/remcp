@@ -124,8 +124,26 @@ export function hostedToolNamesForProfile(root, profile = 'compact') {
   assert.equal(profile, 'review', 'unknown REMCP_PUBLIC_TOOL_PROFILE');
   const raw = JSON.parse(readFileSync(join(root, 'src/tool-catalog.json'), 'utf8'));
   assert.ok(Array.isArray(raw) && raw.length === 83, 'review profile requires the pinned 83-operation runtime catalog');
-  const names = [...REVIEW_ACCOUNT_TOOLS, ...raw.map(tool => tool.name)];
-  assert.equal(new Set(names).size, 94, 'review profile must have 94 unique, independently reviewable tools');
+  // The public package is dependency-free: derive the exact standalone names
+  // from the checked-in runtime schemas without importing the hosted MCP server.
+  const prefixes = {
+    computer_action:'computer',window_action:'window',ui_action:'ui',
+    pointer:'pointer',clipboard:'clipboard',browser_navigate:'browser',
+    browser_action:'browser',service:'service',network:'network',
+    audio:'audio',power_action:'power',edit_document:'document',pdf_action:'pdf',
+  };
+  const names = [...REVIEW_ACCOUNT_TOOLS, ...raw.flatMap(tool => {
+    const prefix = prefixes[tool.name];
+    if (!prefix) return [tool.name];
+    const operations = tool.name === 'edit_document'
+      ? tool.inputSchema?.properties?.operations?.items?.properties?.action?.enum
+      : tool.inputSchema?.properties?.action?.enum;
+    assert.ok(Array.isArray(operations) && operations.length, 'missing operation enum: ' + tool.name);
+    return operations.filter(action => tool.name !== 'browser_action' || action !== 'workflow')
+      .map(action => prefix + '_' + (tool.name === 'browser_navigate' && action === 'url' ? 'navigate_url' : action));
+  })];
+  assert.equal(names.length,173,'review profile must expose 173 operation-specific tools');
+  assert.equal(new Set(names).size,173,'standalone review tool names must be unique');
   return new Set(names);
 }
 

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.170 — 2026-10-20
+
+- Preserve `Emulation.setDeviceMetricsOverride` across sequential browser-tool calls that use independent CDP sessions.
+- Limit cached state to viewport dimensions and mobile emulation, keyed by endpoint and target, with bounded 10-minute expiry.
+- Add deterministic unit tests and validate real Chromium 1440×900, 390×844, 375×667 and 320×568 readbacks.
+
 ## 0.2.169 — 2026-10-19
 
 - Emit redacted, bounded lifecycle events when ReMCP-owned Chrome exits and distinguish clean exit, nonzero exit, OS signal and spawn error.

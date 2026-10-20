@@ -9,8 +9,9 @@ import { preserveInterruptedBrowserSession } from './browser-session-backup.mjs'
 import { clamp, commandExists, jsonResult, optionalString, requireEnum, spawnDetached, unavailable } from './common.mjs';
 
 
-import { assertBrowserRemoteEnabled, assertSafeEvaluationExpression } from './browser-endpoint.mjs';
-import { callPageFunction, evaluate, withTarget } from './browser-session.mjs';
+import { assertBrowserRemoteEnabled, assertSafeEvaluationExpression, endpointUrl } from './browser-endpoint.mjs';
+import { callPageFunction, evaluate, withTarget, productionSessionKey } from './browser-session.mjs';
+import { rememberBrowserViewport } from './browser-viewport.mjs';
 import { browserNavigate, browserSnapshot, browserTabs, findExpression } from './browser-read.mjs';
 import { executeBrowserWorkflow, validateBrowserWorkflow } from './browser-workflow.mjs';
 
@@ -226,14 +227,9 @@ export async function browserAction(args) {
       const width = clamp(args.width, 1280, 200, 8192);
       const height = clamp(args.height, 720, 200, 8192);
       const deviceScaleFactor = Math.max(0.1, Math.min(8, Number(args.device_scale_factor) || 1));
-      await session.send('Emulation.setDeviceMetricsOverride', {
-        width,
-        height,
-        deviceScaleFactor,
-        mobile: Boolean(args.mobile),
-        screenWidth: width,
-        screenHeight: height,
-      });
+      const metrics = { width, height, deviceScaleFactor, mobile:Boolean(args.mobile), screenWidth:width, screenHeight:height };
+      await session.send('Emulation.setDeviceMetricsOverride', metrics);
+      rememberBrowserViewport(productionSessionKey(endpointUrl(args.endpoint), target), metrics);
       return jsonResult({ target_id:target.id, action, width, height, device_scale_factor:deviceScaleFactor, mobile:Boolean(args.mobile) });
     }
     if (action === 'upload') {

@@ -10,6 +10,7 @@ import { clamp, commandExists, jsonResult, optionalString, requireEnum, spawnDet
 
 
 import { MAX_CDP_MESSAGE_BYTES, PRODUCTION_SESSION_IDLE_MS, assertResolvedBrowserUrl, assertResolvedPageUrl, chooseTarget, endpointUrl, ensureBrowserEndpoint, productionBrowserSessions, requestJson, validatedTargetWebSocketUrl } from './browser-endpoint.mjs';
+import { getBrowserViewport } from './browser-viewport.mjs';
 
 export class CdpSession {
   constructor(url, timeoutMs) {
@@ -384,17 +385,20 @@ export async function withTarget(args = {}, callback) {
   const cached = findGuardedCachedTarget(args, endpoint);
   const target = cached?.target || await chooseTarget(args);
   const production = process.env.NODE_ENV === 'production';
-  const key = production ? productionSessionKey(endpoint, target) : '';
+  const viewportKey = productionSessionKey(endpoint, target);
+  const key = production ? viewportKey : '';
   let record = cached?.record || (production ? productionBrowserSessions.get(key) : null);
   if (record?.session?.closed || (record?.session?.socket && record.session.socket.readyState !== 1)) {
     closeProductionSession(key, record);
     record = null;
   }
   let session = record?.session;
+  let openedSession = false;
   let removeGuard = record?.removeGuard || (() => {});
   if (!session) {
     try {
       session = await new CdpSession(target.webSocketDebuggerUrl, clamp(args.timeout_ms, 10_000, 100, 120_000)).open();
+      openedSession = true;
       removeGuard = await installBrowserRequestGuard(session);
       if (production) record = retainProductionSession(key, session, removeGuard, target.id, endpoint, false, target);
     } catch (error) {
@@ -408,6 +412,10 @@ export async function withTarget(args = {}, callback) {
   }
   let operationFailed = false;
   try {
+    if (openedSession) {
+      const viewport = getBrowserViewport(viewportKey);
+      if (viewport) await session.send('Emulation.setDeviceMetricsOverride', viewport);
+    }
     const currentUrl = await evaluate(session, 'location.href');
     await assertResolvedPageUrl(currentUrl);
     // A reused target's discovery metadata can be old after navigation.
