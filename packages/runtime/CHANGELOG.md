@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.170 — 2026-10-20
+
+- Reapply per-target CDP viewport emulation when opening a new guarded browser session; bound state to 64 targets and expire after 10 minutes.
+- Fix inaccurate mobile browser QA readback after separate `set_viewport` and DOM/snapshot calls without widening browser-origin permissions.
+- Add viewport persistence, target-isolation and expiry tests.
+
 ## 0.2.169 — 2026-10-19
 
 - Emit redacted, bounded lifecycle events when ReMCP-owned Chrome exits and distinguish clean exit, nonzero exit, OS signal and spawn error.
