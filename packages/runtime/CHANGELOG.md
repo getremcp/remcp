@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.171 — 2026-10-21
+
+- Require MCP Server SDK 2.3.0 or later; update the published dependency lock to the patched 2.3.x line.
+- Preserve the existing local tool surface (83 tools), OS-specific safeguards, pairing and browser-origin restrictions. No additional permissions are introduced.
+
 ## 0.2.170 — 2026-10-20
 
 - Reapply per-target CDP viewport emulation when opening a new guarded browser session; bound state to 64 targets and expire after 10 minutes.
