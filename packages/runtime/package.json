@@ -1,6 +1,6 @@
 {
   "name": "@remcp/runtime",
-  "version": "0.2.170",
+  "version": "0.2.171",
   "description": "First-party ReMCP local device runtime: filesystem, terminal, computer-use, browser, diagnostics and document tools over MCP.",
   "type": "module",
   "license": "MIT",
@@ -25,7 +25,7 @@
   },
   "dependencies": {
     "@jellybrick/dbus-next": "^0.11.3",
-    "@modelcontextprotocol/server": "^2.0.0"
+    "@modelcontextprotocol/server": "^2.3.0"
   },
   "devDependencies": {
     "@modelcontextprotocol/client": "^2.0.0"
