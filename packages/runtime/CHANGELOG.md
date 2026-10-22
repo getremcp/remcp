@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.174 — 2026-10-22
+
+- Preserve the 83 runtime operations and existing schemas while separating guarded browser CDP security policy and diagnostics recording backends.
+- Retain browser-origin, DNS/SSRF checks, platform protections and output limits without widening device permissions.
+- Publish alongside the refactored client/host at the same version for package compatibility.
+
 ## 0.2.173 — 2026-10-22
 
 - Return initial terminal output promptly after a bounded 175 ms grace when a long-running process writes without exiting.

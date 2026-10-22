@@ -4,7 +4,7 @@ import { readFile } from 'node:fs/promises';
 import * as browser from '../src/extended/browser.mjs';
 
 const modules = [
-  'browser.mjs', 'browser-endpoint.mjs', 'browser-session.mjs',
+  'browser.mjs', 'browser-endpoint.mjs', 'browser-policy.mjs', 'browser-session.mjs',
   'browser-read.mjs', 'browser-actions.mjs',
 ];
 
