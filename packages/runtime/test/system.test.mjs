@@ -41,3 +41,16 @@ test('kill_process terminates another process', { skip: process.platform === 'wi
   assert.equal(isError(await invokeTool('kill_process', { pid: child.pid })), false);
   assert.equal(await waitFor(async () => !alive(child.pid), 5000), true);
 });
+
+test('get_system_info reports bounded host CPU utilization and measured frequency', async () => {
+  const result = await invokeTool('get_system_info', {});
+  assert.equal(isError(result), false);
+  const system = JSON.parse(body(result));
+  assert.ok(system.cpu.count > 0);
+  if (system.cpu.utilizationRatio !== null) {
+    assert.ok(system.cpu.utilizationRatio >= 0 && system.cpu.utilizationRatio <= 1);
+  }
+  if (system.cpu.frequencyMHz !== null) {
+    assert.ok(system.cpu.frequencyMHz > 0 && system.cpu.frequencyMHz <= 100000);
+  }
+});
