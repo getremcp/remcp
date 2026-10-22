@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.172 — 2026-10-22
+
+- Add bounded host-wide CPU utilization sampling based on deltas from `os.cpus().times` so the dashboard can display real CPU percentages instead of treating load average as CPU%.
+- Add `cpu.frequencyMHz` from reported per-core clock rates, with `null` for unsupported or invalid measurements.
+- Preserve the existing `get_system_info` schema, 83-tool catalog, authentication restrictions, and backwards compatibility.
+
+
 ## 0.2.171 — 2026-10-21
 
 - Require MCP Server SDK 2.3.0 or later; update the published dependency lock to the patched 2.3.x line.
