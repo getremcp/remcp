@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 
 const parts = [
   'browser-endpoint.mjs',
+  'browser-policy.mjs',
   'browser-session.mjs',
   'browser-read.mjs',
   'browser-actions.mjs',

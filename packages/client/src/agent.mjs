@@ -1,32 +1,26 @@
 import os from 'node:os';
 import process from 'node:process';
-import WebSocket from 'ws';
 import { Client } from '@modelcontextprotocol/client';
 import { StdioClientTransport } from '@modelcontextprotocol/client/stdio';
 import { VERSION } from './version.mjs';
 import { localRuntimeEntry } from './agent-update.mjs';
 
 export { localRuntimeEntry, supervisorRestart, updateDecision } from './agent-update.mjs';
-import { normalizedServerUrl, sendRelayMessage, jitter, boundedReconnectDelay, deviceMetrics } from './agent-utilities.mjs';
+import { normalizedServerUrl, sendRelayMessage, jitter, deviceMetrics } from './agent-utilities.mjs';
 import { createAgentUpdateMonitor, UPDATE_CHECK_INTERVAL_MS } from './agent-update-monitor.mjs';
 import { createAgentResponder } from './agent-responder.mjs';
+import { createAgentRelayConnection } from './agent-relay-connection.mjs';
+import { createRuntimeCapabilities, normalizeRuntimeToolNames } from './agent-runtime-capabilities.mjs';
 
 const METRICS_INTERVAL_MS = 5 * 60_000;
 const TELEMETRY_QUEUE_LIMIT = 500;
 const TELEMETRY_BATCH_LIMIT = 100;
 const TELEMETRY_SEND_INTERVAL_MS = 5_000;
-const RECONNECT_BASE_MS = 2_000;
-// The first retry after an unexpected drop: fast enough that a blip is invisible, slow enough not to
-// hammer a server that is genuinely down.
-const RECONNECT_FIRST_MS = 500;
 // Must stay above the runtime's own output ceiling (8 MiB), otherwise a large but legal tool result
 // closes the stdio connection and restarts the runtime mid-call.
 const RUNTIME_STDIO_BUFFER_BYTES = 24 * 1024 * 1024;
-const RECONNECT_MAX_MS = 60_000;
 const RUNTIME_RESTART_BASE_MS = 1_000;
 const RUNTIME_RESTART_MAX_MS = 30_000;
-const RUNTIME_TOOLS_RETRY_BASE_MS = 1_000;
-const RUNTIME_TOOLS_RETRY_MAX_MS = 30_000;
 // Below the relay's RPC timeout so the model gets a real error instead of a client-side
 // timeout while the device keeps working invisibly.
 const CALL_TIMEOUT_MARGIN_MS = 10_000;
@@ -43,14 +37,9 @@ export async function runAgent(options) {
   const metricsIntervalMs = Math.max(60_000, Number(options.metricsIntervalMs || process.env.REMCP_AGENT_METRICS_INTERVAL_MS) || METRICS_INTERVAL_MS);
   const persistState = typeof options.persistState === 'function' ? options.persistState : () => {};
   let stopping = false;
-  let revoked = false;
   const inFlight = new Map();
   let activeSocket;
   let reconnects = 0;
-  let reconnectTimer = null;
-  // Set when a replica asks this agent to move before it is replaced; the close handler reads it.
-  let askedToReconnect = false;
-  let requestedReconnectDelayMs = 0;
   let pendingRequests = 0;
   let runtimeVersion = 'unknown';
   let runtimeRestarts = 0;
@@ -81,8 +70,6 @@ export async function runAgent(options) {
   let transport = null;
   let runtimeRestartDelay = RUNTIME_RESTART_BASE_MS;
   let runtimeRestartTimer = null;
-  let runtimeToolsRetryDelay = RUNTIME_TOOLS_RETRY_BASE_MS;
-  let runtimeToolsRetryTimer = null;
   let stopPromise = null;
 
   function runtimeEnv() {
@@ -97,51 +84,20 @@ export async function runAgent(options) {
     return env;
   }
 
-  function toolNames(listed) {
-    const tools = Array.isArray(listed?.tools) ? listed.tools : [];
-    return [...new Set(tools.map(tool => String(tool?.name || '').trim().slice(0, 128)).filter(Boolean))].slice(0, 256);
-  }
-
-  function scheduleRuntimeToolsRetry(client) {
-    if (stopping || runtimeDown || mcp !== client || runtimeToolsRetryTimer) return;
-    const delay = jitter(runtimeToolsRetryDelay);
-    runtimeToolsRetryDelay = Math.min(RUNTIME_TOOLS_RETRY_MAX_MS, runtimeToolsRetryDelay * 2);
-    runtimeToolsRetryTimer = setTimeout(() => {
-      runtimeToolsRetryTimer = null;
-      void refreshRuntimeTools(client);
-    }, delay);
-    runtimeToolsRetryTimer.unref?.();
-  }
-
-  function applyRuntimeTools(next, { announce = true } = {}) {
-    if (next.length === runtimeTools.length && next.every((name, index) => name === runtimeTools[index])) return runtimeTools;
-    runtimeTools = next;
-    if (announce) send({ type: 'capabilities', runtimeTools });
-    return runtimeTools;
-  }
-
-  async function refreshRuntimeTools(client = mcp, { announce = true } = {}) {
-    if (!client || runtimeDown) return runtimeTools;
-    try {
-      const listed = await client.listTools(undefined, { timeout: 3000 });
-      if (runtimeToolsRetryTimer) clearTimeout(runtimeToolsRetryTimer);
-      runtimeToolsRetryTimer = null;
-      runtimeToolsRetryDelay = RUNTIME_TOOLS_RETRY_BASE_MS;
-      applyRuntimeTools(toolNames(listed), { announce });
-    } catch (error) {
-      console.error(`ReMCP could not refresh runtime capabilities: ${error instanceof Error ? error.message : String(error)}`);
-      scheduleRuntimeToolsRetry(client);
-    }
-    return runtimeTools;
-  }
+  const runtimeCapabilities = createRuntimeCapabilities({
+    getTools: () => runtimeTools,
+    setTools: next => { runtimeTools = next; },
+    isActive: client => !stopping && !runtimeDown && mcp === client,
+    announce: next => send({ type: 'capabilities', runtimeTools: next }),
+    jitter,
+  });
+  const refreshRuntimeTools = (client = mcp, options) => runtimeCapabilities.refresh(client, options);
 
   async function startRuntime() {
     if (stopping) return;
     clearTimeout(runtimeRestartTimer);
     runtimeRestartTimer = null;
-    if (runtimeToolsRetryTimer) clearTimeout(runtimeToolsRetryTimer);
-    runtimeToolsRetryTimer = null;
-    runtimeToolsRetryDelay = RUNTIME_TOOLS_RETRY_BASE_MS;
+    runtimeCapabilities.clearRetry();
     runtimeDown = true;
     const previous = mcp;
     mcp = null;
@@ -168,10 +124,11 @@ export async function runAgent(options) {
             onChanged(error, tools) {
               if (error) {
                 console.error(`ReMCP runtime tool subscription failed: ${error instanceof Error ? error.message : String(error)}`);
-                scheduleRuntimeToolsRetry(client);
+                runtimeCapabilities.scheduleRetry(client);
                 return;
               }
-              applyRuntimeTools(toolNames({ tools }));
+              if (mcp !== client || runtimeDown || stopping) return;
+              runtimeCapabilities.apply(normalizeRuntimeToolNames({ tools }));
             },
           },
         },
@@ -219,9 +176,7 @@ export async function runAgent(options) {
 
   function handleRuntimeExit(reason) {
     if (stopping || runtimeRestartTimer) return;
-    if (runtimeToolsRetryTimer) clearTimeout(runtimeToolsRetryTimer);
-    runtimeToolsRetryTimer = null;
-    runtimeToolsRetryDelay = RUNTIME_TOOLS_RETRY_BASE_MS;
+    runtimeCapabilities.clearRetry();
     runtimeDown = true;
     runtimeTools = [];
     send({ type: 'capabilities', runtimeTools });
@@ -290,39 +245,6 @@ export async function runAgent(options) {
     }
   }
 
-  function scheduleReconnect(delay) {
-    if (stopping || revoked || reconnectTimer) return;
-    // Keep the upper-bound guard in control flow immediately before the timer sink. CodeQL's
-    // resource-exhaustion model treats this as a barrier, and future callers cannot retain the
-    // agent with an attacker-controlled timer lifetime.
-    const numericDelay = Number(delay);
-    if (!Number.isFinite(numericDelay)) {
-      scheduleReconnect(RECONNECT_BASE_MS);
-      return;
-    }
-    if (numericDelay > RECONNECT_MAX_MS) {
-      scheduleReconnect(RECONNECT_MAX_MS);
-      return;
-    }
-    const safeDelay = Math.max(100, Math.floor(numericDelay));
-    reconnectTimer = setTimeout(() => {
-      reconnectTimer = null;
-      connect();
-    }, safeDelay);
-    reconnectTimer.unref?.();
-  }
-
-  function scheduleBackoffReconnect() {
-    if (stopping || revoked || reconnectTimer) return;
-    reconnects += 1;
-    // The first retry after an unexpected drop is quick on purpose: a deploy blip, a proxy restart or
-    // a dropped packet should cost a fraction of a second, not the two seconds the backoff starts at.
-    const delay = reconnects === 1
-      ? jitter(RECONNECT_FIRST_MS)
-      : jitter(Math.min(RECONNECT_MAX_MS, RECONNECT_BASE_MS * 2 ** Math.min(reconnects, 5)));
-    scheduleReconnect(delay);
-  }
-
   const respond = createAgentResponder({
     inFlight,
     onPendingChange: delta => { pendingRequests = Math.max(0, pendingRequests + delta); },
@@ -349,116 +271,23 @@ export async function runAgent(options) {
     },
   });
 
-  function connect() {
-    if (stopping) return;
-    // The device token is intentionally sent only to the configured ReMCP relay during the
-    // authenticated WebSocket handshake.
-    // codeql[js/file-access-to-http]
-    const ws = new WebSocket(agentUrl, { headers: { Authorization: `Bearer ${deviceToken}` } });
-    // The ws client leaves cleanup/retry to the caller when an unexpected-response listener exists.
-    // A temporary workspace pause therefore needs an explicit retry; otherwise the first 423 leaves
-    // this WebSocket stuck in CONNECTING forever and turning the device back on cannot recover it.
-    ws.on('unexpected-response', (request, response) => {
-      const handshakeRevoked = String(response.headers['x-remcp-revoked'] || '') === '1';
-      const handshakeDisabled = String(response.headers['x-remcp-disabled'] || '') === '1';
-      if (handshakeRevoked) revoked = true;
-      console.error(`ReMCP relay refused the connection (HTTP ${response.statusCode})${handshakeRevoked ? ': this device was revoked' : handshakeDisabled ? ': this device is temporarily disabled' : ''}.`);
-      response.resume();
-      request.destroy();
-      if (handshakeDisabled && !revoked) {
-        reconnects += 1;
-        // Service access is a user-controlled pause, not an outage. Poll slowly enough not to hammer
-        // the relay, but cap recovery so an enable action becomes effective within seconds.
-        scheduleReconnect(jitter(RECONNECT_BASE_MS));
-        return;
-      }
-      const status = Number(response.statusCode || 0);
-      const transientHandshakeFailure = status === 408 || status === 425 || status === 429 || (status >= 500 && status <= 599);
-      if (transientHandshakeFailure && !revoked) {
-        // A reverse proxy or relay deploy can refuse the HTTP upgrade before a WebSocket exists.
-        // With an unexpected-response listener the client does not reliably emit close afterwards,
-        // so this branch must schedule its own retry or a still-running agent can stay offline forever.
-        scheduleBackoffReconnect();
-      }
-    });
-    activeSocket = ws;
-    ws.on('open', () => {
-      if (reconnectTimer) {
-        clearTimeout(reconnectTimer);
-        reconnectTimer = null;
-      }
-      reconnects = 0;
-      sendRelayMessage(ws, {
-        type: 'hello',
-        deviceId,
-        deviceName,
-        hostname: os.hostname(),
-        platform: process.platform,
-        arch: process.arch,
-        agentVersion: VERSION,
-        runtimeVersion,
-        runtimeState: runtimeDown ? 'down' : 'ready',
-        runtimeError,
-        runtimeTools,
-        telemetryEnabled,
-        reconnects,
-      });
-      console.log(`Connected to ${serverUrl} as ${deviceName}`);
-      sendMetricsSample();
-      reportInstallOnce();
-      flushTelemetry();
-      void checkForUpdate();
-      schedulePostConnectUpdateChecks();
-    });
-    ws.on('message', raw => {
-      let message;
-      try { message = JSON.parse(raw.toString()); } catch { return; }
-      if (message?.type === 'reconnect') {
-        askedToReconnect = true;
-        requestedReconnectDelayMs = boundedReconnectDelay(message.delayMs, 150);
-        return;
-      }
-      if (message?.type === 'request') void respond(ws, message);
-      if (message?.type === 'cancel' && message.id) {
-        const controller = inFlight.get(message.id);
-        if (controller) controller.abort();
-      }
-    });
-    ws.on('close', code => {
-      clearPostConnectUpdateChecks();
-      for (const controller of inFlight.values()) controller.abort();
-      if (stopping) return;
-      // 1013 ('reconnect') is what a replica sends before it is replaced by a deployment. The machine
-      // is not down, it is moving: reconnect at once and forget the backoff, so the person and the
-      // model see nothing at all.
-      if (code === 1013 || askedToReconnect) {
-        const delayMs = requestedReconnectDelayMs || 150;
-        askedToReconnect = false;
-        requestedReconnectDelayMs = 0;
-        reconnects = 0;
-        console.log(`ReMCP relay is being redeployed; reconnecting in ${delayMs}ms.`);
-        scheduleReconnect(delayMs);
-        return;
-      }
-      if (code === 1008 || revoked) {
-        // The relay closes with 1008 when the device was revoked. Retrying forever would
-        // hide that from the person at the computer.
-        console.error('ReMCP access for this device was revoked. Pair the machine again from the ReMCP workspace: remcp connect --server <url> --code <code> --install');
-        return;
-      }
-      if (code === 1012) {
-        // 1012 ('service restart') is what the relay sends when another agent process took over this
-        // device. Staying alive would keep a second runtime and a reconnect loop, so this process
-        // stops and leaves the device to the agent that owns the connection.
-        console.error('Another ReMCP agent connected for this device; this process will stop. Run one agent per machine (a service manager or the remcp start command).');
-        stopping = true;
-        void stop().finally(() => setTimeout(() => process.exit(0), 100));
-        return;
-      }
-      scheduleBackoffReconnect();
-    });
-    ws.on('error', error => console.error(`ReMCP relay: ${error.message}`));
-  }
+  const { connect, clearReconnect } = createAgentRelayConnection({
+    agentUrl, serverUrl, deviceToken, deviceId, deviceName,
+    isStopping: () => stopping,
+    markStopping: () => { stopping = true; },
+    getReconnects: () => reconnects,
+    setReconnects: count => { reconnects = count; },
+    setSocket: socket => { activeSocket = socket; },
+    getHelloState: () => ({
+      runtimeVersion,
+      runtimeState: runtimeDown ? 'down' : 'ready',
+      runtimeError,
+      runtimeTools,
+      telemetryEnabled,
+    }),
+    respond, inFlight, sendMetricsSample, reportInstallOnce, flushTelemetry,
+    checkForUpdate, schedulePostConnectUpdateChecks, clearPostConnectUpdateChecks, stop,
+  });
 
   scheduleMetricsSample();
   const telemetryFlushTimer = setInterval(flushTelemetry, TELEMETRY_SEND_INTERVAL_MS);
@@ -470,10 +299,8 @@ export async function runAgent(options) {
     if (stopPromise) return stopPromise;
     stopping = true;
     clearTimeout(runtimeRestartTimer);
-    clearTimeout(runtimeToolsRetryTimer);
-    runtimeToolsRetryTimer = null;
-    clearTimeout(reconnectTimer);
-    reconnectTimer = null;
+    runtimeCapabilities.clearRetry();
+    clearReconnect();
     clearPostConnectUpdateChecks();
     if (telemetryTimer) clearTimeout(telemetryTimer);
     clearInterval(telemetryFlushTimer);
