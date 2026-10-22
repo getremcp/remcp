@@ -1,10 +1,10 @@
 # Changelog
 
-## 0.2.174 — 2026-10-22
+## 0.2.175 — 2026-10-22
 
-- Preserve the 83 runtime operations and existing schemas while separating guarded browser CDP security policy and diagnostics recording backends.
-- Retain browser-origin, DNS/SSRF checks, platform protections and output limits without widening device permissions.
-- Publish alongside the refactored client/host at the same version for package compatibility.
+- Carry forward the public 0.2.174 browser-policy and diagnostics-recording module extraction without weakening CDP or recording controls.
+- Require the patched MCP client 2.3.1 development dependency and retain 83 runtime operation contracts.
+- No new remote execution permissions or OAuth bypasses are introduced.
 
 ## 0.2.173 — 2026-10-22
 
