@@ -14,7 +14,6 @@ import {
   readNewOutput,
   readOutputRange,
   totalLines,
-  waitForProcessExit,
   waitForProcessActivity,
 } from '../sessions.mjs';
 import { clampInteger, fail, requireInteger, requireString, structured, text, truncate } from '../util.mjs';
@@ -66,6 +65,21 @@ function terminalStructured(value, fallbackText) {
   return structured(bounded, fallbackText);
 }
 
+// The start call promises initial output, not process completion. Return once
+// useful output arrives, keeping a short grace window so quick commands can
+// still report their real exit status without requiring a follow-up tool call.
+// Explicit timeout_ms remains an upper bound, including for silent commands.
+async function waitForInitialOutput(session, timeoutMs) {
+  const deadline = Date.now() + timeoutMs;
+  const graceUntil = Date.now() + Math.min(175, timeoutMs);
+  while (!session.exited) {
+    const now = Date.now();
+    if (now >= deadline || (now >= graceUntil && hasNewOutput(session))) break;
+    const wakeAt = now < graceUntil ? Math.min(deadline, graceUntil) : deadline;
+    await waitForProcessActivity(session, Math.min(100, Math.max(1, wakeAt - now)));
+  }
+}
+
 export async function startProcessTool(args, extra = {}) {
   const command = requireString(args.command, 'command');
   const verdict = assertAllowedCommand(command);
@@ -105,7 +119,7 @@ export async function startProcessTool(args, extra = {}) {
   child.on('exit', (code, signal) => markProcessExited(session, code, signal));
   child.on('close', (code, signal) => markProcessExited(session, code, signal));
 
-  await waitForProcessExit(session, timeoutMs);
+  await waitForInitialOutput(session, timeoutMs);
   const headline = session.exited
     ? `Process ${session.pid} finished${session.exitCode === null ? '' : ` with code ${session.exitCode}`}${session.signal ? ` (${session.signal})` : ''}.`
     : `Process ${session.pid} is running.`;

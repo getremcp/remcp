@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.173 — 2026-10-22
+
+- Return initial terminal output promptly after a bounded 175 ms grace when a long-running process writes without exiting.
+- Preserve exit-status reporting for immediately completing commands, timeout upper bounds and process-session read/termination semantics.
+- Add terminal regression tests; retain 83 runtime operation routes and unchanged authorization and device safety controls.
+
+
 ## 0.2.172 — 2026-10-22
 
 - Add bounded host-wide CPU utilization sampling based on deltas from `os.cpus().times` so the dashboard can display real CPU percentages instead of treating load average as CPU%.

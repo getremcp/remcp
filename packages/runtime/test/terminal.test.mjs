@@ -25,6 +25,51 @@ test('start_process runs a command and returns its output', async () => {
   assert.match(result.structuredContent?.output || '', /hello-from-runtime/);
 });
 
+test('start_process returns early on initial output from a long-running command', async () => {
+  const startedAt = Date.now();
+  const result = await invokeTool('start_process', {
+    command: 'printf "READY-EARLY\\n"; sleep 3',
+    timeout_ms: 1600,
+  });
+  const elapsed = Date.now() - startedAt;
+  const pid = pidOf(result);
+  try {
+    assert.equal(isError(result), false);
+    assert.match(body(result), /READY-EARLY/);
+    assert.equal(result.structuredContent?.exited, false);
+    assert.ok(elapsed < 1200, `initial output returned after ${elapsed}ms instead of early`);
+  } finally {
+    await invokeTool('force_terminate', { pid });
+  }
+});
+
+test('start_process returns after delayed output rather than waiting for process exit', async () => {
+  const startedAt = Date.now();
+  const result = await invokeTool('start_process', {
+    command: 'sleep 0.3; printf "READY-DELAYED\\n"; sleep 3',
+    timeout_ms: 1800,
+  });
+  const elapsed = Date.now() - startedAt;
+  const pid = pidOf(result);
+  try {
+    assert.match(body(result), /READY-DELAYED/);
+    assert.equal(result.structuredContent?.exited, false);
+    assert.ok(elapsed < 1300, `delayed output returned after ${elapsed}ms`);
+  } finally {
+    await invokeTool('force_terminate', { pid });
+  }
+});
+
+test('start_process still reports the final code for immediately exiting commands', async () => {
+  const result = await invokeTool('start_process', {
+    command: 'printf "FAST-EXIT\\n"; exit 3',
+    timeout_ms: 1600,
+  });
+  assert.equal(result.structuredContent?.exited, true);
+  assert.equal(result.structuredContent?.exitCode, 3);
+  assert.match(body(result), /FAST-EXIT/);
+});
+
 test('read_process_output returns new output and supports tail offsets', async () => {
   const started = await invokeTool('start_process', { command: 'for i in 1 2 3; do echo line-$i; sleep 0.4; done', timeout_ms: 200 });
   const pid = pidOf(started);
