@@ -139,11 +139,10 @@ export function hostedToolNamesForProfile(root, profile = 'compact') {
       ? tool.inputSchema?.properties?.operations?.items?.properties?.action?.enum
       : tool.inputSchema?.properties?.action?.enum;
     assert.ok(Array.isArray(operations) && operations.length, 'missing operation enum: ' + tool.name);
-    return operations.filter(action => tool.name !== 'browser_action' || action !== 'workflow')
-      .map(action => prefix + '_' + (tool.name === 'browser_navigate' && action === 'url' ? 'navigate_url' : action));
+    return operations.map(action => prefix + '_' + (tool.name === 'browser_navigate' && action === 'url' ? 'navigate_url' : action));
   })];
-  assert.equal(names.length,173,'review profile must expose 173 operation-specific tools');
-  assert.equal(new Set(names).size,173,'standalone review tool names must be unique');
+  assert.equal(names.length,174,'review profile must expose 174 operation-specific tools');
+  assert.equal(new Set(names).size,174,'standalone review tool names must be unique');
   return new Set(names);
 }
 
