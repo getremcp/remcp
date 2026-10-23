@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.176 — 2026-10-23
+
+- Reduce screenshot CDP round-trips by batching viewport resolution with capture and reusing measured element dimensions.
+- Cache Accessibility enablement per WebSocket connection with single-flight behavior.
+- Filter malformed, mismatched or unsafe page WebSocket targets during discovery rather than exposing unusable tabs.
+- Keep browser URL/DNS validation, permissions and the existing 83 operation definitions unchanged.
+
 ## 0.2.175 — 2026-10-22
 
 - Carry forward the public 0.2.174 browser-policy and diagnostics-recording module extraction without weakening CDP or recording controls.

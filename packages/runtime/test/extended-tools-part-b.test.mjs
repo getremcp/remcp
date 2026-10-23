@@ -434,7 +434,8 @@ test('browser CDP rejects a non-loopback WebSocket target returned by a local en
     webSocketDebuggerUrl: 'ws://example.com/devtools/page/1',
   }]), { status: 200, headers: { 'content-type': 'application/json' } });
   try {
-    await assert.rejects(() => browserSnapshot({ endpoint: 'http://127.0.0.1:9222' }), /WebSocket target must be loopback-only/i);
+    // Invalid socket metadata is filtered before target selection or connection.
+    await assert.rejects(() => browserSnapshot({ endpoint: 'http://127.0.0.1:9222' }), /no debuggable page target/i);
   } finally {
     globalThis.fetch = originalFetch;
   }
