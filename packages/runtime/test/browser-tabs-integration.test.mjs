@@ -30,7 +30,11 @@ test('browser_tabs reads a large mixed-safe list without leaking blocked same-ho
   const lab=await fixture((req,res)=>{
     assert.equal(req.url,'/json/list');
     res.writeHead(200,{'content-type':'application/json'});
-    res.end(JSON.stringify(entries));
+    // Real Chrome serves /json/list and its target sockets from the same CDP port.
+    const socketOrigin=`ws://127.0.0.1:${req.socket.localPort}/`;
+    res.end(JSON.stringify(entries.map(item=>({...item,
+      webSocketDebuggerUrl:item.webSocketDebuggerUrl.replace('ws://127.0.0.1:9222/',socketOrigin)
+    }))));
   });
   t.after(()=>lab.close());
   const result=await browserTabs({endpoint:lab.endpoint});

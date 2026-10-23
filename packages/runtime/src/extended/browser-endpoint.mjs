@@ -173,12 +173,18 @@ export async function browserCapabilityAvailable(endpoint, timeoutMs = 500) {
 // Validating every tab sequentially can require hundreds of serial DNS lookups,
 // making browser_tabs exceed the relay's deadline on machines with many tabs.
 // Keep DNS and security validation, but bound both the work and its concurrency.
-export async function filterBrowserTargets(list, { validate = assertResolvedPageUrl, targetId = null } = {}) {
+export async function filterBrowserTargets(list, { validate = assertResolvedPageUrl, targetId = null, endpoint = null } = {}) {
   if (!Array.isArray(list)) return [];
   const candidates = [];
   for (const item of list) {
     if (!item || item.type !== 'page' || !item.webSocketDebuggerUrl) continue;
     if (targetId && item.id !== targetId) continue;
+    // Reject fabricated/stale CDP socket metadata *before* DNS validation.
+    // browser_tabs must never advertise a target that cannot pass chooseTarget.
+    if (endpoint) {
+      try { validatedTargetWebSocketUrl(item, endpoint); }
+      catch { continue; }
+    }
     candidates.push(item);
     if (candidates.length >= 1000) break;
   }
@@ -242,13 +248,18 @@ export async function listBrowserTargets(endpoint, { targetId = null, readOnlySi
     throw new Error(`${label} is unavailable at ${base.origin}. Read-only browser_tabs and browser_snapshot do not launch a browser. Use ui_snapshot and ui_find for the existing browser window; do not retry this CDP endpoint unchanged. Only browser_navigate(action=new_tab), when explicitly requested, may start a local isolated browser.${browserLaunchExitHint({ configured })}`);
   }
   // Retain the current bounded concurrent DNS/security checks for up to 1000 tabs.
-  return filterBrowserTargets(list, { targetId, validate });
+  return filterBrowserTargets(list, { targetId, validate, endpoint:base });
 }
 
 export function validatedTargetWebSocketUrl(target, endpoint) {
   let socketUrl;
   try { socketUrl = new URL(String(target?.webSocketDebuggerUrl)); }
   catch { throw new Error('Browser returned an invalid CDP WebSocket URL'); }
+  const targetId = String(target?.id ?? '');
+  if (!targetId || targetId.length > 256 || socketUrl.username || socketUrl.password ||
+    socketUrl.search || socketUrl.hash) {
+    throw new Error('Browser returned an invalid CDP WebSocket target');
+  }
   if (!['ws:', 'wss:'].includes(socketUrl.protocol) || !isLoopbackHost(socketUrl.hostname)) {
     throw new Error('Browser CDP WebSocket target must be loopback-only');
   }

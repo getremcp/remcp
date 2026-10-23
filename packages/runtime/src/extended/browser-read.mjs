@@ -139,9 +139,42 @@ export function sensitiveAccessibilityDescendants(nodes) {
   return secret;
 }
 
+// One viewport evaluation is enough for both dimensions, and may run while
+// Chrome captures the screenshot. Selector capture already returned the viewport
+// dimensions with the element bounds, so it needs no further CDP evaluation.
+export async function captureViewportScreenshot(session, screenshotTarget = null) {
+  const dimensions = screenshotTarget
+    ? Promise.resolve({width:screenshotTarget.viewport_width, height:screenshotTarget.viewport_height})
+    : evaluate(session, '({width:innerWidth,height:innerHeight})').catch(() => null);
+  const image = session.send('Page.captureScreenshot', {
+    format:'png',fromSurface:true,captureBeyondViewport:false,
+  });
+  const [size,captured] = await Promise.all([dimensions,image]);
+  return {
+    captured,
+    viewport:{scope:'viewport',width:size?.width ?? null,height:size?.height ?? null},
+  };
+}
+
+// Enabling Accessibility is a per-CDP-socket state. Reuse the successful
+// handshake for retained guarded sockets; a new socket always enables afresh.
+const accessibilityReady = new WeakMap();
+export async function ensureAccessibilityReady(session) {
+  let pending = accessibilityReady.get(session);
+  if (!pending) {
+    pending = Promise.resolve().then(() => session.send('Accessibility.enable'));
+    accessibilityReady.set(session,pending);
+    try { await pending; }
+    catch (error) {
+      if (accessibilityReady.get(session)===pending) accessibilityReady.delete(session);
+      throw error;
+    }
+  } else await pending;
+}
+
 export async function browserSnapshot(args) {
   return withTarget(args, async (session, target) => {
-    await session.send('Accessibility.enable');
+    await ensureAccessibilityReady(session);
     const { nodes = [] } = await session.send('Accessibility.getFullAXTree');
     const limit = clamp(args.max_nodes, 1500, 1, 10_000);
     const redacted = sensitiveAccessibilityDescendants(nodes);
@@ -206,27 +239,19 @@ export async function browserSnapshot(args) {
       const { original_scroll_x: _originalX, original_scroll_y: _originalY, ...reportedBounds } = bounds;
       payload.screenshot_target = { selector, ...reportedBounds };
     }
-    payload.screenshot = {
-      scope: 'viewport',
-      width: await evaluate(session, 'innerWidth').catch(() => null),
-      height: await evaluate(session, 'innerHeight').catch(() => null),
-    };
-    const result = jsonResult(payload);
-    let captured;
+    let screenshot;
     try {
-      captured = await session.send('Page.captureScreenshot', {
-        format: 'png',
-        fromSurface: true,
-        captureBeyondViewport: false,
-      });
+      screenshot = await captureViewportScreenshot(session, payload.screenshot_target);
     } finally {
       if (restoreScroll) {
         await evaluate(session, `window.scrollTo({left:${restoreScroll.x},top:${restoreScroll.y},behavior:'instant'})`).catch(() => {});
       }
     }
-    const data = String(captured?.data || '');
+    const data = String(screenshot.captured?.data || '');
     if (!data) throw new Error('CDP returned no screenshot data');
     if (Buffer.byteLength(data, 'base64') > 8 * 1024 * 1024) throw new Error('Browser screenshot exceeds the 8 MiB inline image limit');
+    payload.screenshot = screenshot.viewport;
+    const result = jsonResult(payload);
     result.content.push({ type:'image', data, mimeType:'image/png' });
     return result;
   });
