@@ -17,6 +17,7 @@ ReMCP keeps one public source repository and publishes host-native discovery met
 | MCP Find | [PR #316](https://github.com/MCPFind/mcp-find/pull/316) | submitted 24 Oct 2026 with public MIT source and verified npm @remcp/remcp v0.2.177; awaiting CI/maintainer review |
 | MCP Harbor | [Free listing submission](https://mcpharbor.app/submit/) | ReMCP submission accepted 24 Oct 2026; pending independent review |
 | Plug and Ship | [ReMCP public listing](https://plugandship.dev/p/remcp) | Free submission accepted 24 Oct 2026; launch scheduled 12 Nov 2026 |
+| LibHunt | [Public ReMCP project page](https://www.libhunt.com/r/getremcp/remcp) | free submission automatically approved 24 Oct 2026; verified HTTP 200 |
 | MCPRepository | [ReMCP index](https://mcprepository.com/getremcp/remcp) | Already indexed per API; URL HTTP 200 on 24 Oct 2026 |
 | MCP Market | [Public ReMCP listing](https://mcpmarket.com/server/remcp) | confirmed published 24 Oct 2026; submit form returned already listed |
 | Punkpeye Awesome MCP Servers | [Merged PR #14685](https://github.com/punkpeye/awesome-mcp-servers/pull/14685) | published in public installable-MCP catalog 18 Oct 2026 |
