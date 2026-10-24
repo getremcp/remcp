@@ -167,6 +167,9 @@ ReMCP publishes host-native metadata for coding agents plus directory records fo
 | **Awesome Claude Code Plugins** | [PR #822](https://github.com/ccplugins/awesome-claude-code-plugins/pull/822) | Submitted 24 Oct 2026; external community review pending |
 | **Awesome Gemini CLI Extensions** | [ReMCP PR #95](https://github.com/Piebald-AI/awesome-gemini-cli-extensions/pull/95) | Submitted 24 Oct 2026; review pending |
 | **AlexMili Awesome MCP** | [ReMCP PR #327](https://github.com/AlexMili/Awesome-MCP/pull/327) | Submitted 24 Oct 2026; review pending |
+| **Collabnix Awesome MCP Lists** | [PR #265](https://github.com/collabnix/awesome-mcp-lists/pull/265) | Submitted 24 Oct 2026; pending third-party review |
+| **mctrinh Awesome MCP Servers** | [PR #180](https://github.com/mctrinh/awesome-mcp-servers/pull/180) | Submitted 24 Oct 2026; pending review |
+| **Awesome MCP ZH** | [PR #839](https://github.com/yzfly/Awesome-MCP-ZH/pull/839) | Submitted 24 Oct 2026; Chinese-language entry pending review |
 | **Wagner Awesome DevOps MCP Servers** | [PR #113](https://github.com/WagnerAgent/awesome-mcp-servers-devops/pull/113) | submitted 24 Oct 2026; external review pending |
 | **Awesome DevOps MCP Servers** | [PR #381](https://github.com/rohitg00/awesome-devops-mcp-servers/pull/381) | submitted 24 Oct 2026; external review pending |
 | **MindPal Awesome Remote MCP Servers** | [PR #231](https://github.com/sylviangth/awesome-remote-mcp-servers/pull/231) | submitted 24 Oct 2026; awaiting remote catalog review |
