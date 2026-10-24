@@ -9,11 +9,13 @@ ReMCP keeps one public source repository and publishes host-native discovery met
 | ChatGPT & Codex | OpenAI plugin directory | submitted / platform-controlled rollout |
 | Claude Code | Claude Plugins directory | submitted, pending review |
 | Cursor Directory | [Public ReMCP plugin](https://cursor.directory/plugins/remcp) | community directory page verified 24 Oct 2026 (not official Cursor endorsement) |
-| Gemini CLI | Gemini CLI Extension Gallery + direct GitHub install | gallery discovery enabled; native extension validated |
+| Gemini CLI | [Public manifest](https://github.com/getremcp/remcp/blob/main/gemini-extension.json) + Gemini CLI Extension Gallery | `gemini-cli-extension` topic confirmed 24 Oct 2026; eligible for gallery crawler, not independently verified listed |
 | GitHub Copilot CLI | Awesome Copilot default marketplace | rejected October 7, 2026 — not listed ([review decision](https://github.com/github/awesome-copilot/issues/3326)) |
 | VS Code Agent Plugins | Awesome Copilot / `@agentPlugins` | not listed; shared external submission was rejected October 7, 2026 |
 | Kiro Powers | Kiro Powers registry + direct GitHub import | submitted September 19, 2026; pending review |
 | Cline | Cline MCP Marketplace ([PR #125](https://github.com/cline/marketplace/pull/125)) | submitted in current `cline/marketplace`; pending review |
+| MCP Harbor | [Free listing submission](https://mcpharbor.app/submit/) | ReMCP submission accepted 24 Oct 2026; pending independent review |
+| Plug and Ship | [ReMCP public listing](https://plugandship.dev/p/remcp) | Free submission accepted 24 Oct 2026; launch scheduled 12 Nov 2026 |
 | MCPRepository | [ReMCP index](https://mcprepository.com/getremcp/remcp) | Already indexed per API; URL HTTP 200 on 24 Oct 2026 |
 | MCP Market | [Public ReMCP listing](https://mcpmarket.com/server/remcp) | confirmed published 24 Oct 2026; submit form returned already listed |
 | Punkpeye Awesome MCP Servers | [Merged PR #14685](https://github.com/punkpeye/awesome-mcp-servers/pull/14685) | published in public installable-MCP catalog 18 Oct 2026 |
