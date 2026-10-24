@@ -50,7 +50,7 @@ Registry metadata, and the host-specific OpenAI and Anthropic plugin packaging.
 | Package | What it is |
 | --- | --- |
 | [`@remcp/remcp`](packages/client) | The device client: pairing, the outbound agent, the background service, and the usage-metrics switch. |
-| [`@remcp/runtime`](packages/runtime) | The first-party local runtime: **83 MCP tools** for files, images, binary transfer, archives, screenshots, search, terminal/process work, native desktop UI, loopback browser CDP, diagnostics, lightweight documents, and narrowly scoped runtime preferences, with **two direct dependencies**. |
+| [`@remcp/runtime`](packages/runtime) | The first-party local runtime: **84 MCP tools** for files, images, binary transfer, archives, screenshots, search, terminal/process work, native desktop UI, loopback browser CDP, diagnostics, lightweight documents, and narrowly scoped runtime preferences, with **two direct dependencies**. |
 
 ## Install
 
@@ -144,7 +144,7 @@ ReMCP publishes host-native metadata for coding agents plus directory records fo
 
 | Host / directory | User path | Status |
 | --- | --- | --- |
-| **Cursor Directory** | [ReMCP plugin](https://cursor.directory/plugins/remcp), with remote MCP and five skills; direct endpoint `https://remcp.site/mcp` also supported. | public community listing verified 24 Oct 2026; not official Cursor approval |
+| **Cursor** | Add `https://remcp.site/mcp` as a remote MCP server in Cursor settings, then authorize. | manual MCP setup |
 | **Gemini CLI** | Install from the Extension Gallery when indexed, or run `gemini extensions install https://github.com/antonbaider/remcp`. | gallery discovery enabled |
 | **VS Code** | Configure the remote MCP endpoint in an MCP-capable client. | manual MCP setup |
 | **Kiro Powers** | Import `https://github.com/antonbaider/remcp` from **Add Custom Power → Import power from GitHub** while the curated listing is reviewed. | submitted |
@@ -214,7 +214,7 @@ For source-linked developer documentation alongside local computer access, combi
 with, [DesktopCommanderMCP](https://github.com/wonderwhy-er/DesktopCommanderMCP) or any other MCP
 server.
 
-**83 granular device operations, 10 hosted production definitions.** Current production advertises 8 device-facing façade tools plus 2 account/fleet tools, all model-visible. If custom widgets are explicitly re-enabled, discovery expands to 15 definitions by adding 5 app-only UI helpers. See the generated **[full tool reference](docs/TOOLS.md)** for every current façade and its operation list.
+**84 granular device operations, 10 hosted production definitions.** Current production advertises 8 device-facing façade tools plus 2 account/fleet tools, all model-visible. If custom widgets are explicitly re-enabled, discovery expands to 15 definitions by adding 5 app-only UI helpers. See the generated **[full tool reference](docs/TOOLS.md)** for every current façade and its operation list.
 
 **Device runtime surface:**
 
@@ -234,7 +234,7 @@ server.
 | Diagnostics | `service`, `event_log`, `network`, `installed_apps`, `environment`, `audio`, `power_action`, `record_screen` |
 | Documents | `read_document`, `edit_spreadsheet`, `edit_document`, `pdf_action` |
 
-The hosted ReMCP endpoint currently advertises **10 model-visible tools** with `REMCP_CUSTOM_WIDGETS_ENABLED=false`; no app-only render/save/refresh helpers or `structuredContent.preview` references are exposed. The compact surface routes to all 83 granular runtime operations, and 100 compatibility names remain callable for cached clients without inflating discovery for new models. If widgets are explicitly re-enabled later, the hosted catalog expands to 15 definitions and 105 compatibility names. Each online device returned by `list_devices` reports its live supported subset, and unavailable operations fail closed.
+The hosted ReMCP endpoint currently advertises **10 model-visible tools** with `REMCP_CUSTOM_WIDGETS_ENABLED=false`; no app-only render/save/refresh helpers or `structuredContent.preview` references are exposed. The compact surface routes to all 84 granular runtime operations, and 101 compatibility names remain callable for cached clients without inflating discovery for new models. If widgets are explicitly re-enabled later, the hosted catalog expands to 15 definitions and 106 compatibility names. Each online device returned by `list_devices` reports its live supported subset, and unavailable operations fail closed.
 
 ### Tool selection for AI agents
 
