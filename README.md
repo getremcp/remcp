@@ -149,6 +149,7 @@ ReMCP publishes host-native metadata for coding agents plus directory records fo
 | **VS Code** | Configure the remote MCP endpoint in an MCP-capable client. | manual MCP setup |
 | **Kiro Powers** | Import `https://github.com/antonbaider/remcp` from **Add Custom Power → Import power from GitHub** while the curated listing is reviewed. | submitted |
 | **Cline** | Use the Cline MCP Marketplace after review; the current submission is tracked in [`cline/marketplace` PR #125](https://github.com/cline/marketplace/pull/125). | submitted |
+| **MCP Find** | [PR #316](https://github.com/MCPFind/mcp-find/pull/316) | Submitted 24 Oct 2026; fork-safe validation pending and directory review required |
 | **MCP Harbor** | [Free submission portal](https://mcpharbor.app/submit/) | Docsy and ReMCP submitted 24 Oct 2026; ReMCP awaiting external review/daily indexing, not yet verified listed |
 | **Plug and Ship** | [Public ReMCP page](https://plugandship.dev/p/remcp) | Free launch accepted 24 Oct 2026; daily board scheduled 12 Nov 2026, not yet launched |
 | **MCPRepository** | [ReMCP listing](https://mcprepository.com/getremcp/remcp) | Existing listing confirmed via duplicate-detection API and HTTP 200 on 24 Oct 2026 |
