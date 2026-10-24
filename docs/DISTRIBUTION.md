@@ -23,6 +23,8 @@ ReMCP keeps one public source repository and publishes host-native discovery met
 | mcpHQ Awesome MCP Servers | [PR #404](https://github.com/mcpHQ/awesome-mcp-servers/pull/404) | open, awaiting maintainer review |
 | ToolSDK MCP Registry | [PR #1019](https://github.com/toolsdk-ai/toolsdk-mcp-registry/pull/1019) | open; schema and biome CI passed |
 | MobinX Awesome MCP List | [PR #931](https://github.com/MobinX/awesome-mcp-list/pull/931) | open, awaiting maintainer review |
+| YuzeHao Awesome MCP Servers | [PR #719](https://github.com/YuzeHao2023/Awesome-MCP-Servers/pull/719) | submitted, upstream review pending |
+| Awesome Remote MCP Servers (jaw9c) | [PR #1637](https://github.com/jaw9c/awesome-remote-mcp-servers/pull/1637) | submitted 24 Oct 2026, awaiting catalog review |
 | Brethof AI Awesome MCP Servers | [PR #54](https://github.com/BrethofAI/awesome-mcp-servers/pull/54) | submitted, external review pending |
 | Docker MCP Registry | [PR #5159](https://github.com/docker/mcp-registry/pull/5159) | submitted, external review pending |
 | CheckMCP | [Free audit portal](https://checkmcp.dev/submit) | submission received 24 Oct 2026; audit pending |
