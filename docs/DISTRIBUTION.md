@@ -17,6 +17,9 @@ ReMCP keeps one public source repository and publishes host-native discovery met
 | MCP Market | [Public ReMCP listing](https://mcpmarket.com/server/remcp) | confirmed published 24 Oct 2026; submit form returned already listed |
 | AI Anytime Awesome MCP Servers | [Merged PR #314](https://github.com/AIAnytime/Awesome-MCP-Servers/pull/314) | published in GitHub directory 24 Oct 2026 |
 | Sagargupta Awesome MCP Servers | [Merged PR #214](https://github.com/Sagargupta16/awesome-mcp-servers/pull/214) | published in GitHub directory 24 Oct 2026 |
+| mcpHQ Awesome MCP Servers | [PR #404](https://github.com/mcpHQ/awesome-mcp-servers/pull/404) | open, awaiting maintainer review |
+| ToolSDK MCP Registry | [PR #1019](https://github.com/toolsdk-ai/toolsdk-mcp-registry/pull/1019) | open; schema and biome CI passed |
+| MobinX Awesome MCP List | [PR #931](https://github.com/MobinX/awesome-mcp-list/pull/931) | open, awaiting maintainer review |
 | Brethof AI Awesome MCP Servers | [PR #54](https://github.com/BrethofAI/awesome-mcp-servers/pull/54) | submitted, external review pending |
 | Docker MCP Registry | [PR #5159](https://github.com/docker/mcp-registry/pull/5159) | submitted, external review pending |
 | CheckMCP | [Free audit portal](https://checkmcp.dev/submit) | submission received 24 Oct 2026; audit pending |
