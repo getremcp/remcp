@@ -32,6 +32,7 @@ ReMCP keeps one public source repository and publishes host-native discovery met
 | Awesome Claude Code Plugins | [PR #822](https://github.com/ccplugins/awesome-claude-code-plugins/pull/822) | submitted; not official Anthropic marketplace approval |
 | Awesome Gemini CLI Extensions | [PR #95](https://github.com/Piebald-AI/awesome-gemini-cli-extensions/pull/95) | submitted, pending maintainer review |
 | AlexMili Awesome MCP | [PR #327](https://github.com/AlexMili/Awesome-MCP/pull/327) | submitted, pending maintainer review |
+| Wagner Awesome DevOps MCP Servers | [PR #113](https://github.com/WagnerAgent/awesome-mcp-servers-devops/pull/113) | submitted 24 Oct 2026; Command Line & Local Ops entry pending review |
 | Awesome DevOps MCP Servers | [PR #381](https://github.com/rohitg00/awesome-devops-mcp-servers/pull/381) | submission pending review; user-paired mutating operations disclosed |
 | MindPal Awesome Remote MCP Servers | [PR #231](https://github.com/sylviangth/awesome-remote-mcp-servers/pull/231) | submitted, external review pending |
 | YuzeHao Awesome MCP Servers | [PR #719](https://github.com/YuzeHao2023/Awesome-MCP-Servers/pull/719) | submitted, upstream review pending |
