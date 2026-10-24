@@ -14,10 +14,13 @@ ReMCP keeps one public source repository and publishes host-native discovery met
 | VS Code Agent Plugins | Awesome Copilot / `@agentPlugins` | not listed; shared external submission was rejected October 7, 2026 |
 | Kiro Powers | Kiro Powers registry + direct GitHub import | submitted September 19, 2026; pending review |
 | Cline | Cline MCP Marketplace ([PR #125](https://github.com/cline/marketplace/pull/125)) | submitted in current `cline/marketplace`; pending review |
+| MCP Market | [Public ReMCP listing](https://mcpmarket.com/server/remcp) | confirmed published 24 Oct 2026; submit form returned already listed |
 | AI Anytime Awesome MCP Servers | [Merged PR #314](https://github.com/AIAnytime/Awesome-MCP-Servers/pull/314) | published in GitHub directory 24 Oct 2026 |
 | Sagargupta Awesome MCP Servers | [Merged PR #214](https://github.com/Sagargupta16/awesome-mcp-servers/pull/214) | published in GitHub directory 24 Oct 2026 |
 | Brethof AI Awesome MCP Servers | [PR #54](https://github.com/BrethofAI/awesome-mcp-servers/pull/54) | submitted, external review pending |
 | Docker MCP Registry | [PR #5159](https://github.com/docker/mcp-registry/pull/5159) | submitted, external review pending |
+| MCPfinder | [Submission portal](https://www.mcpfinder.org/submit) | free submission accepted 24 Oct 2026; approval pending |
+| Kilo Marketplace | [PR #480](https://github.com/Kilo-Org/kilo-marketplace/pull/480) | submitted, waiting for catalog approval |
 | MCP.Directory | [Submission portal](https://mcp.directory/submit) | submitted successfully on 24 Oct 2026, not approved |
 | Smithery | smithery.ai/servers/antonbaider/remcp | published |
 | Glama | glama.ai/mcp/connectors/site.remcp/re-mcp | verified / healthy |

@@ -149,10 +149,13 @@ ReMCP publishes host-native metadata for coding agents plus directory records fo
 | **VS Code** | Configure the remote MCP endpoint in an MCP-capable client. | manual MCP setup |
 | **Kiro Powers** | Import `https://github.com/antonbaider/remcp` from **Add Custom Power → Import power from GitHub** while the curated listing is reviewed. | submitted |
 | **Cline** | Use the Cline MCP Marketplace after review; the current submission is tracked in [`cline/marketplace` PR #125](https://github.com/cline/marketplace/pull/125). | submitted |
+| **MCP Market** | [Public ReMCP listing](https://mcpmarket.com/server/remcp) | publicly indexed; existing-listing confirmation 24 Oct 2026 |
 | **AI Anytime Awesome MCP Servers** | [ReMCP listing PR #314](https://github.com/AIAnytime/Awesome-MCP-Servers/pull/314) | merged 24 Oct 2026; listed in the public GitHub directory |
 | **Sagargupta Awesome MCP Servers** | [ReMCP listing PR #214](https://github.com/Sagargupta16/awesome-mcp-servers/pull/214) | merged 24 Oct 2026; listed in the public GitHub directory |
 | **Brethof AI Awesome MCP Servers** | [ReMCP PR #54](https://github.com/BrethofAI/awesome-mcp-servers/pull/54) | submitted, awaiting review |
 | **Docker MCP Registry** | [ReMCP PR #5159](https://github.com/docker/mcp-registry/pull/5159) | submitted, review required |
+| **MCPfinder** | [Submission portal](https://www.mcpfinder.org/submit) | submitted through free tier 24 Oct 2026; approval pending |
+| **Kilo Marketplace** | [PR #480](https://github.com/Kilo-Org/kilo-marketplace/pull/480) | submitted, awaiting independent review |
 | **MCP.Directory** | [Publisher submission](https://mcp.directory/submit) | direct ReMCP GitHub URL submitted successfully 24 Oct 2026; approval not verified |
 | **Smithery** | Open <https://smithery.ai/servers/antonbaider/remcp>. | published |
 | **Glama** | Open the ownership-verified connector at <https://glama.ai/mcp/connectors/site.remcp/re-mcp>. | verified / healthy |
