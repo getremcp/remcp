@@ -28,6 +28,8 @@ ReMCP keeps one public source repository and publishes host-native discovery met
 | ToolSDK MCP Registry | [PR #1019](https://github.com/toolsdk-ai/toolsdk-mcp-registry/pull/1019) | open; schema and biome CI passed |
 | MobinX Awesome MCP List | [PR #931](https://github.com/MobinX/awesome-mcp-list/pull/931) | open, awaiting maintainer review |
 | Ever Works Awesome MCP Servers | [PR #213](https://github.com/ever-works/awesome-mcp-servers/pull/213) | submission pending review; mutating device controls disclosed |
+| Awesome Gemini CLI Extensions | [PR #95](https://github.com/Piebald-AI/awesome-gemini-cli-extensions/pull/95) | submitted, pending maintainer review |
+| AlexMili Awesome MCP | [PR #327](https://github.com/AlexMili/Awesome-MCP/pull/327) | submitted, pending maintainer review |
 | Awesome DevOps MCP Servers | [PR #381](https://github.com/rohitg00/awesome-devops-mcp-servers/pull/381) | submission pending review; user-paired mutating operations disclosed |
 | MindPal Awesome Remote MCP Servers | [PR #231](https://github.com/sylviangth/awesome-remote-mcp-servers/pull/231) | submitted, external review pending |
 | YuzeHao Awesome MCP Servers | [PR #719](https://github.com/YuzeHao2023/Awesome-MCP-Servers/pull/719) | submitted, upstream review pending |
