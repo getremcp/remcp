@@ -167,6 +167,7 @@ ReMCP publishes host-native metadata for coding agents plus directory records fo
 | **Awesome Claude Code Plugins** | [PR #822](https://github.com/ccplugins/awesome-claude-code-plugins/pull/822) | Submitted 24 Oct 2026; external community review pending |
 | **Awesome Gemini CLI Extensions** | [ReMCP PR #95](https://github.com/Piebald-AI/awesome-gemini-cli-extensions/pull/95) | Submitted 24 Oct 2026; review pending |
 | **AlexMili Awesome MCP** | [ReMCP PR #327](https://github.com/AlexMili/Awesome-MCP/pull/327) | Submitted 24 Oct 2026; review pending |
+| **Wagner Awesome DevOps MCP Servers** | [PR #113](https://github.com/WagnerAgent/awesome-mcp-servers-devops/pull/113) | submitted 24 Oct 2026; external review pending |
 | **Awesome DevOps MCP Servers** | [PR #381](https://github.com/rohitg00/awesome-devops-mcp-servers/pull/381) | submitted 24 Oct 2026; external review pending |
 | **MindPal Awesome Remote MCP Servers** | [PR #231](https://github.com/sylviangth/awesome-remote-mcp-servers/pull/231) | submitted 24 Oct 2026; awaiting remote catalog review |
 | **YuzeHao Awesome MCP Servers** | [PR #719](https://github.com/YuzeHao2023/Awesome-MCP-Servers/pull/719) | submitted 24 Oct 2026; review pending |
