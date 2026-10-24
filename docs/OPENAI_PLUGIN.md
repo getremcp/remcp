@@ -40,11 +40,11 @@ rename, or regenerate the files described here.
 | Manifest | `plugin.json` |
 | MCP configuration | `mcp.json` |
 | Repository skills | 5 total; 4 published to OpenAI |
-| Hosted tool surface | 15 advertised definitions with custom widgets enabled, of which 10 are model-visible; native-only mode exposes those same 10 model-facing definitions; 83 granular runtime operations remain available through grouped façade tools |
+| Hosted tool surface | 15 advertised definitions with custom widgets enabled, of which 10 are model-visible; native-only mode exposes those same 10 model-facing definitions; 84 granular runtime operations remain available through grouped façade tools |
 | Optional rich UI | Three dormant self-contained MCP Apps implement file editor/diff, image viewing, and terminal output. Production currently runs native-only with custom widgets disabled; if a future reviewed release enables them, file/image/terminal source tools carry their MCP Apps resource directly and app-only recovery helpers consume bounded preview references without rerunning source actions |
 | Authentication | OAuth authorization code + PKCE, OIDC/UserInfo metadata |
 | Public overview | [`docs/PLUGINS.md`](PLUGINS.md) |
-| Full tool reference | [`docs/TOOLS.md`](TOOLS.md) — current 10-tool production surface, optional 15-tool widget-enabled surface, and the operation lists that cover all 83 runtime capabilities |
+| Full tool reference | [`docs/TOOLS.md`](TOOLS.md) — current 10-tool production surface, optional 15-tool widget-enabled surface, and the operation lists that cover all 84 runtime capabilities |
 
 ## Package layout
 

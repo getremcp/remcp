@@ -118,12 +118,14 @@ const REVIEW_ACCOUNT_TOOLS = Object.freeze([
 
 // Validate reviewer prompts against the actual public tool profile instead
 // of the historical 10-tool private catalog. Review mode needs the checked-in
-// runtime catalog, not a hard-coded list of 83 rapidly evolving operation names.
+// runtime catalog, not a hard-coded list of 84 rapidly evolving operation names.
 export function hostedToolNamesForProfile(root, profile = 'compact') {
   if (profile === 'compact') return new Set(COMPACT_HOSTED_TOOLS);
   assert.equal(profile, 'review', 'unknown REMCP_PUBLIC_TOOL_PROFILE');
   const raw = JSON.parse(readFileSync(join(root, 'src/tool-catalog.json'), 'utf8'));
-  assert.ok(Array.isArray(raw) && raw.length === 83, 'review profile requires the pinned 83-operation runtime catalog');
+  assert.ok(Array.isArray(raw) && raw.length === 84, 'review profile requires the current 84-operation runtime catalog');
+  const reviewed = raw.filter(tool => tool.name !== 'browser_devtools');
+  assert.equal(reviewed.length,83,'review profile remains pinned to 83 independently reviewable operations');
   // The public package is dependency-free: derive the exact standalone names
   // from the checked-in runtime schemas without importing the hosted MCP server.
   const prefixes = {
@@ -132,7 +134,7 @@ export function hostedToolNamesForProfile(root, profile = 'compact') {
     browser_action:'browser',service:'service',network:'network',
     audio:'audio',power_action:'power',edit_document:'document',pdf_action:'pdf',
   };
-  const names = [...REVIEW_ACCOUNT_TOOLS, ...raw.flatMap(tool => {
+  const names = [...REVIEW_ACCOUNT_TOOLS, ...reviewed.flatMap(tool => {
     const prefix = prefixes[tool.name];
     if (!prefix) return [tool.name];
     const operations = tool.name === 'edit_document'

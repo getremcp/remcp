@@ -8,8 +8,8 @@ ReMCP keeps one public source repository and publishes host-native discovery met
 | --- | --- | --- |
 | ChatGPT & Codex | OpenAI plugin directory | submitted / platform-controlled rollout |
 | Claude Code | Claude Plugins directory | submitted, pending review |
-| Cursor Directory | [Public ReMCP plugin](https://cursor.directory/plugins/remcp) | community directory page verified 24 Oct 2026 (not official Cursor endorsement) |
-| Gemini CLI | [Public manifest](https://github.com/getremcp/remcp/blob/main/gemini-extension.json) + Gemini CLI Extension Gallery | `gemini-cli-extension` topic confirmed 24 Oct 2026; eligible for gallery crawler, not independently verified listed |
+| Cursor | Cursor Marketplace | published |
+| Gemini CLI | Gemini CLI Extension Gallery + direct GitHub install | gallery discovery enabled; native extension validated |
 | GitHub Copilot CLI | Awesome Copilot default marketplace | rejected October 7, 2026 — not listed ([review decision](https://github.com/github/awesome-copilot/issues/3326)) |
 | VS Code Agent Plugins | Awesome Copilot / `@agentPlugins` | not listed; shared external submission was rejected October 7, 2026 |
 | Kiro Powers | Kiro Powers registry + direct GitHub import | submitted September 19, 2026; pending review |
@@ -49,15 +49,13 @@ ReMCP keeps one public source repository and publishes host-native discovery met
 | Awesome Remote MCP Servers | [punkpeye/awesome-remote-mcp-servers](https://github.com/punkpeye/awesome-remote-mcp-servers) ([PR #435](https://github.com/punkpeye/awesome-remote-mcp-servers/pull/435)) | listed; PR #435 merged |
 | Official MCP Registry | registry.modelcontextprotocol.io | published remote Streamable HTTP server |
 
-**Smithery transition (31 October 2026):** Smithery announced retirement of its publishing API, hosted proxy and connection management. Its public directory continues under Arcade.dev; the existing ReMCP listing remains a directory link, not a supported Smithery proxy install method. Use the direct ReMCP OAuth endpoint or an approved host plugin.
-
 For ordinary users, the product flow is always:
 
 **Find ReMCP in the host → Install → sign in to ReMCP → use paired computers.**
 
 The production MCP URL and host-specific manifests are implementation details, not normal installation steps.
 
-Every host reaches the same capability-aware ReMCP contract. Current hosted `remcp.site` discovery exposes 10 model-visible tools (8 device façade + 2 account/fleet) that route to 83 granular runtime operations; cached clients can still call 100 unique compatibility names including legacy granular aliases. If custom widgets are explicitly re-enabled, discovery expands to 15 definitions by adding 5 app-only helpers and the compatibility surface becomes 105 names. The selected computer is checked against its live runtime capabilities immediately before dispatch. Local runtimes remain dynamic and emit `tools/list_changed` when their own available set changes. See the [generated tool contract](TOOLS.md) for façade schemas, operation lists, and safety hints.
+Every host reaches the same capability-aware ReMCP contract. Current hosted `remcp.site` discovery exposes 10 model-visible tools (8 device façade + 2 account/fleet) that route to 84 granular runtime operations; cached clients can still call 101 unique compatibility names including legacy granular aliases. If custom widgets are explicitly re-enabled, discovery expands to 15 definitions by adding 5 app-only helpers and the compatibility surface becomes 106 names. The selected computer is checked against its live runtime capabilities immediately before dispatch. Local runtimes remain dynamic and emit `tools/list_changed` when their own available set changes. See the [generated tool contract](TOOLS.md) for façade schemas, operation lists, and safety hints.
 
 ## Portable core
 

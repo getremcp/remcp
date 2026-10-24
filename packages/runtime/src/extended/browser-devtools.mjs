@@ -3,6 +3,7 @@
 import { jsonResult, clamp, requireEnum } from './common.mjs';
 import { withTarget } from './browser-session.mjs';
 import { inspectNativeBrowserAudit } from './browser-native-audit.mjs';
+import { inspectDomGeometry } from './browser-geometry.mjs';
 
 const METRIC_NAMES = new Set([
   'Timestamp','Documents','Frames','JSEventListeners','Nodes','LayoutCount',
@@ -41,6 +42,7 @@ export async function sampleBrowserDevtools(session, action, durationMs, maxEven
     if (events.length < maxEvents) events.push(event);
   }
   if (action === 'layout' || action === 'accessibility') return inspectNativeBrowserAudit(session, action);
+  if (action === 'geometry') return inspectDomGeometry(session);
   if (action === 'performance') {
     await session.send('Performance.enable');
     try {
@@ -100,7 +102,7 @@ export async function sampleBrowserDevtools(session, action, durationMs, maxEven
     note:'Live events only; DevTools does not backfill events recorded before sampling. Request/response contents and headers are excluded.' };
 }
 export async function browserDevtools(args = {}) {
-  const action = requireEnum(args.action, 'action', ['console','network','performance','layout','accessibility']);
+  const action = requireEnum(args.action, 'action', ['console','network','performance','layout','accessibility','geometry']);
   const durationMs = clamp(args.sample_ms, 1500, 250, 5000);
   const maxEvents = clamp(args.max_events, 50, 1, 100);
   return withTarget(args, async (session,target) =>
