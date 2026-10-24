@@ -47,3 +47,25 @@ test('malformed errors still return a stable category', () => {
   assert.equal(classifyRuntimeToolError(undefined), 'runtime_error');
   assert.equal(classifyRuntimeToolError({message:null,code:'irrelevant'}), 'runtime_error');
 });
+
+test('browser CDP and navigation error classes are actionable without exposing user data', () => {
+  const cases = [
+    ['CDP websocket closed', 'browser_action', 'browser_session_lost'],
+    ['CDP websocket is not open', 'browser_navigate', 'browser_session_lost'],
+    ['No target with given id', 'browser_snapshot', 'browser_target_stale'],
+    ['Cannot find context with specified id', 'browser_evaluate', 'browser_target_stale'],
+    ['Cannot navigate back: no history entry is available', 'browser_navigate', 'browser_navigation_failed'],
+    ['Browser page URL could not be verified after the operation', 'browser_navigate', 'browser_navigation_failed'],
+    ['Browser child guard failed: Network.enable timed out', 'browser_navigate', 'browser_guard_failed'],
+    ['No browser page target matched the requested selector', 'browser_tabs', 'not_found'],
+  ];
+  for (const [message, tool, expected] of cases) {
+    assert.equal(classifyRuntimeToolError(new Error(message), tool), expected, message);
+    // Error taxonomy is browser-specific, not a generic shell or file error.
+    assert.equal(classifyRuntimeToolError(new Error(message), 'read_file'),
+      message.includes('timed out') ? 'timeout' : 'runtime_error', message);
+  }
+  assert.equal(classifyRuntimeToolError(
+    new Error('CDP websocket closed at https://private.example/account/token'), 'browser_navigate',
+  ), 'browser_session_lost');
+});
