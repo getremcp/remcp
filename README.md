@@ -151,6 +151,7 @@ ReMCP publishes host-native metadata for coding agents plus directory records fo
 | **Cline** | Use the Cline MCP Marketplace after review; the current submission is tracked in [`cline/marketplace` PR #125](https://github.com/cline/marketplace/pull/125). | submitted |
 | **MCPRepository** | [ReMCP listing](https://mcprepository.com/getremcp/remcp) | Existing listing confirmed via duplicate-detection API and HTTP 200 on 24 Oct 2026 |
 | **MCP Market** | [Public ReMCP listing](https://mcpmarket.com/server/remcp) | publicly indexed; existing-listing confirmation 24 Oct 2026 |
+| **Punkpeye Awesome MCP Servers** | [Merged PR #14685](https://github.com/punkpeye/awesome-mcp-servers/pull/14685) | verified merged 18 Oct 2026; public source-install catalog |
 | **AI Anytime Awesome MCP Servers** | [ReMCP listing PR #314](https://github.com/AIAnytime/Awesome-MCP-Servers/pull/314) | merged 24 Oct 2026; listed in the public GitHub directory |
 | **Sagargupta Awesome MCP Servers** | [ReMCP listing PR #214](https://github.com/Sagargupta16/awesome-mcp-servers/pull/214) | merged 24 Oct 2026; listed in the public GitHub directory |
 | **TensorBlock Awesome MCP Servers** | [PR #4495](https://github.com/TensorBlock/awesome-mcp-servers/pull/4495) | submitted; source metadata passed JSON Schema validation, external review pending |
@@ -158,6 +159,7 @@ ReMCP publishes host-native metadata for coding agents plus directory records fo
 | **mcpHQ Awesome MCP Servers** | [Submission PR](https://github.com/mcpHQ/awesome-mcp-servers/pull/404) | open, awaiting maintainer review |
 | **ToolSDK MCP Registry** | [Submission PR](https://github.com/toolsdk-ai/toolsdk-mcp-registry/pull/1019) | open; schema and biome CI passed |
 | **MobinX Awesome MCP List** | [Submission PR](https://github.com/MobinX/awesome-mcp-list/pull/931) | open, awaiting maintainer review |
+| **Awesome DevOps MCP Servers** | [PR #381](https://github.com/rohitg00/awesome-devops-mcp-servers/pull/381) | submitted 24 Oct 2026; external review pending |
 | **MindPal Awesome Remote MCP Servers** | [PR #231](https://github.com/sylviangth/awesome-remote-mcp-servers/pull/231) | submitted 24 Oct 2026; awaiting remote catalog review |
 | **YuzeHao Awesome MCP Servers** | [PR #719](https://github.com/YuzeHao2023/Awesome-MCP-Servers/pull/719) | submitted 24 Oct 2026; review pending |
 | **Awesome Remote MCP Servers (jaw9c)** | [PR #1637](https://github.com/jaw9c/awesome-remote-mcp-servers/pull/1637) | submitted 24 Oct 2026; external review pending |
