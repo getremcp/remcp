@@ -454,9 +454,9 @@ test('JSON-oriented extended tools expose object-root structuredContent alongsid
   assert.deepEqual(JSON.parse(arrayResult.content[0].text), [{ id: 1 }]);
 });
 
-test('the release contract contains 83 unique tools: 44 existing plus 39 computer-use tools', async () => {
+test('the release contract contains 84 unique tools: 44 existing plus 40 computer-use tools', async () => {
   const { advertisedTools } = await import('../src/catalog.mjs');
   const names = [...advertisedTools(), ...allExtendedTools()].map(tool => tool.name);
-  assert.equal(names.length, 83);
-  assert.equal(new Set(names).size, 83);
+  assert.equal(names.length, 84);
+  assert.equal(new Set(names).size, 84);
 });

@@ -218,7 +218,7 @@ ReMCP publishes selection-oriented descriptions and ships the same decision tree
 - Use `screenshot_region` for targeted visual proof and `record_screen` only for motion/timing.
 - Use structured document tools instead of automating Office when the request is about file content.
 
-All 39 computer/browser/diagnostic/document tools declare closed top-level input schemas, parameter descriptions, structured output schemas, and MCP read-only/destructive/idempotent/open-world hints.
+All 40 computer/browser/diagnostic/document tools declare closed top-level input schemas, parameter descriptions, structured output schemas, and MCP read-only/destructive/idempotent/open-world hints.
 
 **Why the tool list looks different from other computer-control servers.** Security-sensitive
 configuration remains deliberately narrow, and everything else the alternatives can do has an

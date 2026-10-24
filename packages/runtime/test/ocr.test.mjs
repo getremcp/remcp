@@ -196,5 +196,5 @@ test('computer snapshot/action expose OCR through the compact universal tool sur
   assert.ok(snapshot?.inputSchema?.properties?.ocr_max_words);
   assert.ok(action?.inputSchema?.properties?.ocr_text);
   assert.ok(action?.inputSchema?.properties?.target?.enum?.includes('ocr'));
-  assert.equal(tools.length, 39, 'OCR must not inflate the MCP tool count');
+  assert.equal(tools.length, 40, 'OCR must not inflate the MCP tool count');
 });

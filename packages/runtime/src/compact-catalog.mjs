@@ -18,7 +18,7 @@ export const compactRuntimeGroups = Object.freeze({
   ]),
   view_image: Object.freeze(['read_image','take_screenshot','screenshot_region']),
   control_browser: Object.freeze([
-    'browser_tabs','browser_navigate','browser_snapshot','browser_find','browser_action','browser_wait','browser_evaluate',
+    'browser_tabs','browser_navigate','browser_snapshot','browser_find','browser_action','browser_wait','browser_devtools','browser_evaluate',
   ]),
   manage_system: Object.freeze([
     'get_system_info','list_processes','kill_process','get_runtime_info','get_runtime_stats','set_config_value',

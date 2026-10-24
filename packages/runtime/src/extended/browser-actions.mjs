@@ -14,6 +14,7 @@ import { callPageFunction, evaluate, withTarget, productionSessionKey } from './
 import { rememberBrowserViewport } from './browser-viewport.mjs';
 import { browserNavigate, browserSnapshot, browserTabs, findExpression } from './browser-read.mjs';
 import { executeBrowserWorkflow, validateBrowserWorkflow } from './browser-workflow.mjs';
+import { browserDevtools } from './browser-devtools.mjs';
 
 export async function browserFind(args) {
   if (!(args.selector || args.text || args.role)) throw new Error('browser_find requires selector, text, or role; use browser_snapshot to enumerate page structure');
@@ -387,4 +388,5 @@ export const browserHandlers = {
   browser_action: browserAction,
   browser_wait: browserWait,
   browser_evaluate: browserEvaluate,
+  browser_devtools: browserDevtools,
 };
