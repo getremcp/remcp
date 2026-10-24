@@ -31,8 +31,8 @@ node ./src/compact.mjs --print-tools  # compact local façade for scanners/local
 
 ## Tools
 
-83 tools are implemented in this repository: the original 44 filesystem/search/terminal/process tools
-plus 39 computer-use, browser, diagnostics, and document tools. The release contract contains all 83;
+84 tools are implemented in this repository: the original 44 filesystem/search/terminal/process tools
+plus 40 computer-use, browser, diagnostics, and document tools. The release contract contains all 84;
 the live local MCP `tools/list` omits optional platform-specific tools that the current computer cannot
 support and emits `notifications/tools/list_changed` when that capability set changes. The stdio server is dual-era: existing 2025-era clients continue to work unchanged, while clients that negotiate MCP `2026-07-28` use `server/discover`, cache hints, unrestricted structured output validation, and `subscriptions/listen` for list-change delivery.
 
@@ -52,10 +52,10 @@ support and emits `notifications/tools/list_changed` when that capability set ch
 | Diagnostics | `service`, `event_log`, `network`, `installed_apps`, `environment`, `audio`, `power_action`, `record_screen` — `audio` returns stable structured `volume`, `muted`, `action`, and `backend` fields across supported OS backends |
 | Documents | `read_document`, `edit_spreadsheet`, `edit_document`, `pdf_action` |
 
-The hosted ReMCP endpoint does not append those 83 granular operation names to its discovery list.
+The hosted ReMCP endpoint does not append those 84 granular operation names to its discovery list.
 Current production runs with `REMCP_CUSTOM_WIDGETS_ENABLED=false` and exposes **10 hosted tool definitions**,
 all model-visible: 8 device-facing façade tools plus 2 account/fleet tools. Those compact definitions route
-to the same **83 granular runtime operations** after the selected computer's live capabilities are checked.
+to the same **84 granular runtime operations** after the selected computer's live capabilities are checked.
 If custom widgets are explicitly re-enabled, hosted discovery expands to **15 definitions** by adding
 **5 app-only** UI helpers. Cached legacy clients can still call supported granular aliases without inflating
 discovery for new clients.
@@ -77,7 +77,7 @@ system tools such as qpdf/poppler when present. PDF text reading uses the built-
 `sharp`, or `exceljs`.
 
 `--print-tools` prints the exact JSON contract (schemas and annotations) the runtime advertises, and
-`src/catalog.mjs` plus `src/extended/catalog.mjs` are the source of truth for the 83-tool release surface.
+`src/catalog.mjs` plus `src/extended/catalog.mjs` are the source of truth for the 84-tool release surface.
 A running device can advertise a smaller capability-aware subset; the runtime declares
 `tools.listChanged`, emits `notifications/tools/list_changed` when dynamic capabilities change, and the
 agent forwards the refreshed tool names to the hosted relay. Browser/CDP tools are the primary dynamic
@@ -90,7 +90,7 @@ errors. Linux `display_inventory` follows the real monitor backend chain (GNOME 
 backend (Wayland grim/GNOME/portal path or X11 ImageMagick), not merely because `ffmpeg` is installed.
 
 The generated hosted reference covers the current **10 hosted production definitions**, all model-visible
-and routing to the 83 granular runtime operations described above; the optional widget-enabled surface is 15.
+and routing to the 84 granular runtime operations described above; the optional widget-enabled surface is 15.
 The separate compact local stdio entrypoint advertises `read_file` plus up to seven domain tools
 (up to 8 tools total) and keeps those groups capability-aware at runtime with `tools/list_changed`; the paired agent keeps using the capability-aware granular runtime.
 See https://remcp.site/docs#tools and public `docs/TOOLS.md`.
@@ -256,7 +256,7 @@ MCP server.
 
 | | Desktop Commander 0.2.50 | ReMCP runtime |
 | --- | --- | --- |
-| Tools | 26, including config mutators and document tooling | 83, including filesystem/terminal plus native desktop UI, browser CDP, diagnostics, and lightweight document operations |
+| Tools | 26, including config mutators and document tooling | 84, including filesystem/terminal plus native desktop UI, browser CDP, diagnostics, and lightweight document operations |
 | Runtime dependencies | 34 (Supabase, Puppeteer/md-to-pdf, `sharp`, `exceljs`, Tiptap, ripgrep download) | 2 production-direct (`@modelcontextprotocol/server` v2, `@jellybrick/dbus-next`); legacy/modern clients are dev-only compatibility tests |
 | Install scripts | `postinstall` posts an install payload that ignores the telemetry setting | none |
 | Telemetry | opt-out, 51 event names, remote feature flags, A/B assignment, third-party processor | opt-out, whitelisted event schema, no endpoint, no flags |

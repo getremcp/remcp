@@ -22,7 +22,7 @@ const EXPECTED = [
   'scroll','wait_for_ui','clipboard','display_inventory','screenshot_region',
   'open_path','reveal_path','notification',
   'browser_tabs','browser_navigate','browser_snapshot','browser_find','browser_action',
-  'browser_wait','browser_evaluate',
+  'browser_wait','browser_devtools','browser_evaluate',
   'service','event_log','network','installed_apps','environment','audio','power_action','record_screen',
   'read_document','edit_spreadsheet','edit_document','pdf_action',
 ];
