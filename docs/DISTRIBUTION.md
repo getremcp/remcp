@@ -8,16 +8,23 @@ ReMCP keeps one public source repository and publishes host-native discovery met
 | --- | --- | --- |
 | ChatGPT & Codex | OpenAI plugin directory | submitted / platform-controlled rollout |
 | Claude Code | Claude Plugins directory | submitted, pending review |
-| Cursor | Cursor Marketplace | published |
+| Cursor Directory | [Public ReMCP plugin](https://cursor.directory/plugins/remcp) | community directory page verified 24 Oct 2026 (not official Cursor endorsement) |
 | Gemini CLI | Gemini CLI Extension Gallery + direct GitHub install | gallery discovery enabled; native extension validated |
 | GitHub Copilot CLI | Awesome Copilot default marketplace | rejected October 7, 2026 — not listed ([review decision](https://github.com/github/awesome-copilot/issues/3326)) |
 | VS Code Agent Plugins | Awesome Copilot / `@agentPlugins` | not listed; shared external submission was rejected October 7, 2026 |
 | Kiro Powers | Kiro Powers registry + direct GitHub import | submitted September 19, 2026; pending review |
 | Cline | Cline MCP Marketplace ([PR #125](https://github.com/cline/marketplace/pull/125)) | submitted in current `cline/marketplace`; pending review |
+| AI Anytime Awesome MCP Servers | [Merged PR #314](https://github.com/AIAnytime/Awesome-MCP-Servers/pull/314) | published in GitHub directory 24 Oct 2026 |
+| Sagargupta Awesome MCP Servers | [Merged PR #214](https://github.com/Sagargupta16/awesome-mcp-servers/pull/214) | published in GitHub directory 24 Oct 2026 |
+| Brethof AI Awesome MCP Servers | [PR #54](https://github.com/BrethofAI/awesome-mcp-servers/pull/54) | submitted, external review pending |
+| Docker MCP Registry | [PR #5159](https://github.com/docker/mcp-registry/pull/5159) | submitted, external review pending |
+| MCP.Directory | [Submission portal](https://mcp.directory/submit) | submitted successfully on 24 Oct 2026, not approved |
 | Smithery | smithery.ai/servers/antonbaider/remcp | published |
 | Glama | glama.ai/mcp/connectors/site.remcp/re-mcp | verified / healthy |
 | Awesome Remote MCP Servers | [punkpeye/awesome-remote-mcp-servers](https://github.com/punkpeye/awesome-remote-mcp-servers) ([PR #435](https://github.com/punkpeye/awesome-remote-mcp-servers/pull/435)) | listed; PR #435 merged |
 | Official MCP Registry | registry.modelcontextprotocol.io | published remote Streamable HTTP server |
+
+**Smithery transition (31 October 2026):** Smithery announced retirement of its publishing API, hosted proxy and connection management. Its public directory continues under Arcade.dev; the existing ReMCP listing remains a directory link, not a supported Smithery proxy install method. Use the direct ReMCP OAuth endpoint or an approved host plugin.
 
 For ordinary users, the product flow is always:
 
