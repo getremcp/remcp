@@ -101,11 +101,16 @@ export async function sampleBrowserDevtools(session, action, durationMs, maxEven
   return { action, sampled_ms:durationMs, counts, events, truncated:Object.values(counts).reduce((a,b) => a+b,0) > maxEvents,
     note:'Live events only; DevTools does not backfill events recorded before sampling. Request/response contents and headers are excluded.' };
 }
+export function buildDevtoolsReport(target, action, result) {
+  return { target_id:target.id,
+    ...(action === 'geometry' ? {} : {url:safeDevtoolsUrl(target.url)}),
+    ...result };
+}
 export async function browserDevtools(args = {}) {
   const action = requireEnum(args.action, 'action', ['console','network','performance','layout','accessibility','geometry']);
   const durationMs = clamp(args.sample_ms, 1500, 250, 5000);
   const maxEvents = clamp(args.max_events, 50, 1, 100);
   return withTarget(args, async (session,target) =>
-    jsonResult({ target_id:target.id, url:safeDevtoolsUrl(target.url),
-      ...(await sampleBrowserDevtools(session,action,durationMs,maxEvents)) }));
+    jsonResult(buildDevtoolsReport(target, action,
+      await sampleBrowserDevtools(session,action,durationMs,maxEvents))));
 }

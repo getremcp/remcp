@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { summarizeDomGeometry, inspectDomGeometry } from '../src/extended/browser-geometry.mjs';
+import { buildDevtoolsReport } from '../src/extended/browser-devtools.mjs';
 
 const strings=['#document','HTML','BODY','DIV','SPAN','BUTTON','IMG','INPUT','TABLE','PRIVATE_CUSTOM','SECRET TOKEN'];
 function fixture() {
@@ -75,6 +76,13 @@ test('DOMSnapshot method is read-only and raw page data stays local',async()=>{
   assert.deepEqual(seen.map(x=>x.method),['Page.getLayoutMetrics','DOMSnapshot.captureSnapshot']);
   assert.deepEqual(seen[1].args,{computedStyles:[],includePaintOrder:false,includeDOMRects:false});
   assert.doesNotMatch(JSON.stringify(result),/very-private-token|user@example.com|SECRET TOKEN/);
+});
+test('geometry response does not expose the URL of the inspected tab',()=>{
+  const target={id:'target-one',url:'https://private.example/account?key=secret'};
+  const geometry=buildDevtoolsReport(target,'geometry',{action:'geometry',geometry:{candidate_count:0}});
+  assert.deepEqual(geometry,{target_id:'target-one',action:'geometry',geometry:{candidate_count:0}});
+  assert.doesNotMatch(JSON.stringify(geometry),/private|secret|https/);
+  assert.equal(buildDevtoolsReport(target,'layout',{action:'layout'}).url,'https://private.example/account');
 });
 test('maximum sample size and top-candidate count enforce hard bounds',()=>{
   const n=15000;
