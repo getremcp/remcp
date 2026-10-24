@@ -154,6 +154,10 @@ ReMCP publishes host-native metadata for coding agents plus directory records fo
 | **Sagargupta Awesome MCP Servers** | [ReMCP listing PR #214](https://github.com/Sagargupta16/awesome-mcp-servers/pull/214) | merged 24 Oct 2026; listed in the public GitHub directory |
 | **Brethof AI Awesome MCP Servers** | [ReMCP PR #54](https://github.com/BrethofAI/awesome-mcp-servers/pull/54) | submitted, awaiting review |
 | **Docker MCP Registry** | [ReMCP PR #5159](https://github.com/docker/mcp-registry/pull/5159) | submitted, review required |
+| **CheckMCP** | [Free audit submission](https://checkmcp.dev/submit) | received 24 Oct 2026; pending public audit/listing |
+| **MCP Index** | [Submission portal](https://themcpindex.com/submit) | received 24 Oct 2026; pending review |
+| **ProMCP** | [Free submission](https://www.promcpservers.com/submit) | accepted 24 Oct 2026; pending manual review |
+| **MCP Servers** | [Free submission](https://mcpservers.org/submit) | accepted 24 Oct 2026; pending review |
 | **Launch MCP** | [Submission status](https://launchmcp.co/submit/status/c90de338-c188-4cbb-a552-5c5aa62c73fa) | pending after verified non-duplicate submission 24 Oct 2026; not yet published |
 | **MCPfinder** | [Submission portal](https://www.mcpfinder.org/submit) | submitted through free tier 24 Oct 2026; approval pending |
 | **Kilo Marketplace** | [PR #480](https://github.com/Kilo-Org/kilo-marketplace/pull/480) | submitted, awaiting independent review |
