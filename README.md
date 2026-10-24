@@ -158,6 +158,7 @@ ReMCP publishes host-native metadata for coding agents plus directory records fo
 | **mcpHQ Awesome MCP Servers** | [Submission PR](https://github.com/mcpHQ/awesome-mcp-servers/pull/404) | open, awaiting maintainer review |
 | **ToolSDK MCP Registry** | [Submission PR](https://github.com/toolsdk-ai/toolsdk-mcp-registry/pull/1019) | open; schema and biome CI passed |
 | **MobinX Awesome MCP List** | [Submission PR](https://github.com/MobinX/awesome-mcp-list/pull/931) | open, awaiting maintainer review |
+| **Awesome Remote MCP Servers (jaw9c)** | [PR #1637](https://github.com/jaw9c/awesome-remote-mcp-servers/pull/1637) | submitted 24 Oct 2026; external review pending |
 | **Brethof AI Awesome MCP Servers** | [ReMCP PR #54](https://github.com/BrethofAI/awesome-mcp-servers/pull/54) | submitted, awaiting review |
 | **Docker MCP Registry** | [ReMCP PR #5159](https://github.com/docker/mcp-registry/pull/5159) | submitted, review required |
 | **CheckMCP** | [Free audit submission](https://checkmcp.dev/submit) | received 24 Oct 2026; pending public audit/listing |
