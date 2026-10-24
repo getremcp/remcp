@@ -19,6 +19,7 @@ ReMCP keeps one public source repository and publishes host-native discovery met
 | Sagargupta Awesome MCP Servers | [Merged PR #214](https://github.com/Sagargupta16/awesome-mcp-servers/pull/214) | published in GitHub directory 24 Oct 2026 |
 | Brethof AI Awesome MCP Servers | [PR #54](https://github.com/BrethofAI/awesome-mcp-servers/pull/54) | submitted, external review pending |
 | Docker MCP Registry | [PR #5159](https://github.com/docker/mcp-registry/pull/5159) | submitted, external review pending |
+| Launch MCP | [Submission c90de338](https://launchmcp.co/submit/status/c90de338-c188-4cbb-a552-5c5aa62c73fa) | submitted 24 Oct 2026, pending review; not a public listing |
 | MCPfinder | [Submission portal](https://www.mcpfinder.org/submit) | free submission accepted 24 Oct 2026; approval pending |
 | Kilo Marketplace | [PR #480](https://github.com/Kilo-Org/kilo-marketplace/pull/480) | submitted, waiting for catalog approval |
 | MCP.Directory | [Submission portal](https://mcp.directory/submit) | submitted successfully on 24 Oct 2026, not approved |
