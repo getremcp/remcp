@@ -172,6 +172,10 @@ development workflows remain documented separately:
 The OpenAI files and Claude files deliberately do not overwrite each other. Release checks fail if
 either host-specific contract drifts from the shared ReMCP version or production endpoint.
 
+## Use ReMCP with Docsy
+
+For source-linked developer documentation alongside local computer access, combine ReMCP with the separate [Docsy AI / MCP Plugin](https://github.com/getremcp/docsy-plugin#tools). Docsy exposes five **read-only** public documentation tools (`resolve-library-id`, `list-library-versions`, `query-docs`, `search`, `fetch`) through `https://docsy.remcp.site/mcp/registry` and requires its own OAuth 2.1 authorization. ReMCP's device tools and Docsy's documentation tools remain separate services.
+
 ## The local runtime
 
 `@remcp/runtime` is a clean-room MCP server written for ReMCP. It is not a fork of, and shares no code
