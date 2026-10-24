@@ -149,6 +149,7 @@ ReMCP publishes host-native metadata for coding agents plus directory records fo
 | **VS Code** | Configure the remote MCP endpoint in an MCP-capable client. | manual MCP setup |
 | **Kiro Powers** | Import `https://github.com/antonbaider/remcp` from **Add Custom Power → Import power from GitHub** while the curated listing is reviewed. | submitted |
 | **Cline** | Use the Cline MCP Marketplace after review; the current submission is tracked in [`cline/marketplace` PR #125](https://github.com/cline/marketplace/pull/125). | submitted |
+| **MCPRepository** | [ReMCP listing](https://mcprepository.com/getremcp/remcp) | Existing listing confirmed via duplicate-detection API and HTTP 200 on 24 Oct 2026 |
 | **MCP Market** | [Public ReMCP listing](https://mcpmarket.com/server/remcp) | publicly indexed; existing-listing confirmation 24 Oct 2026 |
 | **AI Anytime Awesome MCP Servers** | [ReMCP listing PR #314](https://github.com/AIAnytime/Awesome-MCP-Servers/pull/314) | merged 24 Oct 2026; listed in the public GitHub directory |
 | **Sagargupta Awesome MCP Servers** | [ReMCP listing PR #214](https://github.com/Sagargupta16/awesome-mcp-servers/pull/214) | merged 24 Oct 2026; listed in the public GitHub directory |
