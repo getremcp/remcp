@@ -1,3 +1,4 @@
+import { requireSuccessfulBrowserNavigation } from './browser-navigation-result.mjs';
 import process from 'node:process';
 import os from 'node:os';
 import path from 'node:path';
@@ -350,6 +351,7 @@ export async function createGuardedNewTab(url, args) {
     await session.send('Page.enable');
     const loaded = session.waitFor('Page.loadEventFired', clamp(args.timeout_ms, 15_000, 500, 120_000)).catch(() => null);
     const navigation = await session.send('Page.navigate', { url });
+    requireSuccessfulBrowserNavigation(navigation);
     if (loaded) await loaded;
     const finalUrl = await evaluate(session, 'location.href');
     await assertResolvedPageUrl(finalUrl);

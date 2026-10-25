@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.180 — 2026-10-25
+
+- Categorize lost CDP sessions, stale targets, navigation failures and browser guard failures without transmitting page content, URLs, target IDs or raw exception messages as telemetry categories.
+- Treat nonempty `Page.navigate.errorText` as a failed tool call for both selected tabs and guarded new tabs.
+- Preserve existing browser policies and existing runtime operation contracts; regression tests cover redaction and failure semantics.
+
+
 ## 0.2.176 — 2026-10-23
 
 - Reduce screenshot CDP round-trips by batching viewport resolution with capture and reusing measured element dimensions.
