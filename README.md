@@ -179,6 +179,8 @@ ReMCP publishes host-native metadata for coding agents plus directory records fo
 | **Awesome Codex** | [PR #32](https://github.com/ichangyou/awesome-codex/pull/32) | submitted 25 Oct 2026; awaiting independent review |
 | **Awesome AI Coding Tools** | [PR #8](https://github.com/mahmoudsajjadi/awesome-ai-coding-tools/pull/8) | submitted 25 Oct 2026; awaiting independent review |
 | **Awesome MCP Collection** | [PR #73](https://github.com/JustInCache/awesome-mcp-collection/pull/73) | submitted 25 Oct 2026; awaiting independent review |
+| **Albertchamberlain Awesome-MCP** | [PR #117](https://github.com/Albertchamberlain/Awesome-MCP/pull/117) | Submitted 25 Oct 2026; independent review pending, not published |
+| **Epistates Awesome MCP DevTools** | [PR #24](https://github.com/Epistates/awesome-mcp-devtools/pull/24) | Submitted 25 Oct 2026; independent review pending, not published |
 | **TrackMCP** | [Submission form](https://trackmcp.com/submit-mcp) | Accepted 25 Oct 2026, email confirmation/review pending; not yet verified publicly listed |
 | **Best-of MCP Servers** | [PR #562](https://github.com/tolkonepiu/best-of-mcp-servers/pull/562) | open; upstream YAML lint passed |
 | **mcpHQ Awesome MCP Servers** | [Submission PR](https://github.com/mcpHQ/awesome-mcp-servers/pull/404) | open, awaiting maintainer review |
