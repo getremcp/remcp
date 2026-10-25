@@ -4,6 +4,7 @@ import { jsonResult, clamp, requireEnum } from './common.mjs';
 import { withTarget } from './browser-session.mjs';
 import { inspectNativeBrowserAudit } from './browser-native-audit.mjs';
 import { inspectDomGeometry } from './browser-geometry.mjs';
+import { inspectElementListeners } from './browser-listeners.mjs';
 
 const METRIC_NAMES = new Set([
   'Timestamp','Documents','Frames','JSEventListeners','Nodes','LayoutCount',
@@ -32,7 +33,7 @@ export function normalizeDevtoolsMetrics(entries) {
     .filter(item => METRIC_NAMES.has(item?.name) && Number.isFinite(item?.value))
     .map(item => [item.name, item.value]));
 }
-export async function sampleBrowserDevtools(session, action, durationMs, maxEvents) {
+export async function sampleBrowserDevtools(session, action, durationMs, maxEvents, selector) {
   const events = [];
   const counts = {};
   const requests = new Map();
@@ -43,6 +44,7 @@ export async function sampleBrowserDevtools(session, action, durationMs, maxEven
   }
   if (action === 'layout' || action === 'accessibility') return inspectNativeBrowserAudit(session, action);
   if (action === 'geometry') return inspectDomGeometry(session);
+  if (action === 'listeners') return inspectElementListeners(session,selector);
   if (action === 'performance') {
     await session.send('Performance.enable');
     try {
@@ -103,14 +105,16 @@ export async function sampleBrowserDevtools(session, action, durationMs, maxEven
 }
 export function buildDevtoolsReport(target, action, result) {
   return { target_id:target.id,
-    ...(action === 'geometry' ? {} : {url:safeDevtoolsUrl(target.url)}),
+    ...(['geometry','listeners'].includes(action) ? {} : {url:safeDevtoolsUrl(target.url)}),
     ...result };
 }
 export async function browserDevtools(args = {}) {
-  const action = requireEnum(args.action, 'action', ['console','network','performance','layout','accessibility','geometry']);
+  const action = requireEnum(args.action, 'action', ['console','network','performance','layout','accessibility','geometry','listeners']);
   const durationMs = clamp(args.sample_ms, 1500, 250, 5000);
   const maxEvents = clamp(args.max_events, 50, 1, 100);
+  if (action === 'listeners' && (typeof args.target_id !== 'string' || !args.target_id.trim()))
+    throw new TypeError('Listener diagnostics require an explicitly selected target_id');
   return withTarget(args, async (session,target) =>
     jsonResult(buildDevtoolsReport(target, action,
-      await sampleBrowserDevtools(session,action,durationMs,maxEvents))));
+      await sampleBrowserDevtools(session,action,durationMs,maxEvents,args.selector))));
 }
