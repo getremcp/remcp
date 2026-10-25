@@ -157,6 +157,7 @@ ReMCP publishes host-native metadata for coding agents plus directory records fo
 | **MCP Harbor** | [Free submission portal](https://mcpharbor.app/submit/) | Docsy and ReMCP submitted 24 Oct 2026; ReMCP awaiting external review/daily indexing, not yet verified listed |
 | **Plug and Ship** | [Public ReMCP page](https://plugandship.dev/p/remcp) | Free launch accepted 24 Oct 2026; daily board scheduled 12 Nov 2026, not yet launched |
 | **LibHunt** | [Public ReMCP listing](https://www.libhunt.com/r/getremcp/remcp) | Published and verified HTTP 200 on 24 Oct 2026; free submission automatically approved |
+| **Ext Ops Panel** | [Public ReMCP MCP profile](https://extops.dev/plugins/mcp/io.github.getremcp/remcp) | Auto-indexed from official MCP Registry, verified public 25 Oct 2026; not host endorsement |
 | **Walnut World** | [Public ReMCP source page](https://walnut.world/w/remcp) | GitHub-source listing published 25 Oct 2026, independently verified in Chrome; ownership unclaimed |
 | **MCPRepository** | [ReMCP listing](https://mcprepository.com/getremcp/remcp) | Existing listing confirmed via duplicate-detection API and HTTP 200 on 24 Oct 2026 |
 | **MCP Market** | [Public ReMCP listing](https://mcpmarket.com/server/remcp) | publicly indexed; existing-listing confirmation 24 Oct 2026 |
