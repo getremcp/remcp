@@ -212,7 +212,9 @@ export async function main(argv = process.argv.slice(2)) {
     const service = persistentServiceState(cfg);
     const currentInstall = currentInstallationInfo(cfg);
     const serviceInstall = serviceInstallationInfo(cfg);
-    const installedRuntime = installedVersion(cfg.runtime.packageName);
+    // Prefer the runtime installed beside this CLI. npm may resolve a different
+    // global prefix when a shell launches this entry with another Node version.
+    const installedRuntime = currentInstall.runtimeVersion || installedVersion(cfg.runtime.packageName);
     const targetClient = String(advertised?.cliVersion || '').trim() || null;
     const targetRuntime = String(advertised?.runtime || '').trim() || null;
     const configuredRuntime = String(cfg.runtime.packageSpec || '');
