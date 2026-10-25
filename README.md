@@ -153,6 +153,7 @@ ReMCP publishes host-native metadata for coding agents plus directory records fo
 | **MCP Harbor** | [Free submission portal](https://mcpharbor.app/submit/) | Docsy and ReMCP submitted 24 Oct 2026; ReMCP awaiting external review/daily indexing, not yet verified listed |
 | **Plug and Ship** | [Public ReMCP page](https://plugandship.dev/p/remcp) | Free launch accepted 24 Oct 2026; daily board scheduled 12 Nov 2026, not yet launched |
 | **LibHunt** | [Public ReMCP listing](https://www.libhunt.com/r/getremcp/remcp) | Published and verified HTTP 200 on 24 Oct 2026; free submission automatically approved |
+| **Walnut World** | [Public ReMCP source page](https://walnut.world/w/remcp) | GitHub-source listing published 25 Oct 2026, independently verified in Chrome; ownership unclaimed |
 | **MCPRepository** | [ReMCP listing](https://mcprepository.com/getremcp/remcp) | Existing listing confirmed via duplicate-detection API and HTTP 200 on 24 Oct 2026 |
 | **MCP Market** | [Public ReMCP listing](https://mcpmarket.com/server/remcp) | publicly indexed; existing-listing confirmation 24 Oct 2026 |
 | **Punkpeye Awesome MCP Servers** | [Merged PR #14685](https://github.com/punkpeye/awesome-mcp-servers/pull/14685) | verified merged 18 Oct 2026; public source-install catalog |
@@ -166,7 +167,7 @@ ReMCP publishes host-native metadata for coding agents plus directory records fo
 | **Ever Works Awesome MCP Servers** | [PR #213](https://github.com/ever-works/awesome-mcp-servers/pull/213) | Submitted 24 Oct 2026; full ReMCP detail page awaiting catalog review |
 | **Awesome Claude Code Plugins** | [PR #822](https://github.com/ccplugins/awesome-claude-code-plugins/pull/822) | Submitted 24 Oct 2026; external community review pending |
 | **Awesome Gemini CLI Extensions** | [ReMCP PR #95](https://github.com/Piebald-AI/awesome-gemini-cli-extensions/pull/95) | Submitted 24 Oct 2026; review pending |
-| **AlexMili Awesome MCP** | [ReMCP PR #327](https://github.com/AlexMili/Awesome-MCP/pull/327) | Submitted 24 Oct 2026; review pending |
+| **AlexMili Awesome MCP** | [Merged ReMCP PR #327](https://github.com/AlexMili/Awesome-MCP/pull/327) | Published in upstream README; merged 24 Oct 2026, commit `158a622`; verified 25 Oct |
 | **Collabnix Awesome MCP Lists** | [PR #265](https://github.com/collabnix/awesome-mcp-lists/pull/265) | Submitted 24 Oct 2026; pending third-party review |
 | **mctrinh Awesome MCP Servers** | [PR #180](https://github.com/mctrinh/awesome-mcp-servers/pull/180) | Submitted 24 Oct 2026; pending review |
 | **Awesome MCP ZH** | [PR #839](https://github.com/yzfly/Awesome-MCP-ZH/pull/839) | Submitted 24 Oct 2026; Chinese-language entry pending review |
