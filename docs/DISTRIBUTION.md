@@ -37,6 +37,10 @@ ReMCP keeps one public source repository and publishes host-native discovery met
 | itgoyo Awesome Claude Code | [PR #20](https://github.com/itgoyo/awesome-claude-code/pull/20) | submitted 25 Oct 2026; community review pending, no official Anthropic endorsement |
 | Claude Plugins Radar | [PR #4](https://github.com/iliasabk/claude-plugins-radar/pull/4) | submitted 25 Oct 2026; community review pending, no official Anthropic endorsement |
 | ClaudeMods | [Editorial issue #35](https://github.com/omarcevi/claudemods/issues/35) | Submitted 25 Oct 2026; bot/editor review pending, not a published listing |
+| Habito Awesome MCP Servers | [PR #298](https://github.com/habitoai/awesome-mcp-servers/pull/298) | submitted 25 Oct 2026; curator review pending, not yet published |
+| DhanushNehru Awesome MCP Servers | [PR #128](https://github.com/DhanushNehru/awesome-mcp-servers/pull/128) | submitted 25 Oct 2026; curator review pending, not yet published |
+| Awesome Productivity MCP Servers | [PR #48](https://github.com/ExMapo/awesome-productivity-mcp-servers/pull/48) | submitted 25 Oct 2026; curator review pending, not yet published |
+| WunderCorp Awesome MCP | [PR #155](https://github.com/wundercorp/awesome-mcp/pull/155) | submitted 25 Oct 2026; curator review pending, not yet published |
 | Best-of MCP Servers | [PR #562](https://github.com/tolkonepiu/best-of-mcp-servers/pull/562) | pending review; yamllint passed |
 | mcpHQ Awesome MCP Servers | [PR #404](https://github.com/mcpHQ/awesome-mcp-servers/pull/404) | open, awaiting maintainer review |
 | ToolSDK MCP Registry | [PR #1019](https://github.com/toolsdk-ai/toolsdk-mcp-registry/pull/1019) | open; schema and biome CI passed |
