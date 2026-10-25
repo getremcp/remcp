@@ -46,6 +46,9 @@ ReMCP keeps one public source repository and publishes host-native discovery met
 | Awesome MCP Collection | [PR #73](https://github.com/JustInCache/awesome-mcp-collection/pull/73) | submitted 25 Oct 2026; awaiting independent review |
 | Albertchamberlain Awesome-MCP | [PR #117](https://github.com/Albertchamberlain/Awesome-MCP/pull/117) | Submitted 25 Oct 2026; independent review pending, not published |
 | Epistates Awesome MCP DevTools | [PR #24](https://github.com/Epistates/awesome-mcp-devtools/pull/24) | Submitted 25 Oct 2026; independent review pending, not published |
+| Backblaze Awesome Agent Infrastructure | [PR #44](https://github.com/backblaze-labs/awesome-agent-infrastructure/pull/44) | Submitted 25 Oct 2026; awaiting maintainer review, not published yet |
+| Awesome DevOps AI | [PR #78](https://github.com/hammadhaqqani/awesome-devops-ai/pull/78) | Submitted 25 Oct 2026; awaiting maintainer review, not published yet |
+| awesome-mcp.tools (adw0rd) | [Existing upstream listing](https://github.com/adw0rd/awesome-mcp-servers/blob/main/README.md) | Verified in public upstream main 25 Oct 2026, no duplicate PR |
 | TrackMCP | [Free submission](https://trackmcp.com/submit-mcp) | Form accepted ReMCP repository 25 Oct 2026, review confirmation displayed; not independently verified as published |
 | Best-of MCP Servers | [PR #562](https://github.com/tolkonepiu/best-of-mcp-servers/pull/562) | pending review; yamllint passed |
 | mcpHQ Awesome MCP Servers | [PR #404](https://github.com/mcpHQ/awesome-mcp-servers/pull/404) | open, awaiting maintainer review |
