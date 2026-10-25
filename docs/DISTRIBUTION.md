@@ -41,6 +41,10 @@ ReMCP keeps one public source repository and publishes host-native discovery met
 | DhanushNehru Awesome MCP Servers | [PR #128](https://github.com/DhanushNehru/awesome-mcp-servers/pull/128) | submitted 25 Oct 2026; curator review pending, not yet published |
 | Awesome Productivity MCP Servers | [PR #48](https://github.com/ExMapo/awesome-productivity-mcp-servers/pull/48) | submitted 25 Oct 2026; curator review pending, not yet published |
 | WunderCorp Awesome MCP | [PR #155](https://github.com/wundercorp/awesome-mcp/pull/155) | submitted 25 Oct 2026; curator review pending, not yet published |
+| Awesome Codex | [PR #32](https://github.com/ichangyou/awesome-codex/pull/32) | submitted 25 Oct 2026; awaiting independent review |
+| Awesome AI Coding Tools | [PR #8](https://github.com/mahmoudsajjadi/awesome-ai-coding-tools/pull/8) | submitted 25 Oct 2026; awaiting independent review |
+| Awesome MCP Collection | [PR #73](https://github.com/JustInCache/awesome-mcp-collection/pull/73) | submitted 25 Oct 2026; awaiting independent review |
+| TrackMCP | [Free submission](https://trackmcp.com/submit-mcp) | Form accepted ReMCP repository 25 Oct 2026, review confirmation displayed; not independently verified as published |
 | Best-of MCP Servers | [PR #562](https://github.com/tolkonepiu/best-of-mcp-servers/pull/562) | pending review; yamllint passed |
 | mcpHQ Awesome MCP Servers | [PR #404](https://github.com/mcpHQ/awesome-mcp-servers/pull/404) | open, awaiting maintainer review |
 | ToolSDK MCP Registry | [PR #1019](https://github.com/toolsdk-ai/toolsdk-mcp-registry/pull/1019) | open; schema and biome CI passed |
