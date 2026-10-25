@@ -52,6 +52,7 @@ ReMCP keeps one public source repository and publishes host-native discovery met
 | ProMCP | [Free listing portal](https://www.promcpservers.com/submit) | submitted 24 Oct 2026; manual review pending |
 | MCP Servers | [Submission portal](https://mcpservers.org/submit) | free remote OAuth submission accepted 24 Oct 2026; review pending |
 | Launch MCP | [Submission c90de338](https://launchmcp.co/submit/status/c90de338-c188-4cbb-a552-5c5aa62c73fa) | submitted 24 Oct 2026, pending review; not a public listing |
+| MCPizy | [Submission `web_mvnk77mz_gwrdi7`](https://mcpizy.com/submit/thanks?ref=web_mvnk77mz_gwrdi7&tier=standard) | Free submission accepted 25 Oct 2026; pending approval, not published |
 | MCPfinder | [Submission portal](https://www.mcpfinder.org/submit) | free submission accepted 24 Oct 2026; approval pending |
 | Kilo Marketplace | [PR #480](https://github.com/Kilo-Org/kilo-marketplace/pull/480) | submitted, waiting for catalog approval |
 | MCP.Directory | [Submission portal](https://mcp.directory/submit) | submitted successfully on 24 Oct 2026, not approved |

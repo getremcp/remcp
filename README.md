@@ -187,6 +187,7 @@ ReMCP publishes host-native metadata for coding agents plus directory records fo
 | **ProMCP** | [Free submission](https://www.promcpservers.com/submit) | accepted 24 Oct 2026; pending manual review |
 | **MCP Servers** | [Free submission](https://mcpservers.org/submit) | accepted 24 Oct 2026; pending review |
 | **Launch MCP** | [Submission status](https://launchmcp.co/submit/status/c90de338-c188-4cbb-a552-5c5aa62c73fa) | pending after verified non-duplicate submission 24 Oct 2026; not yet published |
+| **MCPizy** | [Free ReMCP submission](https://mcpizy.com/submit/thanks?ref=web_mvnk77mz_gwrdi7&tier=standard) | Received 25 Oct 2026 (ID `web_mvnk77mz_gwrdi7`); independent review pending |
 | **MCPfinder** | [Submission portal](https://www.mcpfinder.org/submit) | submitted through free tier 24 Oct 2026; approval pending |
 | **Kilo Marketplace** | [PR #480](https://github.com/Kilo-Org/kilo-marketplace/pull/480) | submitted, awaiting independent review |
 | **MCP.Directory** | [Publisher submission](https://mcp.directory/submit) | direct ReMCP GitHub URL submitted successfully 24 Oct 2026; approval not verified |
