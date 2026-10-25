@@ -5,6 +5,8 @@ import { withTarget } from './browser-session.mjs';
 import { inspectNativeBrowserAudit } from './browser-native-audit.mjs';
 import { inspectDomGeometry } from './browser-geometry.mjs';
 import { inspectElementListeners } from './browser-listeners.mjs';
+import { inspectFormMap } from './browser-form-map.mjs';
+import { inspectScopedStyles } from './browser-styles.mjs';
 
 const METRIC_NAMES = new Set([
   'Timestamp','Documents','Frames','JSEventListeners','Nodes','LayoutCount',
@@ -45,6 +47,8 @@ export async function sampleBrowserDevtools(session, action, durationMs, maxEven
   if (action === 'layout' || action === 'accessibility') return inspectNativeBrowserAudit(session, action);
   if (action === 'geometry') return inspectDomGeometry(session);
   if (action === 'listeners') return inspectElementListeners(session,selector);
+  if (action === 'form_map') return inspectFormMap(session);
+  if (action === 'styles') return inspectScopedStyles(session,selector);
   if (action === 'performance') {
     await session.send('Performance.enable');
     try {
@@ -105,15 +109,17 @@ export async function sampleBrowserDevtools(session, action, durationMs, maxEven
 }
 export function buildDevtoolsReport(target, action, result) {
   return { target_id:target.id,
-    ...(['geometry','listeners'].includes(action) ? {} : {url:safeDevtoolsUrl(target.url)}),
+    ...(['geometry','listeners','form_map','styles'].includes(action) ? {} : {url:safeDevtoolsUrl(target.url)}),
     ...result };
 }
 export async function browserDevtools(args = {}) {
-  const action = requireEnum(args.action, 'action', ['console','network','performance','layout','accessibility','geometry','listeners']);
+  const action = requireEnum(args.action, 'action', ['console','network','performance','layout','accessibility','geometry','listeners','form_map','styles']);
   const durationMs = clamp(args.sample_ms, 1500, 250, 5000);
   const maxEvents = clamp(args.max_events, 50, 1, 100);
-  if (action === 'listeners' && (typeof args.target_id !== 'string' || !args.target_id.trim()))
-    throw new TypeError('Listener diagnostics require an explicitly selected target_id');
+  if (['listeners','form_map','styles'].includes(action) && (typeof args.target_id !== 'string' || !args.target_id.trim()))
+    throw new TypeError('Scoped DOM diagnostics require an explicitly selected target_id');
+  if (action==='styles' && (typeof args.selector!=='string'||!args.selector.trim()))
+    throw new TypeError('Scoped style diagnostics require a CSS selector');
   return withTarget(args, async (session,target) =>
     jsonResult(buildDevtoolsReport(target, action,
       await sampleBrowserDevtools(session,action,durationMs,maxEvents,args.selector))));

@@ -150,10 +150,14 @@ ReMCP publishes host-native metadata for coding agents plus directory records fo
 | **Kiro Powers** | Import `https://github.com/antonbaider/remcp` from **Add Custom Power → Import power from GitHub** while the curated listing is reviewed. | submitted |
 | **Cline** | Use the Cline MCP Marketplace after review; the current submission is tracked in [`cline/marketplace` PR #125](https://github.com/cline/marketplace/pull/125). | submitted |
 | **MCP Find** | [PR #316](https://github.com/MCPFind/mcp-find/pull/316) | Submitted 24 Oct 2026; fork-safe validation pending and directory review required |
+| **MCP Server Finder** | [Free directory](https://www.mcpserverfinder.com/) | Repo checked absent 25 Oct 2026; editorial email submission sent 25 Oct, review pending |
+| **FindMCP** | [Free submission portal](https://findmcp.app/submit) | ReMCP submission ID **321** accepted 25 Oct 2026; review pending |
+| **Few Servers** | [Free editorial form](https://www.fewservers.com/mcp/submit/) | 25 Oct 2026: listing/claim request emailed to editor; external review pending; not verified listed |
 | **AgenticSkills** | [Free MCP server submission](https://agenticskills.io/submit?type=mcp) | Accepted for weekly editorial review 25 Oct 2026; public listing not yet confirmed |
 | **MCP Harbor** | [Free submission portal](https://mcpharbor.app/submit/) | Docsy and ReMCP submitted 24 Oct 2026; ReMCP awaiting external review/daily indexing, not yet verified listed |
 | **Plug and Ship** | [Public ReMCP page](https://plugandship.dev/p/remcp) | Free launch accepted 24 Oct 2026; daily board scheduled 12 Nov 2026, not yet launched |
 | **LibHunt** | [Public ReMCP listing](https://www.libhunt.com/r/getremcp/remcp) | Published and verified HTTP 200 on 24 Oct 2026; free submission automatically approved |
+| **Ext Ops Panel** | [Public ReMCP MCP profile](https://extops.dev/plugins/mcp/io.github.getremcp/remcp) | Auto-indexed from official MCP Registry, verified public 25 Oct 2026; not host endorsement |
 | **Walnut World** | [Public ReMCP source page](https://walnut.world/w/remcp) | GitHub-source listing published 25 Oct 2026, independently verified in Chrome; ownership unclaimed |
 | **MCPRepository** | [ReMCP listing](https://mcprepository.com/getremcp/remcp) | Existing listing confirmed via duplicate-detection API and HTTP 200 on 24 Oct 2026 |
 | **MCP Market** | [Public ReMCP listing](https://mcpmarket.com/server/remcp) | publicly indexed; existing-listing confirmation 24 Oct 2026 |
@@ -184,6 +188,7 @@ ReMCP publishes host-native metadata for coding agents plus directory records fo
 | **ProMCP** | [Free submission](https://www.promcpservers.com/submit) | accepted 24 Oct 2026; pending manual review |
 | **MCP Servers** | [Free submission](https://mcpservers.org/submit) | accepted 24 Oct 2026; pending review |
 | **Launch MCP** | [Submission status](https://launchmcp.co/submit/status/c90de338-c188-4cbb-a552-5c5aa62c73fa) | pending after verified non-duplicate submission 24 Oct 2026; not yet published |
+| **MCPizy** | [Free ReMCP submission](https://mcpizy.com/submit/thanks?ref=web_mvnk77mz_gwrdi7&tier=standard) | Received 25 Oct 2026 (ID `web_mvnk77mz_gwrdi7`); independent review pending |
 | **MCPfinder** | [Submission portal](https://www.mcpfinder.org/submit) | submitted through free tier 24 Oct 2026; approval pending |
 | **Kilo Marketplace** | [PR #480](https://github.com/Kilo-Org/kilo-marketplace/pull/480) | submitted, awaiting independent review |
 | **MCP.Directory** | [Publisher submission](https://mcp.directory/submit) | direct ReMCP GitHub URL submitted successfully 24 Oct 2026; approval not verified |

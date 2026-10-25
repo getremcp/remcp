@@ -11,11 +11,11 @@ const TYPES = new Set([
 ]);
 const MAX_LISTENERS = 200;
 const MAX_TYPES = 24;
-function validSelector(value) {
+export function validSelector(value,maxLength=120,allowChildCombinator=false) {
   if (typeof value !== 'string') throw new TypeError('A CSS selector is required for the event listener audit');
   const selector = value.trim();
-  if (!selector || selector.length > 120 || /[\u0000-\u001f\u007f<>]/.test(selector)) {
-    throw new TypeError('A CSS selector between 1 and 120 safe characters is required');
+  if (!selector || selector.length > maxLength || /[\u0000-\u001f\u007f<]/.test(selector) || (!allowChildCombinator && selector.includes('>'))) {
+    throw new TypeError('A CSS selector between 1 and '+maxLength+' safe characters is required');
   }
   return selector;
 }
