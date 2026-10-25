@@ -176,6 +176,10 @@ ReMCP publishes host-native metadata for coding agents plus directory records fo
 | **DhanushNehru Awesome MCP Servers** | [PR #128](https://github.com/DhanushNehru/awesome-mcp-servers/pull/128) | submitted 25 Oct 2026; external curator review pending, no platform endorsement |
 | **Awesome Productivity MCP Servers** | [PR #48](https://github.com/ExMapo/awesome-productivity-mcp-servers/pull/48) | submitted 25 Oct 2026; external curator review pending, no platform endorsement |
 | **WunderCorp Awesome MCP** | [PR #155](https://github.com/wundercorp/awesome-mcp/pull/155) | submitted 25 Oct 2026; external curator review pending, no platform endorsement |
+| **Awesome Codex** | [PR #32](https://github.com/ichangyou/awesome-codex/pull/32) | submitted 25 Oct 2026; awaiting independent review |
+| **Awesome AI Coding Tools** | [PR #8](https://github.com/mahmoudsajjadi/awesome-ai-coding-tools/pull/8) | submitted 25 Oct 2026; awaiting independent review |
+| **Awesome MCP Collection** | [PR #73](https://github.com/JustInCache/awesome-mcp-collection/pull/73) | submitted 25 Oct 2026; awaiting independent review |
+| **TrackMCP** | [Submission form](https://trackmcp.com/submit-mcp) | Accepted 25 Oct 2026, email confirmation/review pending; not yet verified publicly listed |
 | **Best-of MCP Servers** | [PR #562](https://github.com/tolkonepiu/best-of-mcp-servers/pull/562) | open; upstream YAML lint passed |
 | **mcpHQ Awesome MCP Servers** | [Submission PR](https://github.com/mcpHQ/awesome-mcp-servers/pull/404) | open, awaiting maintainer review |
 | **ToolSDK MCP Registry** | [Submission PR](https://github.com/toolsdk-ai/toolsdk-mcp-registry/pull/1019) | open; schema and biome CI passed |
