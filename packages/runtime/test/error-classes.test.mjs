@@ -47,3 +47,22 @@ test('malformed errors still return a stable category', () => {
   assert.equal(classifyRuntimeToolError(undefined), 'runtime_error');
   assert.equal(classifyRuntimeToolError({message:null,code:'irrelevant'}), 'runtime_error');
 });
+
+test('browser CDP failures use bounded actionable categories, not raw exception text', () => {
+  const cases = [
+    ['BROWSER_TARGET_DISAPPEARED', 'Browser CDP target disappeared during startup', 'browser_target_stale'],
+    ['', 'No target with given id: secret-target-id', 'browser_target_stale'],
+    ['', 'CDP websocket closed', 'browser_session_lost'],
+    ['', 'CDP websocket is not open', 'browser_session_lost'],
+    ['', 'Browser child guard failed: error details', 'browser_guard_failed'],
+    ['', 'Cannot navigate back: no history entry is available', 'browser_navigation_failed'],
+    ['', 'Browser navigation failed: Chrome reported an unsuccessful navigation', 'browser_navigation_failed'],
+  ];
+  for (const [code, message, expected] of cases) {
+    const error = Object.assign(new Error(message), {code});
+    assert.equal(classifyRuntimeToolError(error, 'browser_navigate'), expected);
+    assert.equal(classifyRuntimeToolError(error, 'read_file'), 'runtime_error');
+  }
+  assert.equal(classifyRuntimeToolError(new Error('CDP websocket connection timed out'), 'browser_tabs'), 'browser_unavailable');
+  assert.equal(classifyRuntimeToolError(new Error('Page.navigate timed out'), 'browser_navigate'), 'timeout');
+});

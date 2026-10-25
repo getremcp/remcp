@@ -1,4 +1,5 @@
 import { snapshotDelta } from './browser-snapshot-diff.mjs';
+import { requireSuccessfulBrowserNavigation } from './browser-navigation-result.mjs';
 import process from 'node:process';
 import os from 'node:os';
 import path from 'node:path';
@@ -75,6 +76,7 @@ export async function browserNavigate(args = {}) {
     let historyUrl = null;
     if (action === 'url') {
       const result = await session.send('Page.navigate', { url });
+      requireSuccessfulBrowserNavigation(result);
       frameId = result.frameId || null;
       errorText = result.errorText || null;
     } else if (action === 'reload') {
