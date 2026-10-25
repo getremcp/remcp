@@ -22,6 +22,7 @@ ReMCP keeps one public source repository and publishes host-native discovery met
 | MCP Harbor | [Free listing submission](https://mcpharbor.app/submit/) | ReMCP submission accepted 24 Oct 2026; pending independent review |
 | Plug and Ship | [ReMCP public listing](https://plugandship.dev/p/remcp) | Free submission accepted 24 Oct 2026; launch scheduled 12 Nov 2026 |
 | LibHunt | [Public ReMCP project page](https://www.libhunt.com/r/getremcp/remcp) | free submission automatically approved 24 Oct 2026; verified HTTP 200 |
+| Ext Ops Panel | [Public ReMCP discovery profile](https://extops.dev/plugins/mcp/io.github.getremcp/remcp) | Public 25 Oct 2026; page shows official Registry identity and remote MCP URL, not a manual approval |
 | Walnut World | [ReMCP public page](https://walnut.world/w/remcp) | published from getremcp/remcp on 25 Oct 2026, source attributed; publisher ownership unclaimed |
 | MCPRepository | [ReMCP index](https://mcprepository.com/getremcp/remcp) | Already indexed per API; URL HTTP 200 on 24 Oct 2026 |
 | MCP Market | [Public ReMCP listing](https://mcpmarket.com/server/remcp) | confirmed published 24 Oct 2026; submit form returned already listed |
