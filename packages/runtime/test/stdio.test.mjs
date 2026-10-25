@@ -44,9 +44,26 @@ test('runtime serves MCP over stdio like the ReMCP agent expects', async () => {
   await client.connect(transport);
   try {
     const { tools } = await client.listTools();
+    const published = printedTools();
     const described = JSON.parse(execFileSync(process.execPath, [entry, '--describe'], { encoding: 'utf8' }));
-    assert.equal(tools.length, described.supportedTools, 'live tools/list should reflect this host\'s capabilities');
-    assert.ok(tools.length <= printedTools().length, 'live tools/list must be a subset of the full published contract');
+    const publishedNames = new Set(published.map(tool => tool.name));
+    const liveNames = tools.map(tool => tool.name);
+    // --describe is a separate process with a separate live capability probe.
+    // On hosts where optional desktop/browser helpers appear during startup, its
+    // supportedTools count may legitimately differ from this MCP session's list.
+    // Validate each snapshot against the immutable catalog instead of comparing
+    // two samples taken at different times (a TOCTOU race).
+    assert.equal(publishedNames.size, published.length, 'published tool names must be unique');
+    assert.equal(new Set(liveNames).size, liveNames.length, 'MCP tools/list must not contain duplicates');
+    assert.ok(liveNames.length > 0, 'MCP tools/list must advertise available tools');
+    assert.ok(liveNames.every(name => publishedNames.has(name)), 'live tools/list must be a subset of the published contract');
+    assert.ok(tools.every(tool => typeof tool.name === 'string' && tool.inputSchema?.type === 'object'),
+      'MCP tools/list must contain complete tool schemas');
+    assert.ok(Number.isSafeInteger(described.supportedTools) && described.supportedTools > 0 &&
+      described.supportedTools <= published.length, '--describe must report a valid capability count');
+    for (const requiredName of ['read_file', 'write_file', 'start_process']) {
+      assert.ok(liveNames.includes(requiredName), `mandatory MCP tool missing: ${requiredName}`);
+    }
     const target = join(root, 'stdio.txt');
     const written = await client.callTool({ name: 'write_file', arguments: { path: target, content: 'over stdio\n' } });
     assert.equal(written.isError, undefined);
