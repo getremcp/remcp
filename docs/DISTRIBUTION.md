@@ -18,6 +18,7 @@ ReMCP keeps one public source repository and publishes host-native discovery met
 | MCP Harbor | [Free listing submission](https://mcpharbor.app/submit/) | ReMCP submission accepted 24 Oct 2026; pending independent review |
 | Plug and Ship | [ReMCP public listing](https://plugandship.dev/p/remcp) | Free submission accepted 24 Oct 2026; launch scheduled 12 Nov 2026 |
 | LibHunt | [Public ReMCP project page](https://www.libhunt.com/r/getremcp/remcp) | free submission automatically approved 24 Oct 2026; verified HTTP 200 |
+| Walnut World | [ReMCP public page](https://walnut.world/w/remcp) | published from getremcp/remcp on 25 Oct 2026, source attributed; publisher ownership unclaimed |
 | MCPRepository | [ReMCP index](https://mcprepository.com/getremcp/remcp) | Already indexed per API; URL HTTP 200 on 24 Oct 2026 |
 | MCP Market | [Public ReMCP listing](https://mcpmarket.com/server/remcp) | confirmed published 24 Oct 2026; submit form returned already listed |
 | Punkpeye Awesome MCP Servers | [Merged PR #14685](https://github.com/punkpeye/awesome-mcp-servers/pull/14685) | published in public installable-MCP catalog 18 Oct 2026 |
@@ -31,7 +32,7 @@ ReMCP keeps one public source repository and publishes host-native discovery met
 | Ever Works Awesome MCP Servers | [PR #213](https://github.com/ever-works/awesome-mcp-servers/pull/213) | submission pending review; mutating device controls disclosed |
 | Awesome Claude Code Plugins | [PR #822](https://github.com/ccplugins/awesome-claude-code-plugins/pull/822) | submitted; not official Anthropic marketplace approval |
 | Awesome Gemini CLI Extensions | [PR #95](https://github.com/Piebald-AI/awesome-gemini-cli-extensions/pull/95) | submitted, pending maintainer review |
-| AlexMili Awesome MCP | [PR #327](https://github.com/AlexMili/Awesome-MCP/pull/327) | submitted, pending maintainer review |
+| AlexMili Awesome MCP | [Merged PR #327](https://github.com/AlexMili/Awesome-MCP/pull/327) | published in directory main, merged 24 Oct 2026; listing verified 25 Oct |
 | Collabnix Awesome MCP Lists | [PR #265](https://github.com/collabnix/awesome-mcp-lists/pull/265) | submitted, pending external review |
 | mctrinh Awesome MCP Servers | [PR #180](https://github.com/mctrinh/awesome-mcp-servers/pull/180) | submitted, pending external review |
 | Awesome MCP ZH | [PR #839](https://github.com/yzfly/Awesome-MCP-ZH/pull/839) | submitted; disclosure that hosted backend is not open source |
