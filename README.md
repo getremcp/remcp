@@ -168,6 +168,10 @@ ReMCP publishes host-native metadata for coding agents plus directory records fo
 | **VoltAgent Official MCP Servers** | [PR #56](https://github.com/VoltAgent/official-mcp-servers/pull/56) | submitted 25 Oct 2026; awaiting independent review |
 | **Awesome Public MCP Servers** | [PR #84](https://github.com/bhavyshekhaliya/awesome-public-mcp-servers/pull/84) | submitted 25 Oct 2026; explicitly discloses mutating paired-device tools, review pending |
 | **Awesome MCP Tools** | [PR #21](https://github.com/Christian-Sidak/awesome-mcp-tools/pull/21) | submitted 25 Oct 2026; remote OAuth computer access tools, review pending |
+| **PenguinMiaou Awesome Claude Code Plugins** | [PR #11](https://github.com/PenguinMiaou/awesome-claude-code-plugins/pull/11) | submitted 25 Oct 2026; community review pending, not Anthropic endorsement |
+| **itgoyo Awesome Claude Code** | [PR #20](https://github.com/itgoyo/awesome-claude-code/pull/20) | submitted 25 Oct 2026; community review pending, not Anthropic endorsement |
+| **Claude Plugins Radar** | [PR #4](https://github.com/iliasabk/claude-plugins-radar/pull/4) | submitted 25 Oct 2026; community review pending, not Anthropic endorsement |
+| **ClaudeMods** | [Editorial issue #35](https://github.com/omarcevi/claudemods/issues/35) | Submitted 25 Oct 2026; bot/editor review pending |
 | **Best-of MCP Servers** | [PR #562](https://github.com/tolkonepiu/best-of-mcp-servers/pull/562) | open; upstream YAML lint passed |
 | **mcpHQ Awesome MCP Servers** | [Submission PR](https://github.com/mcpHQ/awesome-mcp-servers/pull/404) | open, awaiting maintainer review |
 | **ToolSDK MCP Registry** | [Submission PR](https://github.com/toolsdk-ai/toolsdk-mcp-registry/pull/1019) | open; schema and biome CI passed |
