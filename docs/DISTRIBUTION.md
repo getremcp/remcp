@@ -44,6 +44,8 @@ ReMCP keeps one public source repository and publishes host-native discovery met
 | Awesome Codex | [PR #32](https://github.com/ichangyou/awesome-codex/pull/32) | submitted 25 Oct 2026; awaiting independent review |
 | Awesome AI Coding Tools | [PR #8](https://github.com/mahmoudsajjadi/awesome-ai-coding-tools/pull/8) | submitted 25 Oct 2026; awaiting independent review |
 | Awesome MCP Collection | [PR #73](https://github.com/JustInCache/awesome-mcp-collection/pull/73) | submitted 25 Oct 2026; awaiting independent review |
+| Albertchamberlain Awesome-MCP | [PR #117](https://github.com/Albertchamberlain/Awesome-MCP/pull/117) | Submitted 25 Oct 2026; independent review pending, not published |
+| Epistates Awesome MCP DevTools | [PR #24](https://github.com/Epistates/awesome-mcp-devtools/pull/24) | Submitted 25 Oct 2026; independent review pending, not published |
 | TrackMCP | [Free submission](https://trackmcp.com/submit-mcp) | Form accepted ReMCP repository 25 Oct 2026, review confirmation displayed; not independently verified as published |
 | Best-of MCP Servers | [PR #562](https://github.com/tolkonepiu/best-of-mcp-servers/pull/562) | pending review; yamllint passed |
 | mcpHQ Awesome MCP Servers | [PR #404](https://github.com/mcpHQ/awesome-mcp-servers/pull/404) | open, awaiting maintainer review |
