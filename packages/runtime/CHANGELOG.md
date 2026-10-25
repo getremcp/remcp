@@ -1,11 +1,31 @@
 # Changelog
 
+## 0.2.181 — 2026-10-25
+
+- Add bounded read-only `browser_devtools` Form Map and selector-scoped computed Styles/box-model inspection with no user-entered values, raw CSS, URL content or page text in diagnostic reports.
+- Add optional `expected_tag` and `expected_type` safeguards for `fill_form` and workflow form batches; reject duplicates and detached DOM controls to reduce stale-selector writes.
+- Keep explicit per-tab target_id, loopback Chrome CDP, URL/DNS safety checks, authenticated tool permissions, and explicit submit boundaries. Add real Chromium QA scripts and regression tests.
+
 ## 0.2.180 — 2026-10-25
 
-- Categorize lost CDP sessions, stale targets, navigation failures and browser guard failures without transmitting page content, URLs, target IDs or raw exception messages as telemetry categories.
-- Treat nonempty `Page.navigate.errorText` as a failed tool call for both selected tabs and guarded new tabs.
-- Preserve existing browser policies and existing runtime operation contracts; regression tests cover redaction and failure semantics.
+- Add redacted `browser_navigation_failed`, `browser_target_stale`, `browser_session_lost` and `browser_guard_failed` classifications for Chrome CDP failures, without disclosing error details, tab IDs or URLs.
+- Fail `Page.navigate` when Chrome provides a nonempty errorText instead of returning false success; preserve explicit target, origin and security checks.
+- Add focused regression coverage without changing the public 84-tool runtime interface.
 
+## 0.2.179 — 2026-10-25
+
+- Add one-element native CDP listener diagnostics without exposing script source, page text or untrusted raw event handler content.
+- Maintain the same 84 runtime tool names and the existing browser origin and permission boundaries.
+
+## 0.2.178 — 2026-10-25
+
+- Add bounded DOMSnapshot geometry diagnostics to detect potential viewport overflows and layout issues without screenshots.
+- Preserve privacy of raw DOM content and do not misclassify suspected geometry issues as confirmed CSS defects.
+
+## 0.2.177 — 2026-10-24
+
+- Add native read-only Chrome DevTools diagnostics for console, network, performance, layout and accessibility, plus selected-tab DOM inspection in the web Devices workspace.
+- Do not auto-start a user browser during read-only probes or expose CDP outside loopback.
 
 ## 0.2.176 — 2026-10-23
 

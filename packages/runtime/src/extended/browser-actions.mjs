@@ -119,6 +119,7 @@ export const PAGE_ELEMENT_ACTION = `function(selector, needle, action, value) {
 // Bounded form mutation: validate every target before changing any field.
 // Values are intentionally excluded from the return object and tool logs.
 export const PAGE_FILL_FORM = `function(fields) {
+  const used = new Set();
   const targets = fields.map(field => {
     const el = document.querySelector(field.selector);
     if (!el || !el.getClientRects().length || el.disabled || el.readOnly ||
@@ -127,6 +128,14 @@ export const PAGE_FILL_FORM = `function(fields) {
     }
     const tag = el.tagName.toLowerCase();
     if (!['input','textarea','select'].includes(tag)) throw new Error('Unsupported form field: ' + field.selector);
+    if (used.has(el)) throw new Error('Duplicate form field target');
+    used.add(el);
+    // Form Map selectors are structural; verify the observed kind again after any rerender.
+    const actualType = tag === 'input' ? (el.type || 'text').toLowerCase() : tag;
+    if ((field.expected_tag && field.expected_tag !== tag) ||
+        (field.expected_type && field.expected_type !== actualType)) {
+      throw new Error('Form field kind changed; refresh the form map');
+    }
     if (tag === 'input' && ['checkbox','radio'].includes(el.type) && typeof field.value !== 'boolean') {
       throw new Error('Checkbox and radio fields require a boolean value: ' + field.selector);
     }
@@ -137,6 +146,8 @@ export const PAGE_FILL_FORM = `function(fields) {
   });
   const summary = [];
   for (const {el,tag,value} of targets) {
+    // A change handler from an earlier field can detach a later field mid-batch.
+    if (el.isConnected === false) throw new Error('Form rerendered during the batch; refresh the form map');
     const checkbox = tag === 'input' && ['checkbox','radio'].includes(el.type);
     const prop = checkbox ? 'checked' : 'value';
     let prototype = Object.getPrototypeOf(el);
@@ -158,6 +169,7 @@ export function validateFormFields(fields) {
   if (!Array.isArray(fields) || fields.length < 1 || fields.length > 20) {
     throw new Error('fill_form requires 1 to 20 fields');
   }
+  const seen = new Set();
   return fields.map(field => {
     const selector = typeof field?.selector === 'string' ? field.selector.trim() : '';
     if (!selector || selector.length > 512 || !Object.hasOwn(field,'value') ||
@@ -166,7 +178,20 @@ export function validateFormFields(fields) {
       throw new Error('Each form field requires a CSS selector and a string/boolean/number value');
     }
     if (String(field.value).length > 16384) throw new Error('Form field value exceeds 16384 characters');
-    return {selector, value:field.value};
+    if (seen.has(selector)) throw new Error('Duplicate CSS selector in form batch');
+    seen.add(selector);
+    const expected_tag = field.expected_tag;
+    const expected_type = field.expected_type;
+    if (expected_tag != null && !['input','select','textarea'].includes(expected_tag))
+      throw new TypeError('Unsupported expected_tag');
+    if (expected_type != null && ![
+      'text','email','password','tel','url','search','number','date','time','datetime-local',
+      'month','week','color','range','checkbox','radio','file','hidden','submit','reset','button',
+      'select','textarea'
+    ].includes(expected_type)) throw new TypeError('Unsupported expected_type');
+    return {selector, value:field.value,
+      ...(expected_tag == null ? {} : {expected_tag}),
+      ...(expected_type == null ? {} : {expected_type})};
   });
 }
 
