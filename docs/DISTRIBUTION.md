@@ -31,6 +31,8 @@ ReMCP keeps one public source repository and publishes host-native discovery met
 | Sagargupta Awesome MCP Servers | [Merged PR #214](https://github.com/Sagargupta16/awesome-mcp-servers/pull/214) | published in GitHub directory 24 Oct 2026 |
 | TensorBlock Awesome MCP Servers | [Merged PR #4495](https://github.com/TensorBlock/awesome-mcp-servers/pull/4495) | accepted in upstream main 25 Oct 2026; index sync may lag |
 | VoltAgent Official MCP Servers | [PR #56](https://github.com/VoltAgent/official-mcp-servers/pull/56) | submitted 25 Oct 2026; curator review pending |
+| Awesome Public MCP Servers | [PR #84](https://github.com/bhavyshekhaliya/awesome-public-mcp-servers/pull/84) | submitted 25 Oct 2026; mutating device operations disclosed, external review pending |
+| Awesome MCP Tools | [PR #21](https://github.com/Christian-Sidak/awesome-mcp-tools/pull/21) | submitted 25 Oct 2026; remote paired-computer tools, external review pending |
 | Best-of MCP Servers | [PR #562](https://github.com/tolkonepiu/best-of-mcp-servers/pull/562) | pending review; yamllint passed |
 | mcpHQ Awesome MCP Servers | [PR #404](https://github.com/mcpHQ/awesome-mcp-servers/pull/404) | open, awaiting maintainer review |
 | ToolSDK MCP Registry | [PR #1019](https://github.com/toolsdk-ai/toolsdk-mcp-registry/pull/1019) | open; schema and biome CI passed |
