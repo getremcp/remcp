@@ -15,6 +15,7 @@ ReMCP keeps one public source repository and publishes host-native discovery met
 | Kiro Powers | Kiro Powers registry + direct GitHub import | submitted September 19, 2026; pending review |
 | Cline | Cline MCP Marketplace ([PR #125](https://github.com/cline/marketplace/pull/125)) | submitted in current `cline/marketplace`; pending review |
 | MCP Find | [PR #316](https://github.com/MCPFind/mcp-find/pull/316) | submitted 24 Oct 2026 with public MIT source and verified npm @remcp/remcp v0.2.177; awaiting CI/maintainer review |
+| FindMCP | [Free MCP submission](https://findmcp.app/submit) | API accepted ReMCP as ID 321 on 25 Oct 2026; external review pending, not yet listed |
 | Few Servers | [MCP listing/claim portal](https://www.fewservers.com/mcp/submit/) | 25 Oct: site handed request to email; request sent via Gmail, awaiting human editorial approval and ownership verification |
 | AgenticSkills | [Submission form](https://agenticskills.io/submit?type=mcp) | ReMCP receipt `MCP Server Submitted!` confirmed 25 Oct 2026; external weekly review pending |
 | MCP Harbor | [Free listing submission](https://mcpharbor.app/submit/) | ReMCP submission accepted 24 Oct 2026; pending independent review |
