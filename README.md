@@ -183,8 +183,6 @@ ReMCP publishes host-native metadata for coding agents plus directory records fo
 | **Epistates Awesome MCP DevTools** | [PR #24](https://github.com/Epistates/awesome-mcp-devtools/pull/24) | Submitted 25 Oct 2026; independent review pending, not published |
 | **Backblaze Awesome Agent Infrastructure** | [PR #44](https://github.com/backblaze-labs/awesome-agent-infrastructure/pull/44) | Submitted 25 Oct 2026; awaiting maintainer review |
 | **Awesome DevOps AI** | [PR #78](https://github.com/hammadhaqqani/awesome-devops-ai/pull/78) | Submitted 25 Oct 2026; awaiting maintainer review |
-| **Awesome AI DevTools RU** | [PR #4](https://github.com/justxor/awesome-ai-devtools-ru/pull/4) | Submitted 25 Oct 2026; external review pending, not published |
-| **Awesome Agentic Engineering** | [PR #27](https://github.com/ashishkaloge/awesome-agentic-engineering/pull/27) | Submitted 25 Oct 2026; external review pending, not published |
 | **awesome-mcp.tools (adw0rd)** | [Existing upstream listing](https://github.com/adw0rd/awesome-mcp-servers/blob/main/README.md) | Confirmed in public main 25 Oct 2026, canonical getremcp/remcp URL; no duplicate PR |
 | **TrackMCP** | [Submission form](https://trackmcp.com/submit-mcp) | Accepted 25 Oct 2026, email confirmation/review pending; not yet verified publicly listed |
 | **Best-of MCP Servers** | [PR #562](https://github.com/tolkonepiu/best-of-mcp-servers/pull/562) | open; upstream YAML lint passed |

@@ -2,9 +2,6 @@
 
 ReMCP keeps one public source repository and publishes host-native discovery metadata for each supported ecosystem.
 
-**Publication integrity audit - 25 October 2026.** The [official Registry latest record](https://registry.modelcontextprotocol.io/v0.1/servers/io.github.getremcp%2Fremcp/versions/latest) is **active v0.2.182** and advertises https://remcp.site/mcp. The [stable GitHub release](https://github.com/getremcp/remcp/releases/tag/v0.2.182) and the npm @remcp/remcp package are **both v0.2.182**. The endpoint returns HTTP 401 without OAuth, as expected. Legacy io.github.antonbaider/remcp returned HTTP 404 in Registry lookup and must not be republished. Historical submissions below retain their original submission-time versions.
-
-
 ## User-facing distribution
 
 | Host / catalog | Discovery / install path | Status |
@@ -51,8 +48,6 @@ ReMCP keeps one public source repository and publishes host-native discovery met
 | Epistates Awesome MCP DevTools | [PR #24](https://github.com/Epistates/awesome-mcp-devtools/pull/24) | Submitted 25 Oct 2026; independent review pending, not published |
 | Backblaze Awesome Agent Infrastructure | [PR #44](https://github.com/backblaze-labs/awesome-agent-infrastructure/pull/44) | Submitted 25 Oct 2026; awaiting maintainer review, not published yet |
 | Awesome DevOps AI | [PR #78](https://github.com/hammadhaqqani/awesome-devops-ai/pull/78) | Submitted 25 Oct 2026; awaiting maintainer review, not published yet |
-| Awesome AI DevTools RU | [PR #4](https://github.com/justxor/awesome-ai-devtools-ru/pull/4) | Submitted 25 Oct 2026; external review pending, not published |
-| Awesome Agentic Engineering | [PR #27](https://github.com/ashishkaloge/awesome-agentic-engineering/pull/27) | Submitted 25 Oct 2026; external review pending, not published |
 | awesome-mcp.tools (adw0rd) | [Existing upstream listing](https://github.com/adw0rd/awesome-mcp-servers/blob/main/README.md) | Verified in public upstream main 25 Oct 2026, no duplicate PR |
 | TrackMCP | [Free submission](https://trackmcp.com/submit-mcp) | Form accepted ReMCP repository 25 Oct 2026, review confirmation displayed; not independently verified as published |
 | Best-of MCP Servers | [PR #562](https://github.com/tolkonepiu/best-of-mcp-servers/pull/562) | pending review; yamllint passed |
