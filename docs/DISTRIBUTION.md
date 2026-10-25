@@ -2,6 +2,9 @@
 
 ReMCP keeps one public source repository and publishes host-native discovery metadata for each supported ecosystem.
 
+**Publication integrity audit - 25 October 2026.** The [official Registry latest record](https://registry.modelcontextprotocol.io/v0.1/servers/io.github.getremcp%2Fremcp/versions/latest) is **active v0.2.182** and advertises https://remcp.site/mcp. The [stable GitHub release](https://github.com/getremcp/remcp/releases/tag/v0.2.182) and the npm @remcp/remcp package are **both v0.2.182**. The endpoint returns HTTP 401 without OAuth, as expected. Legacy io.github.antonbaider/remcp returned HTTP 404 in Registry lookup and must not be republished. Historical submissions below retain their original submission-time versions.
+
+
 ## User-facing distribution
 
 | Host / catalog | Discovery / install path | Status |
