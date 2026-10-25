@@ -166,6 +166,8 @@ ReMCP publishes host-native metadata for coding agents plus directory records fo
 | **Sagargupta Awesome MCP Servers** | [ReMCP listing PR #214](https://github.com/Sagargupta16/awesome-mcp-servers/pull/214) | merged 24 Oct 2026; listed in the public GitHub directory |
 | **TensorBlock Awesome MCP Servers** | [Merged PR #4495](https://github.com/TensorBlock/awesome-mcp-servers/pull/4495) | accepted 25 Oct 2026 into upstream catalog; public API sync may lag |
 | **VoltAgent Official MCP Servers** | [PR #56](https://github.com/VoltAgent/official-mcp-servers/pull/56) | submitted 25 Oct 2026; awaiting independent review |
+| **Awesome Public MCP Servers** | [PR #84](https://github.com/bhavyshekhaliya/awesome-public-mcp-servers/pull/84) | submitted 25 Oct 2026; explicitly discloses mutating paired-device tools, review pending |
+| **Awesome MCP Tools** | [PR #21](https://github.com/Christian-Sidak/awesome-mcp-tools/pull/21) | submitted 25 Oct 2026; remote OAuth computer access tools, review pending |
 | **Best-of MCP Servers** | [PR #562](https://github.com/tolkonepiu/best-of-mcp-servers/pull/562) | open; upstream YAML lint passed |
 | **mcpHQ Awesome MCP Servers** | [Submission PR](https://github.com/mcpHQ/awesome-mcp-servers/pull/404) | open, awaiting maintainer review |
 | **ToolSDK MCP Registry** | [Submission PR](https://github.com/toolsdk-ai/toolsdk-mcp-registry/pull/1019) | open; schema and biome CI passed |
