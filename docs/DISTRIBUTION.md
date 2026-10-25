@@ -29,7 +29,8 @@ ReMCP keeps one public source repository and publishes host-native discovery met
 | Punkpeye Awesome MCP Servers | [Merged PR #14685](https://github.com/punkpeye/awesome-mcp-servers/pull/14685) | published in public installable-MCP catalog 18 Oct 2026 |
 | AI Anytime Awesome MCP Servers | [Merged PR #314](https://github.com/AIAnytime/Awesome-MCP-Servers/pull/314) | published in GitHub directory 24 Oct 2026 |
 | Sagargupta Awesome MCP Servers | [Merged PR #214](https://github.com/Sagargupta16/awesome-mcp-servers/pull/214) | published in GitHub directory 24 Oct 2026 |
-| TensorBlock Awesome MCP Servers | [PR #4495](https://github.com/TensorBlock/awesome-mcp-servers/pull/4495) | submitted, external review pending |
+| TensorBlock Awesome MCP Servers | [Merged PR #4495](https://github.com/TensorBlock/awesome-mcp-servers/pull/4495) | accepted in upstream main 25 Oct 2026; index sync may lag |
+| VoltAgent Official MCP Servers | [PR #56](https://github.com/VoltAgent/official-mcp-servers/pull/56) | submitted 25 Oct 2026; curator review pending |
 | Best-of MCP Servers | [PR #562](https://github.com/tolkonepiu/best-of-mcp-servers/pull/562) | pending review; yamllint passed |
 | mcpHQ Awesome MCP Servers | [PR #404](https://github.com/mcpHQ/awesome-mcp-servers/pull/404) | open, awaiting maintainer review |
 | ToolSDK MCP Registry | [PR #1019](https://github.com/toolsdk-ai/toolsdk-mcp-registry/pull/1019) | open; schema and biome CI passed |
