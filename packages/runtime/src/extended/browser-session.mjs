@@ -119,18 +119,31 @@ export class CdpSession {
     });
   }
 
-  waitFor(method, timeoutMs = this.timeoutMs) {
+  waitFor(method, timeoutMs = this.timeoutMs, signal = null) {
     return new Promise((resolve, reject) => {
+      if (signal?.aborted) { reject(new Error(`${method} aborted`)); return; }
       const listeners = this.waiters.get(method) || [];
-      const listener = { resolve, reject, timer: null };
-      listener.timer = setTimeout(() => {
+      const remove = () => {
         const current = this.waiters.get(method) || [];
         const next = current.filter(item => item !== listener);
         if (next.length) this.waiters.set(method, next); else this.waiters.delete(method);
-        reject(new Error(`${method} timed out`));
+        clearTimeout(listener.timer);
+        signal?.removeEventListener('abort', abort);
+      };
+      const listener = {
+        resolve:value => { signal?.removeEventListener('abort', abort); resolve(value); },
+        reject:error => { signal?.removeEventListener('abort', abort); reject(error); },
+        timer:null,
+      };
+      const abort = () => { remove(); listener.reject(new Error(`${method} aborted`)); };
+      listener.timer = setTimeout(() => {
+        remove();
+        listener.reject(new Error(`${method} timed out`));
       }, timeoutMs);
       listeners.push(listener);
       this.waiters.set(method, listeners);
+      signal?.addEventListener('abort', abort, { once:true });
+      if (signal?.aborted) abort();
     });
   }
 

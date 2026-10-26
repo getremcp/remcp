@@ -76,35 +76,43 @@ export async function browserNavigate(args = {}) {
   return withTarget(args, async (session, target) => {
     await session.send('Page.enable');
     const timeoutMs = clamp(args.timeout_ms, 15_000, 500, 120_000);
+    const loadWait = new AbortController();
     const loaded = args.wait === false || ['back','forward'].includes(action)
       ? null
-      : session.waitFor('Page.loadEventFired', timeoutMs).catch(() => null);
-    let frameId = null;
-    let errorText = null;
-    let historyUrl = null;
-    if (action === 'url') {
-      const result = await session.send('Page.navigate', { url });
-      requireSuccessfulBrowserNavigation(result);
-      frameId = result.frameId || null;
-      errorText = result.errorText || null;
-    } else if (action === 'reload') {
-      await session.send('Page.reload', { ignoreCache: Boolean(args.ignore_cache) });
-    } else {
-      const history = await session.send('Page.getNavigationHistory');
-      const current = Number(history.currentIndex || 0);
-      const nextIndex = action === 'back' ? current - 1 : current + 1;
-      const entry = Array.isArray(history.entries) ? history.entries[nextIndex] : null;
-      if (!entry) throw new Error(`Cannot navigate ${action}: no history entry is available`);
-      historyUrl = entry.url ? await assertResolvedPageUrl(entry.url, 'history URL') : null;
-      await session.send('Page.navigateToHistoryEntry', { entryId: entry.id });
+      : session.waitFor('Page.loadEventFired', timeoutMs, loadWait.signal).catch(() => null);
+    try {
+      let frameId = null;
+      let errorText = null;
+      let historyUrl = null;
+      if (action === 'url') {
+        const result = await session.send('Page.navigate', { url });
+        requireSuccessfulBrowserNavigation(result);
+        // Same-document navigation (fragment or pushState) has no loaderId
+        // and does not emit Page.loadEventFired.
+        if (!result.loaderId) loadWait.abort();
+        frameId = result.frameId || null;
+        errorText = result.errorText || null;
+      } else if (action === 'reload') {
+        await session.send('Page.reload', { ignoreCache: Boolean(args.ignore_cache) });
+      } else {
+        const history = await session.send('Page.getNavigationHistory');
+        const current = Number(history.currentIndex || 0);
+        const nextIndex = action === 'back' ? current - 1 : current + 1;
+        const entry = Array.isArray(history.entries) ? history.entries[nextIndex] : null;
+        if (!entry) throw new Error(`Cannot navigate ${action}: no history entry is available`);
+        historyUrl = entry.url ? await assertResolvedPageUrl(entry.url, 'history URL') : null;
+        await session.send('Page.navigateToHistoryEntry', { entryId: entry.id });
+      }
+      if (loaded) await loaded;
+      if (args.wait !== false && ['back','forward'].includes(action)) {
+        await waitForHistoryReady(session, historyUrl, timeoutMs);
+      }
+      const currentUrl = await evaluate(session, 'location.href').catch(() => url || target.url || null);
+      if (currentUrl) await assertResolvedPageUrl(currentUrl);
+      return jsonResult({ target_id: target.id, action, url: currentUrl, frame_id: frameId, error_text: errorText });
+    } finally {
+      loadWait.abort();
     }
-    if (loaded) await loaded;
-    if (args.wait !== false && ['back','forward'].includes(action)) {
-      await waitForHistoryReady(session, historyUrl, timeoutMs);
-    }
-    const currentUrl = await evaluate(session, 'location.href').catch(() => url || target.url || null);
-    if (currentUrl) await assertResolvedPageUrl(currentUrl);
-    return jsonResult({ target_id: target.id, action, url: currentUrl, frame_id: frameId, error_text: errorText });
   });
 }
 

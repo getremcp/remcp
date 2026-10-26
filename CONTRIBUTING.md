@@ -4,7 +4,7 @@ Thanks for helping improve ReMCP. This public repository contains the distributa
 
 ## Before you start
 
-`antonbaider/remcp` is a generated release projection. Changes are reviewed in the project source of truth and then exported here for releases. Public pull requests are still useful as concrete proposals, but maintainers may port an accepted change into the source repository and regenerate this repository rather than merging the public branch verbatim.
+`antonbaider/remcp` (currently redirected to `getremcp/remcp`) is a generated, release-only projection. Development, review and CI preflight happen in the private `antonbaider/remcp-full` source repository. Pull requests and non-release development branches are disabled in this public repository. The maintainers project only reviewed release artifacts onto public `main` and publish immutable `v*` tags.
 
 For bugs and feature requests, open a GitHub issue. For security vulnerabilities, use GitHub private vulnerability reporting instead of a public issue.
 
@@ -23,8 +23,8 @@ npm pack --dry-run --workspace @remcp/runtime
 
 The public repository does not contain the hosted ReMCP server or its Docker image, so server/Docker checks do not apply here.
 
-## Pull requests
+## Change proposals
 
-Keep changes small and explain which public package, tool contract, plugin manifest, skill, or document is affected. Include the checks you ran and call out compatibility or security implications.
+Public pull requests are disabled. Open a public issue for non-sensitive defects or feature proposals; maintainers will evaluate them in the private development repository. Never post security findings, confidential code or credentials in issues. Use private vulnerability reporting for security concerns.
 
-Do not commit credentials, `.env` files, OAuth tokens, device tokens, private host details, or captured user data. Preserve path confinement, tenant isolation, least-privilege tool annotations, and the distinction between read-only and mutating operations.
+Do not publish credentials, `.env` files, OAuth tokens, device tokens, private host details, or captured user data. Preserve path confinement, tenant isolation, least-privilege tool annotations, and the distinction between read-only and mutating operations.

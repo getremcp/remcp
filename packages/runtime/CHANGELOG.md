@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.186 — 2026-10-26
+
+- Return from same-document CDP navigation promptly when Page.navigate provides no new loaderId instead of awaiting a full load event that never fires.
+- Cancel and remove per-navigation CDP event waiters when aborted, completed or disconnected; retain the genuine-document navigation wait and existing browser safety policy.
+- Add deterministic cancellation coverage and real isolated Chromium navigation regression tests.
+
 ## 0.2.185 — 2026-10-26
 
 **Make read-only browser discovery more focused and patch application fail safely.**

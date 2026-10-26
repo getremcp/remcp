@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 
 const readJson = path => JSON.parse(readFileSync(path, 'utf8'));
 const pkg = readJson('package.json');
@@ -71,6 +71,17 @@ check(copilotMarketplace?.plugins?.length === 1, 'Copilot marketplace must expos
 check(copilotMarketplace?.plugins?.[0]?.name === 'remcp', 'Copilot marketplace plugin name must be remcp');
 check(copilotMarketplace?.plugins?.[0]?.source === './', 'Copilot marketplace must source the root Agent Plugin');
 check(copilotMarketplace?.plugins?.[0]?.version === version, 'Copilot marketplace plugin version must match package.json');
+
+// Run the same release-only checks in both the private source tree and its
+// public projection, where the reviewed files are installed at their GitHub
+// paths rather than kept under docs/public-* source templates.
+const publicWorkflow = readFileSync(
+  existsSync('docs/public-repo-ci.yml') ? 'docs/public-repo-ci.yml' : '.github/workflows/ci.yml', 'utf8');
+const publicContributing = readFileSync(
+  existsSync('docs/public-CONTRIBUTING.md') ? 'docs/public-CONTRIBUTING.md' : 'CONTRIBUTING.md', 'utf8');
+check(!/^\s{2}pull_request(?:_target)?:/m.test(publicWorkflow), 'Public CI must not accept pull-request development runs');
+check(/^\s{2}push:/m.test(publicWorkflow) && /tags: \['v\*'\]/.test(publicWorkflow), 'Public release CI must keep main/tag publishing triggers');
+check(publicContributing.includes('Public pull requests are disabled.'), 'Public CONTRIBUTING must identify this repository as release-only');
 
 if (problems.length) {
   console.error('distribution check failed:');

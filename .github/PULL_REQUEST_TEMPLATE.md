@@ -1,16 +1,7 @@
-## What changed
+# Public pull requests are disabled.
 
-Describe the problem and the public ReMCP surface this proposal changes.
+This repository is a release-only projection. Development and code review are performed in the private `antonbaider/remcp-full` repository, not here.
 
-## Verification
+For non-sensitive bug reports and feature requests, open a public GitHub issue. For security vulnerabilities, use private vulnerability reporting. Do not publish secrets, private source code, captured device data, or credentials.
 
-- [ ] `npm run check`
-- [ ] `npm test`
-- [ ] Relevant package/runtime behavior was exercised
-- [ ] No credentials, private host data, or user data are included
-
-## Security and compatibility
-
-Describe any effect on permissions, path confinement, MCP annotations, tool schemas, backward compatibility, or release packaging.
-
-> Note: `antonbaider/remcp` is a generated release projection. Maintainers may port an accepted proposal into the project source of truth and regenerate this repository instead of merging this branch verbatim.
+This file is retained only for compatibility with existing release projections; it is **not** an invitation to open public pull requests.
