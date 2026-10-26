@@ -69,9 +69,12 @@ function terminalStructured(value, fallbackText) {
 // useful output arrives, keeping a short grace window so quick commands can
 // still report their real exit status without requiring a follow-up tool call.
 // Explicit timeout_ms remains an upper bound, including for silent commands.
+// Buffered output needs only a short exit-status grace: 175ms held long-running
+// commands even after their first useful text was already ready. A 45ms window
+// lets immediate exits report their final code without delaying live feedback.
 async function waitForInitialOutput(session, timeoutMs) {
   const deadline = Date.now() + timeoutMs;
-  const graceUntil = Date.now() + Math.min(175, timeoutMs);
+  const graceUntil = Date.now() + Math.min(45, timeoutMs);
   while (!session.exited) {
     const now = Date.now();
     if (now >= deadline || (now >= graceUntil && hasNewOutput(session))) break;

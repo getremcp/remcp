@@ -43,6 +43,29 @@ test('start_process returns early on initial output from a long-running command'
   }
 });
 
+test('start_process returns buffered output without an unnecessary 175ms status grace', async () => {
+  const samples = [];
+  for (let i = 0; i < 3; i++) {
+    const startedAt = performance.now();
+    const result = await invokeTool('start_process', {
+      command: 'printf "FIRST-CHUNK\\n"; sleep 2',
+      timeout_ms: 500,
+    });
+    samples.push(performance.now() - startedAt);
+    const pid = pidOf(result);
+    try {
+      assert.equal(isError(result), false);
+      assert.match(body(result), /FIRST-CHUNK/);
+      assert.equal(result.structuredContent?.exited, false);
+    } finally {
+      await invokeTool('force_terminate', { pid });
+    }
+  }
+  samples.sort((a,b)=>a-b);
+  assert.ok(samples[1] < 165,
+    'early-output median '+Math.round(samples[1])+'ms should avoid old 175ms grace');
+});
+
 test('start_process returns after delayed output rather than waiting for process exit', async () => {
   const startedAt = Date.now();
   const result = await invokeTool('start_process', {

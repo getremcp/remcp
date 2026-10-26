@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.184 — 2026-10-26
+
+- Return initial output from long-running terminal sessions with a 45 ms exit-status grace instead of 175 ms, while preserving final exit codes for fast commands, silent-process timeout bounds and tool output schemas.
+- Add regression coverage for first-output latency, structured exit state, incremental output and command cancellation.
+
 ## 0.2.181 — 2026-10-25
 
 - Add bounded read-only `browser_devtools` Form Map and selector-scoped computed Styles/box-model inspection with no user-entered values, raw CSS, URL content or page text in diagnostic reports.
