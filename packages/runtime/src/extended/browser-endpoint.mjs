@@ -173,12 +173,18 @@ export async function browserCapabilityAvailable(endpoint, timeoutMs = 500) {
 // Validating every tab sequentially can require hundreds of serial DNS lookups,
 // making browser_tabs exceed the relay's deadline on machines with many tabs.
 // Keep DNS and security validation, but bound both the work and its concurrency.
-export async function filterBrowserTargets(list, { validate = assertResolvedPageUrl, targetId = null, endpoint = null } = {}) {
+export async function filterBrowserTargets(list, { validate = assertResolvedPageUrl, targetId = null, titleContains = null, urlContains = null, endpoint = null } = {}) {
   if (!Array.isArray(list)) return [];
   const candidates = [];
+  const titleNeedle = String(titleContains || '').toLowerCase();
+  const urlNeedle = String(urlContains || '').toLowerCase();
   for (const item of list) {
     if (!item || item.type !== 'page' || !item.webSocketDebuggerUrl) continue;
     if (targetId && item.id !== targetId) continue;
+    // Filter untrusted CDP metadata before expensive URL/DNS validation, but
+    // still validate every matching URL before it can reach the caller.
+    if (titleNeedle && !String(item.title || '').toLowerCase().includes(titleNeedle)) continue;
+    if (urlNeedle && !String(item.url || '').toLowerCase().includes(urlNeedle)) continue;
     // Reject fabricated/stale CDP socket metadata *before* DNS validation.
     // browser_tabs must never advertise a target that cannot pass chooseTarget.
     if (endpoint) {
@@ -229,7 +235,7 @@ export async function filterBrowserTargets(list, { validate = assertResolvedPage
   return targets;
 }
 
-export async function listBrowserTargets(endpoint, { targetId = null, readOnlySingleFlight = false, validate = assertResolvedPageUrl } = {}) {
+export async function listBrowserTargets(endpoint, { targetId = null, titleContains = null, urlContains = null, readOnlySingleFlight = false, validate = assertResolvedPageUrl } = {}) {
   assertBrowserRemoteEnabled();
   // Reading tabs and page semantics must not launch a separate Chromium/profile.
   // Only an explicit browser_navigate(action=new_tab) can bootstrap an isolated browser.
@@ -248,7 +254,7 @@ export async function listBrowserTargets(endpoint, { targetId = null, readOnlySi
     throw new Error(`${label} is unavailable at ${base.origin}. Read-only browser_tabs and browser_snapshot do not launch a browser. Use ui_snapshot and ui_find for the existing browser window; do not retry this CDP endpoint unchanged. Only browser_navigate(action=new_tab), when explicitly requested, may start a local isolated browser.${browserLaunchExitHint({ configured })}`);
   }
   // Retain the current bounded concurrent DNS/security checks for up to 1000 tabs.
-  return filterBrowserTargets(list, { targetId, validate, endpoint:base });
+  return filterBrowserTargets(list, { targetId, titleContains, urlContains, validate, endpoint:base });
 }
 
 export function validatedTargetWebSocketUrl(target, endpoint) {

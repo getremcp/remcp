@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.2.185 — 2026-10-26
+
+**Make read-only browser discovery more focused and patch application fail safely.**
+
+- Coalesce simultaneous read-only CDP readiness checks for the same validated endpoint, request implementation and timeout without sharing URL-policy decisions or mutating browser state.
+- Honor browser tab ID, title and URL filters before expensive validation, while preserving per-target DNS, socket and SSRF checks.
+- Reject incomplete multi-hunk patch writes to one file and out-of-range zero-context insertion positions instead of silently modifying the wrong text.
+- Keep existing runtime tool schemas and authorization boundaries; validate across isolated Chromium, deterministic regressions and the full runtime suite.
+
 ## 0.2.184 — 2026-10-26
 
 - Return initial output from long-running terminal sessions with a 45 ms exit-status grace instead of 175 ms, while preserving final exit codes for fast commands, silent-process timeout bounds and tool output schemas.

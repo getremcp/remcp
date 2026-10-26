@@ -87,7 +87,12 @@ function locate(lines, hunk) {
   // A hunk with no context and no removals is a pure insertion: `@@ -N,0 +M,K @@` inserts after
   // line N, so the zero-based insertion point is N (and the end of file when N is the last line).
   // Using N-1 here inserted every such hunk one line too early while still reporting success.
-  if (!expected.length) return { index: Math.min(Math.max(hunk.oldStart, 0), lines.length), fuzz: 0 };
+  if (!expected.length) {
+    // A stale or malformed insertion offset must fail instead of silently
+    // appending to EOF (which can corrupt an unrelated section of a file).
+    if (!Number.isSafeInteger(hunk.oldStart) || hunk.oldStart < 0 || hunk.oldStart > lines.length) return null;
+    return { index: hunk.oldStart, fuzz: 0 };
+  }
   const candidates = [];
   const anchor = Math.max(0, hunk.oldStart - 1);
   for (let offset = 0; offset <= 200; offset += 1) {

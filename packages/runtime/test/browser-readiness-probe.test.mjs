@@ -150,3 +150,89 @@ test('readiness status is briefly cached per loopback endpoint without cached au
   assert.equal(refreshed.status,'ready');
   assert.equal(requests,4);
 });
+
+test('simultaneous readiness probes share one read-only CDP discovery', async()=>{
+  const alternate='http://127.0.0.1:19381';
+  const paths=[];
+  let release;
+  const latch=new Promise(resolve=>{release=resolve;});
+  let entered;
+  const firstRequest=new Promise(resolve=>{entered=resolve;});
+  const request=async path=>{
+    paths.push(path);
+    if(path==='/json/version') { entered(); await latch; return {Browser:'Chromium/130'}; }
+    return [{type:'page',id:'page',webSocketDebuggerUrl:'ws://127.0.0.1:19381/devtools/page/page'}];
+  };
+  const args={enabled:true,endpoint:alternate,request,cache:true,now:10000};
+  const calls=Array.from({length:10},()=>probeBrowserReadiness(args));
+  await firstRequest;
+  assert.equal(paths.length,1,'one CDP /json/version for ten overlapping checks');
+  release();
+  const result=await Promise.all(calls);
+  assert.equal(paths.length,2,'one CDP /json/list for ten overlapping checks');
+  assert.ok(result.every(r=>r.status==='ready'&&r.candidate_pages===1));
+  assert.doesNotMatch(JSON.stringify(result),/private\.example|token/);
+});
+
+test('readiness sharing must not mix different request functions or timeouts',async()=>{
+  const alternate='http://127.0.0.1:19382';
+  const calls=[];
+  let release;
+  const pause=new Promise(resolve=>{release=resolve;});
+  const requestA=async path=>{calls.push('a'+path);await pause;return path==='/json/version'?{Browser:'Chromium/130'}:[];};
+  const requestB=async path=>{calls.push('b'+path);return path==='/json/version'?{Browser:'Chromium/130'}:[];};
+  const a=probeBrowserReadiness({enabled:true,endpoint:alternate,request:requestA,cache:true,now:100});
+  const b=probeBrowserReadiness({enabled:true,endpoint:alternate,request:requestB,cache:true,now:100});
+  // Ensure both request functions execute before completing the paused first probe.
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.ok(calls.includes('a/json/version'));
+  assert.ok(calls.includes('b/json/version'));
+  release();
+  await Promise.all([a,b]);
+});
+
+test('a disabled caller never joins an in-flight enabled CDP probe',async()=>{
+  const alternate='http://127.0.0.1:19383';
+  let release;
+  const pause=new Promise(resolve=>{release=resolve;});
+  const running=probeBrowserReadiness({enabled:true,endpoint:alternate,cache:true,now:100,
+    request:async path=>{await pause;return path==='/json/version'?{Browser:'Chromium/130'}:[];}});
+  const denied=await probeBrowserReadiness({enabled:false,endpoint:alternate,cache:true});
+  assert.equal(denied.status,'disabled');
+  release();
+  await running;
+});
+
+test('readiness coalescing keeps different timeout budgets independent',async()=>{
+  const origin='http://127.0.0.1:19384';
+  const budgets=[];
+  let release;
+  const pause=new Promise(resolve=>{release=resolve;});
+  const request=async(path,endpoint,{timeout_ms})=>{
+    budgets.push(timeout_ms);
+    await pause;
+    return path==='/json/version'?{Browser:'Chromium/130'}:[];
+  };
+  const first=probeBrowserReadiness({enabled:true,endpoint:origin,request,cache:true,now:200,timeoutMs:200});
+  const second=probeBrowserReadiness({enabled:true,endpoint:origin,request,cache:true,now:200,timeoutMs:700});
+  try {
+    await new Promise(resolve=>setImmediate(resolve));
+    assert.deepEqual([...budgets].sort((a,b)=>a-b),[200,700]);
+  } finally { release(); }
+  const both=await Promise.all([first,second]);
+  assert.deepEqual([...budgets].sort((a,b)=>a-b),[200,200,700,700]);
+  assert.ok(both.every(result=>result.status==='no_tabs'));
+});
+
+test('explicit no-cache probes stay independent and never borrow cached readiness',async()=>{
+  const origin='http://127.0.0.1:19385';
+  let calls=0;
+  const request=async path=>{
+    calls++;
+    return path==='/json/version'?{Browser:'Chromium/130'}:[];
+  };
+  const args={enabled:true,endpoint:origin,request,cache:false,now:300};
+  const checks=await Promise.all(Array.from({length:4},()=>probeBrowserReadiness(args)));
+  assert.equal(calls,8);
+  assert.ok(checks.every(result=>result.status==='no_tabs'&&!('cache_hit' in result)));
+});

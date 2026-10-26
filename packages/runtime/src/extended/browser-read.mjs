@@ -15,7 +15,12 @@ import { assertResolvedBrowserUrl, assertResolvedPageUrl, boundedText, endpointU
 import { createGuardedNewTab, evaluate, withTarget } from './browser-session.mjs';
 
 export async function browserTabs(args = {}) {
-  const targets = await listBrowserTargets(args.endpoint, { readOnlySingleFlight:true });
+  const targetId = optionalString(args.target_id || args.targetId);
+  const titleContains = optionalString(args.title);
+  const urlContains = optionalString(args.url_contains || args.urlContains);
+  const targets = await listBrowserTargets(args.endpoint, {
+    targetId, titleContains, urlContains, readOnlySingleFlight:true,
+  });
   const pages = targets.filter(item => item.type === 'page').slice(0, 500).map(item => ({
     id: boundedText(item.id, 256),
     title: boundedText(item.title, 1000),
@@ -25,7 +30,10 @@ export async function browserTabs(args = {}) {
   const result = jsonResult(pages);
   // Keep the typed empty-array contract while providing a native fallback hint.
   if (!pages.length) {
-    result.content = [{ type: 'text', text: 'CDP is connected, but no debuggable Chromium tabs are available. Use ui_snapshot and ui_find to inspect existing browser windows without CDP; only open a new tab when explicitly requested.' }];
+    const scoped = Boolean(targetId || titleContains || urlContains);
+    result.content = [{ type: 'text', text: scoped
+      ? 'CDP is connected, but no authorized browser page matches the requested selector. Check the selector or use ui_snapshot and ui_find for native browser accessibility.'
+      : 'CDP is connected, but no debuggable Chromium tabs are available. Use ui_snapshot and ui_find to inspect existing browser windows without CDP; only open a new tab when explicitly requested.' }];
   }
   return result;
 }

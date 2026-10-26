@@ -234,7 +234,12 @@ export async function applyPatchTool(args) {
         else throw error;
       }
       const { updated, applied, failed } = applyHunks(original, file.hunks);
-      if (failed.length && !applied.length) { results.push(`failed ${displayPath(absolute)}: none of the ${file.hunks.length} hunk(s) matched`); continue; }
+      // Never persist a partially applied file, even if one hunk did match.
+      // An MCP success response here would let an agent continue with broken code.
+      if (failed.length) {
+        results.push(`failed ${displayPath(absolute)}: ${failed.length}/${file.hunks.length} hunk(s) did not match; no changes written`);
+        continue;
+      }
       const stats = diffStats(original, updated);
       if (!dryRun) {
         assertWritableSize(updated);

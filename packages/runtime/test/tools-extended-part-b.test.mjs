@@ -312,3 +312,35 @@ test('apply_patch accepts a diff -u header with a timestamp and empty context li
   assert.equal(isError(blankResult), false, body(blankResult));
   assert.equal(readFileSync(blank, 'utf8'), 'a\n\nB\nc\n');
 });
+
+test('apply_patch refuses a partially matching multi-hunk file without modifying it',async()=>{
+  const target=join(root,'partially-matching.txt');
+  const original='keep-a\nold-a\nbetween\nold-b\nend\n';
+  writeFileSync(target,original);
+  const patch=[
+    '--- a/partially-matching.txt','+++ b/partially-matching.txt',
+    '@@ -1,2 +1,2 @@',' keep-a','-old-a','+new-a',
+    '@@ -4,2 +4,2 @@',' impossible-context','-old-b','+new-b',
+  ].join('\n');
+  for(const dry_run of [true,false]) {
+    const result=await invokeTool('apply_patch',{patch,path:target,dry_run});
+    assert.equal(isError(result),true,'a rejected hunk must mark the tool response as error');
+    assert.equal(readFileSync(target,'utf8'),original,'no successful hunks may leak into the file');
+    assert.match(body(result),/failed|refus/i);
+  }
+});
+
+test('apply_patch still commits a completely matching multi-hunk file',async()=>{
+  const target=join(root,'matching-two-hunks.txt');
+  const original='first\nold-one\nseparator\nold-two\nlast\n';
+  writeFileSync(target,original);
+  const patch=[
+    '--- a/matching-two-hunks.txt','+++ b/matching-two-hunks.txt',
+    '@@ -1,2 +1,2 @@',' first','-old-one','+new-one',
+    '@@ -4,2 +4,2 @@','-old-two','+new-two',' last',
+  ].join('\n');
+  const result=await invokeTool('apply_patch',{patch,path:target});
+  assert.equal(isError(result),false,body(result));
+  assert.match(body(result),/2\/2 hunk/);
+  assert.equal(readFileSync(target,'utf8'),'first\nnew-one\nseparator\nnew-two\nlast\n');
+});
