@@ -3,7 +3,7 @@ import { persistentServiceExpected, persistentServiceState, releasePairPresentAt
 export { servicePlatform, globalPrefix, globalCliPath, npmGlobalInstall, npmGlobalUpdate, npmGlobalUpdateForNode };
 export { persistentServiceExpected, persistentServiceState, releasePairPresentAtCli, installationVersionsAtCliPath, serviceInstallationInfo, currentInstallationInfo, rememberCurrentInstallation, syncKnownInstallations };
 // Installing, repairing and removing the background agent: one supervisor per platform, plus the
-// write-access tweaks a fresh install needs. Nothing here is reachable from a model or an MCP tool.
+// write-access tweaks a fresh install needs. Service maintenance follows local OS permissions.
 import fs from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
@@ -209,10 +209,22 @@ export function ensureServiceIfRecorded(config) {
   }
 }
 
-export function restartPersistentServiceIfInstalled(config) {
+export function deferredLinuxAgentRestartArgs(pid) {
+  if (!Number.isSafeInteger(pid) || pid <= 0) throw new Error('Invalid process identifier');
+  return ['--user', '--on-active=3s', `--unit=remcp-agent-settings-${pid}`,
+    'systemctl', '--user', 'restart', 'remcp-agent.service'];
+}
+
+export function restartPersistentServiceIfInstalled(config, { deferLinux = false } = {}) {
   if (!persistentServiceExpected(config)) return null;
   const platform = servicePlatform();
   if (platform === 'linux' && fs.existsSync(linuxServiceFile)) {
+    // Only owner-confirmed remote policy changes defer their restart. Ordinary
+    // installs and updates preserve their existing synchronous supervisor contract.
+    if (deferLinux) {
+      run('systemd-run', deferredLinuxAgentRestartArgs(process.pid));
+      return 'remcp-agent.service (restart scheduled)';
+    }
     run('systemctl', ['--user', 'daemon-reload']);
     run('systemctl', ['--user', 'restart', 'remcp-agent.service']);
     return 'remcp-agent.service';
