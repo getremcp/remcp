@@ -7,10 +7,11 @@
 <p align="center">
   <a href="https://www.npmjs.com/package/@remcp/remcp"><img alt="npm" src="https://img.shields.io/npm/v/%40remcp%2Fremcp?style=flat-square&label=npm"></a>
   <a href="https://www.npmjs.com/package/@remcp/runtime"><img alt="runtime" src="https://img.shields.io/npm/v/%40remcp%2Fruntime?style=flat-square&label=runtime"></a>
-  <a href="https://www.npmjs.com/package/@remcp/remcp"><img alt="downloads" src="https://img.shields.io/npm/dm/%40remcp%2Fremcp?style=flat-square&label=downloads"></a>
+  <a href="https://www.npmjs.com/package/@remcp/remcp"><img alt="npm downloads in 30 days" src="https://img.shields.io/endpoint?url=https%3A%2F%2Fremcp.site%2Fapi%2Fnpm-downloads%2Fbadge%3Fperiod%3Dmonth&style=flat-square"></a>
+  <a href="https://www.npmjs.com/package/@remcp/remcp"><img alt="npm downloads all time" src="https://img.shields.io/endpoint?url=https%3A%2F%2Fremcp.site%2Fapi%2Fnpm-downloads%2Fbadge%3Fperiod%3Dtotal&style=flat-square"></a>
   <img alt="Node.js" src="https://img.shields.io/node/v/%40remcp/remcp?style=flat-square&label=node">
   <a href="./LICENSE"><img alt="license" src="https://img.shields.io/npm/l/%40remcp%2Fremcp?style=flat-square"></a>
-  <a href="https://github.com/antonbaider/remcp/stargazers"><img alt="GitHub stars" src="https://img.shields.io/github/stars/antonbaider/remcp?style=flat-square"></a>
+  <a href="https://github.com/getremcp/remcp/stargazers"><img alt="GitHub stars" src="https://img.shields.io/github/stars/getremcp/remcp?style=flat-square"></a>
 </p>
 
 <!-- Canonical distribution badges: scripts/build-public-repo.mjs projects this block into the public README. -->
@@ -44,6 +45,8 @@ CLI, Kiro, Cline, or another MCP client**. The device agent makes an **outbound 
 inbound port, no tunnel, no third-party desktop relay. This repository contains the public device
 client/runtime, portable Agent Plugin metadata, the Gemini CLI extension manifest, official MCP
 Registry metadata, and the host-specific OpenAI and Anthropic plugin packaging.
+
+The two npm download badges report verified downloads of **@remcp/remcp** in the last 30 complete UTC days and since its first publication (16 September 2026). They update from dated npm API queries through the public ReMCP badge endpoint; the npm relative-date alias can return stale zero counts.
 
 ## Packages
 
@@ -145,10 +148,12 @@ ReMCP publishes host-native metadata for coding agents plus directory records fo
 | Host / directory | User path | Status |
 | --- | --- | --- |
 | **Cursor** | Add `https://remcp.site/mcp` as a remote MCP server in Cursor settings, then authorize. | manual MCP setup |
-| **Gemini CLI** | Install from the Extension Gallery when indexed, or run `gemini extensions install https://github.com/antonbaider/remcp`. | gallery discovery enabled |
+| **Gemini CLI** | Install from the Extension Gallery when indexed, or run `gemini extensions install https://github.com/getremcp/remcp`. | gallery discovery enabled |
 | **VS Code** | Configure the remote MCP endpoint in an MCP-capable client. | manual MCP setup |
-| **Kiro Powers** | Import `https://github.com/antonbaider/remcp` from **Add Custom Power → Import power from GitHub** while the curated listing is reviewed. | submitted |
-| **Cline** | Use the Cline MCP Marketplace after review; the current submission is tracked in [`cline/marketplace` PR #125](https://github.com/cline/marketplace/pull/125). | submitted |
+| **Kiro Powers** | Import `https://github.com/getremcp/remcp` from **Add Custom Power → Import power from GitHub** while the curated listing is reviewed. | submitted |
+| **Cline** | [Restored PR #347](https://github.com/cline/marketplace/pull/347) ([original #125](https://github.com/cline/marketplace/pull/125)) | Open, awaiting external review; original fork was deleted 26 Oct 2026 |
+| **Kilo Marketplace** | [Restored PR #498](https://github.com/Kilo-Org/kilo-marketplace/pull/498) ([original #480](https://github.com/Kilo-Org/kilo-marketplace/pull/480)) | Open, awaiting external review; original fork was deleted 26 Oct 2026 |
+| **Docker MCP Registry** | [Restored PR #6171](https://github.com/docker/mcp-registry/pull/6171) ([original #5159](https://github.com/docker/mcp-registry/pull/5159)) | Open, awaiting external review; original fork was deleted 26 Oct 2026 |
 | **MCP Find** | [PR #316](https://github.com/MCPFind/mcp-find/pull/316) | Submitted 24 Oct 2026; fork-safe validation pending and directory review required |
 | **MCP Server Finder** | [Free directory](https://www.mcpserverfinder.com/) | Repo checked absent 25 Oct 2026; editorial email submission sent 25 Oct, review pending |
 | **FindMCP** | [Free submission portal](https://findmcp.app/submit) | ReMCP submission ID **321** accepted 25 Oct 2026; review pending |
@@ -165,7 +170,7 @@ ReMCP publishes host-native metadata for coding agents plus directory records fo
 | **AI Anytime Awesome MCP Servers** | [ReMCP listing PR #314](https://github.com/AIAnytime/Awesome-MCP-Servers/pull/314) | merged 24 Oct 2026; listed in the public GitHub directory |
 | **Sagargupta Awesome MCP Servers** | [ReMCP listing PR #214](https://github.com/Sagargupta16/awesome-mcp-servers/pull/214) | merged 24 Oct 2026; listed in the public GitHub directory |
 | **TensorBlock Awesome MCP Servers** | [Merged PR #4495](https://github.com/TensorBlock/awesome-mcp-servers/pull/4495) | accepted 25 Oct 2026 into upstream catalog; public API sync may lag |
-| **VoltAgent Official MCP Servers** | [PR #56](https://github.com/VoltAgent/official-mcp-servers/pull/56) | submitted 25 Oct 2026; awaiting independent review |
+| **VoltAgent Official MCP Servers** | [PR #56](https://github.com/VoltAgent/official-mcp-servers/pull/56) | Closed by upstream maintainer 25 Oct 2026, not merged |
 | **Awesome Public MCP Servers** | [PR #84](https://github.com/bhavyshekhaliya/awesome-public-mcp-servers/pull/84) | submitted 25 Oct 2026; explicitly discloses mutating paired-device tools, review pending |
 | **Awesome MCP Tools** | [PR #21](https://github.com/Christian-Sidak/awesome-mcp-tools/pull/21) | submitted 25 Oct 2026; remote OAuth computer access tools, review pending |
 | **PenguinMiaou Awesome Claude Code Plugins** | [PR #11](https://github.com/PenguinMiaou/awesome-claude-code-plugins/pull/11) | submitted 25 Oct 2026; community review pending, not Anthropic endorsement |
@@ -185,9 +190,9 @@ ReMCP publishes host-native metadata for coding agents plus directory records fo
 | **Awesome DevOps AI** | [PR #78](https://github.com/hammadhaqqani/awesome-devops-ai/pull/78) | Submitted 25 Oct 2026; awaiting maintainer review |
 | **awesome-mcp.tools (adw0rd)** | [Existing upstream listing](https://github.com/adw0rd/awesome-mcp-servers/blob/main/README.md) | Confirmed in public main 25 Oct 2026, canonical getremcp/remcp URL; no duplicate PR |
 | **TrackMCP** | [Submission form](https://trackmcp.com/submit-mcp) | Accepted 25 Oct 2026, email confirmation/review pending; not yet verified publicly listed |
-| **Best-of MCP Servers** | [PR #562](https://github.com/tolkonepiu/best-of-mcp-servers/pull/562) | open; upstream YAML lint passed |
+| **Best-of MCP Servers** | [Restored PR #575](https://github.com/tolkonepiu/best-of-mcp-servers/pull/575) ([original #562](https://github.com/tolkonepiu/best-of-mcp-servers/pull/562)) | Open, awaiting external review; original fork was deleted 26 Oct 2026 |
 | **mcpHQ Awesome MCP Servers** | [Submission PR](https://github.com/mcpHQ/awesome-mcp-servers/pull/404) | open, awaiting maintainer review |
-| **ToolSDK MCP Registry** | [Submission PR](https://github.com/toolsdk-ai/toolsdk-mcp-registry/pull/1019) | open; schema and biome CI passed |
+| **ToolSDK MCP Registry** | [Merged PR #1019](https://github.com/toolsdk-ai/toolsdk-mcp-registry/pull/1019) | merged 25 Oct 2026 |
 | **MobinX Awesome MCP List** | [Submission PR](https://github.com/MobinX/awesome-mcp-list/pull/931) | open, awaiting maintainer review |
 | **Ever Works Awesome MCP Servers** | [PR #213](https://github.com/ever-works/awesome-mcp-servers/pull/213) | Submitted 24 Oct 2026; full ReMCP detail page awaiting catalog review |
 | **Awesome Claude Code Plugins** | [PR #822](https://github.com/ccplugins/awesome-claude-code-plugins/pull/822) | Submitted 24 Oct 2026; external community review pending |
