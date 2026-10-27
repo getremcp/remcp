@@ -1,8 +1,9 @@
 import os from 'node:os';
 import { VERSION } from './version.mjs';
+import { runAgentNetworkProbe } from './agent-network-probe-client.mjs';
 import { sendRelayMessage } from './agent-utilities.mjs';
 
-export function createAgentResponder({ inFlight, onPendingChange, getRuntimeState }) {
+export function createAgentResponder({ inFlight, onPendingChange, getRuntimeState, serverUrl, deviceToken }) {
   async function respond(ws, message) {
     onPendingChange(1);
     // The relay forwards a cancel when the MCP client goes away. Without it a cancelled tool call
@@ -14,6 +15,8 @@ export function createAgentResponder({ inFlight, onPendingChange, getRuntimeStat
       let result;
       if (message.method === 'ping') {
         result = { ok: true, hostname: os.hostname(), platform: process.platform, arch: process.arch, uptimeSeconds: Math.floor(os.uptime()), agentVersion: VERSION, runtimeVersion, runtimeRestarts };
+      } else if (message.method === 'network_probe') {
+        result = await runAgentNetworkProbe({serverUrl,deviceToken,signal:controller.signal});
       } else if (!runtimeDown && mcp) {
         const options = { timeout: callTimeoutMs, signal: controller.signal };
         if (message.method === 'tools/list') result = await mcp.listTools(undefined, options);

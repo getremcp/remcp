@@ -1,2 +1,3 @@
 # False positive: deterministic TOKEN_SECRET placeholder used only by the drain test fixture.
 bd8597c6f8a07c6742a3e86a9d54f1c350215006:test/drain.test.mjs:generic-api-key:33
+1d10590d621a487795063035ccea03c486351a7d:test/drain.test.mjs:generic-api-key:33

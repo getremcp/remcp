@@ -246,6 +246,7 @@ export async function runAgent(options) {
   }
 
   const respond = createAgentResponder({
+    serverUrl, deviceToken,
     inFlight,
     onPendingChange: delta => { pendingRequests = Math.max(0, pendingRequests + delta); },
     getRuntimeState: () => ({ mcp, runtimeDown, runtimeVersion, runtimeRestarts, callTimeoutMs }),

@@ -1,11 +1,10 @@
 {
-  "version": "0.2.189",
-  "title": "Deliver bounded, event-driven terminal output and strict per-tool retry safety.",
+  "version": "0.2.190",
+  "title": "Measure the selected paired computer’s HTTPS connection to ReMCP, independently of browser speed.",
   "changes": [
-    "Respect read_process_output.length for consuming reads, expose hasMore, and preserve every unreturned line and oversized-line fragment across pages.",
-    "Wake waiting terminal reads on real process output/exit or cancellation instead of repeated 200ms polling; keep explicit-offset peeks non-consuming.",
-    "Mark PID-based force_terminate and kill_process as non-idempotent, prohibiting unsafe automatic replay after ambiguous transport outcomes.",
-    "Add exhaustive, no-side-effect contract/cancellation/dispatch checks for all 84 local runtime operations and all 174 independently advertised OpenAI tools; preserve the existing isolated functional tests and security gates.",
-    "Require verified public npm packages/tag first, matching private runtime catalog, self-hosted PostgreSQL CI and production smoke before promotion."
+    "Run a fixed-destination, authenticated network probe from the paired agent; return device download/upload Mbps, HTTP latency and jitter, and its public IP without shell commands or arbitrary URLs.",
+    "Bound probe traffic to 12 MiB down and 4 MiB up with per-device, per-peer, fleet-wide shared limits, local concurrency caps, and strict request validation.",
+    "Preserve the separate browser speed test, add device-version gating and accessible responsive diagnostics in System Monitor.",
+    "Include the imported network probe module in the public agent package, verify npm projection completeness, and retain exact-SHA security/PostgreSQL release gates."
   ]
 }

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.190 — 2026-10-27
+
+- Publish the runtime alongside the compatible ReMCP agent; the device HTTPS network probe is agent-owned and does not add runtime MCP tools.
+- Preserve the existing 84-tool runtime contract while verifying public package source and release parity.
+
 ## 0.2.186 — 2026-10-26
 
 - Return from same-document CDP navigation promptly when Page.navigate provides no new loaderId instead of awaiting a full load event that never fires.
