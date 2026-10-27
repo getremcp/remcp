@@ -107,6 +107,129 @@ test('read_process_output returns new output and supports tail offsets', async (
   assert.match(tailResult.structuredContent?.output || '', /line-3/);
 });
 
+test('read_process_output pages buffered output without losing or duplicating lines', async () => {
+  const { createProcessSession, appendProcessOutput, markProcessExited } = await import('../src/sessions.mjs');
+  const pid = 987654321;
+  const session = createProcessSession({pid,child:{},command:'synthetic',shell:'test'});
+  appendProcessOutput(session, Array.from({length:257},(_,i)=>'row-'+String(i).padStart(3,'0')).join('\n')+'\n');
+  markProcessExited(session,0,null);
+  const rows=[];
+  for(let page=0;page<30;page++) {
+    const result=await invokeTool('read_process_output',{pid,length:13});
+    const data=result.structuredContent;
+    assert.equal(isError(result),false);
+    const chunk=(data?.output||'').split('\n').filter(Boolean);
+    assert.ok(chunk.length<=13,'length applies to cursor-consuming reads');
+    rows.push(...chunk);
+    assert.equal(data?.hasMore,rows.length<257);
+    if(!data?.hasMore)break;
+  }
+  assert.deepEqual(rows,Array.from({length:257},(_,i)=>'row-'+String(i).padStart(3,'0')));
+  const exhausted=await invokeTool('read_process_output',{pid,length:13});
+  assert.equal(exhausted.structuredContent?.hasMore,false);
+  assert.equal(exhausted.structuredContent?.output,'');
+});
+
+test('read_process_output wakes on new data without periodic polling', async () => {
+  const { createProcessSession, appendProcessOutput } = await import('../src/sessions.mjs');
+  const pid=987654322;
+  const session=createProcessSession({pid,child:{},command:'synthetic',shell:'test'});
+  const started=performance.now();
+  const pending=invokeTool('read_process_output',{pid,timeout_ms:3000,length:10});
+  await new Promise(resolve=>setTimeout(resolve,30));
+  appendProcessOutput(session,'event-driven-ready\n');
+  const reply=await pending;
+  assert.match(reply.structuredContent?.output||'',/event-driven-ready/);
+  assert.ok(performance.now()-started<750,'an append wakes the reader immediately');
+  assert.equal(session.waiters.length,0,'event waiter is cleaned after output');
+});
+
+test('read_process_output does not replay partial output already shown by start_process', {skip: process.platform==='win32'}, async () => {
+  const started=await invokeTool('start_process',{
+    command: 'printf "START-PARTIAL"; sleep 0.35; printf -- "-AFTER\\n"; sleep 0.2',
+    timeout_ms:140,
+  });
+  const pid=pidOf(started);
+  assert.match(started.structuredContent?.partial||'',/START-PARTIAL/);
+  const reply=await invokeTool('read_process_output',{pid,timeout_ms:1400});
+  assert.equal(isError(reply),false);
+  assert.equal(reply.structuredContent?.output,'-AFTER');
+  assert.equal(reply.structuredContent?.hasMore,false);
+});
+
+test('read_process_output never consumes a long line past the size-bounded page', async () => {
+  const {createProcessSession,appendProcessOutput,markProcessExited}=await import('../src/sessions.mjs');
+  const pid=987654325;
+  const session=createProcessSession({pid,child:{},command:'synthetic',shell:'test'});
+  const source='X'.repeat(92000)+'🟩'.repeat(12000);
+  appendProcessOutput(session,source+'\n');
+  markProcessExited(session,0,null);
+  let received='';
+  let pages=0;
+  do {
+    const result=await invokeTool('read_process_output',{pid,length:1});
+    assert.equal(isError(result),false);
+    const page=result.structuredContent;
+    assert.ok((page?.output||'').length<=32768,'page does not exceed the bounded text payload');
+    received+=page?.output||'';
+    pages++;
+    if(!page?.hasMore)break;
+  }while(pages<16);
+  assert.ok(pages>=3,'large logical line is split into transport-friendly fragments');
+  assert.equal(received,source,'every character arrives in order without truncation');
+  assert.equal(session.waiters.length,0);
+});
+
+test('read_process_output does not reuse a partial-line offset after buffer eviction', async () => {
+  const {createProcessSession,readNewOutput,hasNewOutput}=await import('../src/sessions.mjs');
+  const session=createProcessSession({pid:987654326,child:{},command:'synthetic',shell:'test'});
+  session.lines=['retained-fresh-line'];
+  session.droppedLines=3;
+  session.cursor=2;
+  session.cursorColumn=12;
+  session.lastPartialRead='old-prefix';
+  session.lastPartialLineIndex=2;
+  assert.equal(hasNewOutput(session),true);
+  assert.deepEqual(readNewOutput(session,1,32768),['retained-fresh-line']);
+  assert.equal(session.cursor,4);
+  assert.equal(session.cursorColumn,0);
+});
+
+test('read_process_output streams partial lines without repeating already-read prefixes', async () => {
+  const {createProcessSession,appendProcessOutput,markProcessExited}=await import('../src/sessions.mjs');
+  const pid=987654324;
+  const session=createProcessSession({pid,child:{},command:'synthetic',shell:'test'});
+  appendProcessOutput(session,'prefix');
+  const first=await invokeTool('read_process_output',{pid,length:2});
+  assert.equal(first.structuredContent?.output,'prefix');
+  appendProcessOutput(session,'-next');
+  const second=await invokeTool('read_process_output',{pid,length:2});
+  assert.equal(second.structuredContent?.output,'-next');
+  appendProcessOutput(session,'-done\nother\n');
+  const third=await invokeTool('read_process_output',{pid,length:1});
+  assert.equal(third.structuredContent?.output,'-done');
+  assert.equal(third.structuredContent?.hasMore,true);
+  const fourth=await invokeTool('read_process_output',{pid,length:1});
+  assert.equal(fourth.structuredContent?.output,'other');
+  assert.equal(fourth.structuredContent?.hasMore,false);
+  markProcessExited(session,0,null);
+});
+
+test('read_process_output cancellation promptly detaches its waiter', async () => {
+  const { createProcessSession } = await import('../src/sessions.mjs');
+  const { readProcessOutputTool } = await import('../src/tools/terminal.mjs');
+  const pid=987654323;
+  const session=createProcessSession({pid,child:{},command:'synthetic',shell:'test'});
+  const controller=new AbortController();
+  const started=performance.now();
+  const pending=readProcessOutputTool({pid,timeout_ms:5000},{signal:controller.signal});
+  await new Promise(resolve=>setTimeout(resolve,25));
+  controller.abort();
+  await assert.rejects(pending,/cancelled/i);
+  assert.ok(performance.now()-started<750,'abort cancels without repeated 200ms ticks');
+  assert.equal(session.waiters.length,0,'abort listener and process waiter are removed');
+});
+
 test('cursor-consuming output tools do not advertise idempotent retries', async () => {
   const { toolDefinitions } = await import('../src/catalog.mjs');
   for (const name of ['read_process_output', 'wait_for_process_output']) {

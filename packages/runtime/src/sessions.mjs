@@ -37,13 +37,15 @@ function notify(session) {
 
 // A waiter whose timer fires first must remove itself, otherwise finished sessions keep
 // holding closures until the next append (which may never come).
-function waiter(session, timeoutMs) {
+function waiter(session, timeoutMs, signal = null) {
+  if (signal?.aborted) return Promise.resolve();
   return new Promise(resolve => {
     let settled = false;
     const finish = () => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
+      signal?.removeEventListener('abort', finish);
       const index = session.waiters.indexOf(finish);
       if (index !== -1) session.waiters.splice(index, 1);
       resolve();
@@ -51,6 +53,9 @@ function waiter(session, timeoutMs) {
     const timer = setTimeout(finish, Math.max(0, timeoutMs));
     timer.unref?.();
     session.waiters.push(finish);
+    signal?.addEventListener('abort', finish, { once:true });
+    // The signal can abort between the initial check and listener registration.
+    if (signal?.aborted) finish();
   });
 }
 
@@ -65,6 +70,8 @@ export function createProcessSession({ pid, child, command, shell }) {
     lines: [],
     partial: '',
     lastPartialRead: null,
+    lastPartialLineIndex: null,
+    cursorColumn: 0,
     droppedLines: 0,
     bufferedChars: 0,
     cursor: 0,
@@ -131,13 +138,64 @@ export function totalLines(session) {
   return session.droppedLines + session.lines.length + (session.partial ? 1 : 0);
 }
 
-export function readNewOutput(session) {
-  const from = Math.max(0, session.cursor - session.droppedLines);
-  const complete = session.lines.slice(from);
-  session.cursor = session.droppedLines + session.lines.length;
-  const parts = [...complete];
-  if (session.partial && session.partial !== session.lastPartialRead) parts.push(session.partial);
-  session.lastPartialRead = session.partial || null;
+export function readNewOutput(session, maxLines = Infinity, maxChars = Infinity) {
+  const parts = [];
+  const lineLimit = Math.max(1, maxLines);
+  let remaining = Math.max(1, maxChars);
+  // If the buffer evicted a partially read line, its character offset does
+  // not belong to the first remaining line; never skip that fresh output.
+  if (session.cursor < session.droppedLines) {
+    session.cursor = session.droppedLines;
+    session.cursorColumn = 0;
+    session.lastPartialRead = null;
+    session.lastPartialLineIndex = null;
+  }
+  let from = session.cursor - session.droppedLines;
+  while (from < session.lines.length && parts.length < lineLimit && remaining > 0) {
+    const absolute = session.droppedLines + from;
+    const line = session.lines[from];
+    let skip = session.cursorColumn || 0;
+    if (session.lastPartialLineIndex === absolute && session.lastPartialRead
+        && line.startsWith(session.lastPartialRead)) {
+      skip = Math.max(skip, session.lastPartialRead.length);
+    }
+    const suffix = line.slice(skip);
+    const room = remaining - (parts.length ? 1 : 0);
+    if (room <= 0) break;
+    if (suffix.length > room) {
+      // Preserve the undispatched tail rather than consuming then truncating it.
+      parts.push(suffix.slice(0, room));
+      session.cursorColumn = skip + room;
+      break;
+    }
+    parts.push(suffix);
+    remaining -= suffix.length + (parts.length > 1 ? 1 : 0);
+    from++;
+    session.cursor = session.droppedLines + from;
+    session.cursorColumn = 0;
+    if (session.lastPartialLineIndex === absolute) {
+      session.lastPartialRead = null;
+      session.lastPartialLineIndex = null;
+    }
+  }
+  // Partial lines may be updated without a newline. Send only newly appended
+  // characters, and track even a partial page of that unfinished line.
+  if (session.cursor === session.droppedLines + session.lines.length
+      && parts.length < lineLimit && remaining > 0 && session.partial
+      && session.partial !== session.lastPartialRead) {
+    const sent = session.lastPartialLineIndex === session.cursor
+      && session.partial.startsWith(session.lastPartialRead || '')
+      ? session.lastPartialRead || '' : '';
+    const room = remaining - (parts.length ? 1 : 0);
+    if (room > 0) {
+      const delta = session.partial.slice(sent.length, sent.length + room);
+      if (delta) {
+        parts.push(delta);
+        session.lastPartialRead = sent + delta;
+        session.lastPartialLineIndex = session.cursor;
+      }
+    }
+  }
   return parts;
 }
 
@@ -164,9 +222,9 @@ export function readOutputRange(session, offset, length) {
   return { slice: snapshot.slice(start, end), start: session.droppedLines + start + 1, end: session.droppedLines + end, total };
 }
 
-export async function waitForProcessActivity(session, timeoutMs) {
-  if (session.exited) return;
-  await waiter(session, timeoutMs);
+export async function waitForProcessActivity(session, timeoutMs, signal = null) {
+  if (session.exited || signal?.aborted) return;
+  await waiter(session, timeoutMs, signal);
 }
 
 export async function waitForProcessExit(session, timeoutMs) {

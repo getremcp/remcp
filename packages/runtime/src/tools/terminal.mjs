@@ -129,7 +129,9 @@ export async function startProcessTool(args, extra = {}) {
   const output = session.lines.slice(-200).join('\n');
   const partial = session.partial;
   session.cursor = session.droppedLines + session.lines.length;
+  session.cursorColumn = 0;
   session.lastPartialRead = session.partial || null;
+  session.lastPartialLineIndex = session.partial ? session.cursor : null;
   const warning = verdict.note ? String(verdict.note) : '';
   const rendered = [warning, headline, output, partial].filter(Boolean).join('\n');
   const status = describeSession(session);
@@ -147,6 +149,7 @@ export async function readProcessOutputTool(args, extra = {}) {
   const session = getProcessSession(pid);
   if (!session) fail(`No ReMCP session with pid ${pid}`);
   const timeoutMs = clampInteger(args.timeout_ms, 0, 0, 120000);
+  const maxLines = clampInteger(args.length, 200, 1, 5000);
   const hasOffset = args.offset !== undefined && args.offset !== null;
   let slice;
   let range;
@@ -154,22 +157,28 @@ export async function readProcessOutputTool(args, extra = {}) {
     // An explicit offset is a peek at a line range: it does not consume the new-output
     // cursor, so a caller can look at the tail and still read everything afterwards.
     // Zero-based from the first line the session produced; negative reads the last N.
-    const page = readOutputRange(session, Number(args.offset), clampInteger(args.length, 200, 1, 5000));
+    const page = readOutputRange(session, Number(args.offset), maxLines);
     slice = page.slice;
     range = `${page.start}-${page.end} of ${page.total}`;
   } else {
-    // Never sleep over output that is already buffered.
+    // Wait for a process event, exit, cancellation or deadline. Repeated
+    // 200ms wakeups multiplied unnecessarily across many concurrent sessions.
     if (timeoutMs && !hasNewOutput(session)) {
-      const deadline = Date.now() + timeoutMs;
-      while (!hasNewOutput(session) && !session.exited && Date.now() < deadline) {
+      const deadline = performance.now() + timeoutMs;
+      while (!hasNewOutput(session) && !session.exited && performance.now() < deadline) {
         throwIfAborted(extra.signal);
-        await waitForProcessActivity(session, Math.min(200, Math.max(20, deadline - Date.now())));
+        await waitForProcessActivity(session, Math.max(0, deadline - performance.now()), extra.signal);
       }
     }
-    slice = readNewOutput(session);
+    throwIfAborted(extra.signal);
+    const before = Math.max(session.cursor, session.droppedLines);
+    // 32K code units keep each structured + text mirror below the 128K
+    // truncation boundary, even for multi-byte Unicode lines.
+    slice = readNewOutput(session, maxLines, 32 * 1024);
     session.waitCursor = session.cursor;
-    const first = Math.max(1, session.cursor - slice.length + 1);
-    range = slice.length ? `${first}-${session.cursor} of ${totalLines(session)}` : `no new output (${totalLines(session)} lines total)`;
+    range = slice.length
+      ? `${before + 1}-${before + slice.length} of ${totalLines(session)}`
+      : `no new output (${totalLines(session)} lines total)`;
   }
   const status = describeSession(session);
   const header = `pid ${pid} ${status.status} · lines ${range}`;
@@ -179,6 +188,7 @@ export async function readProcessOutputTool(args, extra = {}) {
     range,
     output,
     explicitOffset:hasOffset,
+    hasMore:!hasOffset && hasNewOutput(session),
   }, `${header}\n${output}`);
 }
 
@@ -216,8 +226,10 @@ export async function waitForProcessOutputTool(args, extra = {}) {
   }
   const matched = waiterMatches(slice, matcher);
   session.cursor = session.droppedLines + session.lines.length;
+  session.cursorColumn = 0;
   session.waitCursor = session.cursor;
   session.lastPartialRead = session.partial || null;
+  session.lastPartialLineIndex = session.partial ? session.cursor : null;
   const status = describeSession(session);
   const headline = matched
     ? `pid ${pid} ${status.status} · pattern matched${bufferedMatch ? ' (already buffered)' : ''}`
@@ -243,8 +255,10 @@ export async function interactWithProcessTool(args, extra = {}) {
    const timeoutMs = clampInteger(args.timeout_ms, 1000, 0, 120000);
 
   session.cursor = session.droppedLines + session.lines.length;
+  session.cursorColumn = 0;
   session.waitCursor = session.cursor;
   session.lastPartialRead = null;
+  session.lastPartialLineIndex = null;
   throwIfAborted(extra.signal);
   const stdin = session.child?.stdin;
   if (!stdin || stdin.destroyed || session.stdinClosed) {

@@ -228,8 +228,8 @@ export const coreToolDefinitionsPart2 = [
       properties: {
         pid: { type: 'number', description: 'Session pid returned by start_process.' },
         offset: { type: 'number', description: 'Zero-based line number to start from, counted across everything the session has produced; a negative value reads the last N lines. Omit for new output. Lines evicted by the buffer cap are no longer available.' },
-        length: { type: 'number', description: 'Maximum number of lines to return.' },
-        timeout_ms: { type: 'number', description: 'How long to wait for new output when no offset is given, in milliseconds.' },
+        length: { type: 'number', description: 'Maximum number of lines to return per call (default 200). Without offset, unreturned lines remain available; use hasMore to fetch the next page.' },
+        timeout_ms: { type: 'number', description: 'With no offset, wait up to this many milliseconds for output/exit; 0 returns immediately (default). Use 1000–2000 to avoid repeated remote polls when output is expected.' },
       },
       required: ['pid'],
       additionalProperties: false,
@@ -288,7 +288,7 @@ export const coreToolDefinitionsPart2 = [
       required: ['pid'],
       additionalProperties: false,
     },
-    annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
+    annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
     outputSchema: TERMINATE_PROCESS_OUTPUT_SCHEMA,
     handler: terminalToolHandlers.force_terminate,
   },
@@ -335,7 +335,7 @@ export const coreToolDefinitionsPart2 = [
       required: ['pid'],
       additionalProperties: false,
     },
-    annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
+    annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
     handler: systemToolHandlers.kill_process,
   },
   {

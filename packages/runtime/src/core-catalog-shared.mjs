@@ -45,7 +45,8 @@ export const READ_PROCESS_OUTPUT_SCHEMA = terminalOutputSchema({
   range:{ type:'string' },
   output:{ type:'string' },
   explicitOffset:{ type:'boolean' },
-}, ['range','output','explicitOffset']);
+  hasMore:{ type:'boolean' },
+}, ['range','output','explicitOffset','hasMore']);
 export const WAIT_PROCESS_OUTPUT_SCHEMA = terminalOutputSchema({
   pattern:{ type:'string' },
   matched:{ type:'boolean' },
