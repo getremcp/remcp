@@ -65,6 +65,13 @@ jobs:
           if [[ "$GITHUB_REF" == refs/tags/* ]]; then
             test "$GITHUB_REF_NAME" = "v$version" || { echo 'release tag does not match package version' >&2; exit 1; }
           fi
+      - name: Verify release title and changes match this immutable package version
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          version="$(node -p "require('./package.json').version")"
+          node scripts/release-details.mjs "$version" title >/dev/null
+          node scripts/release-details.mjs "$version" notes >/dev/null
       - name: The advertised tool contract is real
         shell: bash
         run: |
@@ -448,7 +455,9 @@ jobs:
           set -Eeuo pipefail
           version="$(node -p "require('./package.json').version")"
           notes="$(mktemp)"
+          title="$(node scripts/release-details.mjs "$version" title)"
           {
+            node scripts/release-details.mjs "$version" notes
             echo "## Packages"
             echo
             echo "- [\`@remcp/runtime@$version\`](https://www.npmjs.com/package/@remcp/runtime/v/$version) — the local device runtime"
@@ -472,8 +481,9 @@ jobs:
           } > "$notes"
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
             gh release upload "$GITHUB_REF_NAME" submission/remcp-plugin.zip submission/remcp-openai-existing-plugin.zip submission/remcp-skills-only.zip chatgpt-app-submission.json --clobber
+            gh release edit "$GITHUB_REF_NAME" --title "$title" --notes-file "$notes"
           else
-            gh release create "$GITHUB_REF_NAME" submission/remcp-plugin.zip submission/remcp-openai-existing-plugin.zip submission/remcp-skills-only.zip chatgpt-app-submission.json --title "ReMCP $version" --notes-file "$notes" --verify-tag
+            gh release create "$GITHUB_REF_NAME" submission/remcp-plugin.zip submission/remcp-openai-existing-plugin.zip submission/remcp-skills-only.zip chatgpt-app-submission.json --title "$title" --notes-file "$notes" --verify-tag
           fi
 
 
@@ -716,7 +726,9 @@ jobs:
           version="$REPAIR_VERSION"
           tag="v$version"
           notes="$(mktemp)"
+          title="$(node scripts/release-details.mjs "$version" title)"
           {
+            node scripts/release-details.mjs "$version" notes
             echo "## Packages"
             echo
             echo "- [\`@remcp/runtime@$version\`](https://www.npmjs.com/package/@remcp/runtime/v/$version) — the local device runtime"
@@ -740,9 +752,10 @@ jobs:
           } > "$notes"
           if gh release view "$tag" >/dev/null 2>&1; then
             gh release upload "$tag" submission/remcp-plugin.zip submission/remcp-openai-existing-plugin.zip submission/remcp-skills-only.zip chatgpt-app-submission.json --clobber
+            gh release edit "$tag" --title "$title" --notes-file "$notes"
           else
             gh release create "$tag" submission/remcp-plugin.zip submission/remcp-openai-existing-plugin.zip submission/remcp-skills-only.zip chatgpt-app-submission.json \
-              --title "ReMCP $version" --notes-file "$notes" --verify-tag
+              --title "$title" --notes-file "$notes" --verify-tag
           fi
 
   publish-mcp-registry:

@@ -4,7 +4,8 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { runtimeConfig } from '../config.mjs';
 import { clampInteger, fail, requireInteger, text } from '../util.mjs';
-import { cpuUtilizationRatio, cpuFrequencyMHz } from './cpu-telemetry.mjs';
+import { cpuUtilizationRatio, cpuFrequencyMHz, cpuPerCoreUtilizationRatios } from './cpu-telemetry.mjs';
+import { diskVolumes, networkRates, thermalReadings } from './system-telemetry.mjs';
 
 const run = promisify(execFile);
 
@@ -46,6 +47,9 @@ export async function getSystemInfoTool() {
   // Sample for 140 ms while retrieving disk facts, so CPU % is actual host activity.
   // Load average is a queue-length metric and must never be displayed as a percentage.
   const diskPromise = diskUsage();
+  const volumesPromise = diskVolumes();
+  const thermalPromise = thermalReadings();
+  const networkPromise = networkRates();
   const sampledCpus = await new Promise(resolve => setTimeout(() => resolve(os.cpus()), 140));
   const utilizationRatio = cpuUtilizationRatio(cpus, sampledCpus);
   const frequencyMHz = cpuFrequencyMHz(sampledCpus);
@@ -61,6 +65,7 @@ export async function getSystemInfoTool() {
       model: cpus[0]?.model?.trim() || 'unknown',
       count: cpus.length,
       utilizationRatio,
+      perCoreUtilizationRatios: cpuPerCoreUtilizationRatios(cpus, sampledCpus),
       frequencyMHz,
       loadAverage: process.platform === 'win32' ? null : load.map(value => Number(value.toFixed(2))),
       loadPerCore: process.platform === 'win32' || !cpus.length ? null : Number((load[0] / cpus.length).toFixed(2)),
@@ -71,6 +76,9 @@ export async function getSystemInfoTool() {
       usedRatio: totalMem ? Number(((totalMem - freeMem) / totalMem).toFixed(3)) : 0,
     },
     disk: await diskPromise,
+    volumes: await volumesPromise,
+    temperatures: await thermalPromise,
+    network: await networkPromise,
     home: os.homedir(),
     tempDir: os.tmpdir(),
     runtimeName: runtimeConfig.name,

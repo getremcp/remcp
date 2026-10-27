@@ -27,6 +27,13 @@ export function cpuUtilizationRatio(before, after) {
   return deltaTotal > 0 ? Number(Math.max(0, Math.min(1, 1 - deltaIdle / deltaTotal)).toFixed(3)) : null;
 }
 
+export function cpuPerCoreUtilizationRatios(before, after) {
+  if (!Array.isArray(before) || !Array.isArray(after) || !before.length ||
+      before.length !== after.length || before.length > 256) return null;
+  const ratios = before.map((core, index) => cpuUtilizationRatio([core], [after[index]]));
+  return ratios.every(value => value !== null) ? ratios : null;
+}
+
 export function cpuFrequencyMHz(cores) {
   if (!Array.isArray(cores) || !cores.length) return null;
   const speeds = cores.map(core => core?.speed).filter(speed => Number.isFinite(speed) && speed > 0 && speed <= 100000);

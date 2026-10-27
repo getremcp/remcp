@@ -1,0 +1,11 @@
+{
+  "version": "0.2.188",
+  "title": "Add a real, read-only System Monitor to the paired-device workspace.",
+  "changes": [
+    "Add a graphite/sage System Monitor with resource history, per-core CPU charts, read-only process inventory, network interfaces, mounted volumes, thermal readings and local event history.",
+    "Sample actual system counters: per-core CPU times via Node OS telemetry; Linux receive/transmit byte deltas, readable kernel temperatures and bounded mounted disk volumes. Unsupported operating systems and unavailable sensors explicitly report unknown measurements.",
+    "Limit process names, sensor identifiers, interfaces and filesystem metadata at the owner-authenticated diagnostics boundary. Hide command arguments and reject unknown executable labels.",
+    "Poll only the currently selected online paired device; honor telemetry opt-out, tab visibility, request deadlines and rate limits. Keep the existing owner and capability checks.",
+    "Verify the update on ASUS with real system measurements, isolated desktop/mobile Chromium screenshots, regression tests, source-size and security checks. Require a coordinated public runtime package release and exact-head self-hosted CI before private merge and production promotion."
+  ]
+}
