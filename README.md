@@ -46,8 +46,6 @@ inbound port, no tunnel, no third-party desktop relay. This repository contains 
 client/runtime, portable Agent Plugin metadata, the Gemini CLI extension manifest, official MCP
 Registry metadata, and the host-specific OpenAI and Anthropic plugin packaging.
 
-The two npm download badges report verified downloads of **@remcp/remcp** in the last 30 complete UTC days and since its first publication (16 September 2026). They update from dated npm API queries through the public ReMCP badge endpoint; the npm relative-date alias can return stale zero counts.
-
 ## Packages
 
 | Package | What it is |
