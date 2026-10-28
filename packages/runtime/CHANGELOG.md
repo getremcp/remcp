@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.194 — 2026-10-28
+
+- Ship the unchanged 84-tool runtime alongside the compatible 0.2.194 ReMCP agent with terminal QR pairing.
+- Preserve authorization and all runtime capabilities from 0.2.193; the QR changes only the client onboarding experience.
+
 ## 0.2.193 — 2026-10-28
 
 - Publish the unchanged 84-tool runtime interface in lockstep with the device pairing and agent update: the CLI requires the coordinated 0.2.193 release.

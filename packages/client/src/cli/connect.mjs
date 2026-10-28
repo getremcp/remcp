@@ -7,6 +7,7 @@ import { spawn } from 'node:child_process';
 import { ensureMachineId } from './config.mjs';
 import { officialOrigin } from './env.mjs';
 import { sleep } from './shell.mjs';
+import { printPairingQr } from './pairing-qr.mjs';
 
 // Keep the server-provided approval URL as data all the way to the OS. In particular, do not route it
 // through `cmd /c start` on Windows: cmd reparses metacharacters such as `&`, so a custom pairing
@@ -78,6 +79,7 @@ export async function pairWithDeviceCode(server, flags) {
   const approvalUrl = grant.verification_uri_complete || grant.verification_uri;
   console.log(`Approve this computer in your browser: ${approvalUrl}`);
   console.log(`Pairing code: ${grant.user_code}  (expires in ${Math.max(1, Math.round(Number(grant.expires_in || 600) / 60))} minutes)`);
+  if (flags?.['no-qr'] !== true) printPairingQr({ server, approvalUrl, userCode: grant.user_code });
   openInBrowser(approvalUrl);
   console.log('Waiting for approval… (Ctrl+C to cancel)');
   const deadline = Date.now() + (Number(grant.expires_in) || 600) * 1000;

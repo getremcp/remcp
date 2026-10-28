@@ -1,11 +1,11 @@
 {
-  "version": "0.2.193",
-  "title": "Prevent accidental device re-pairing and preserve supervised agent connectivity.",
+  "version": "0.2.194",
+  "title": "Scan a terminal QR on your phone to review and approve a new ReMCP computer.",
   "changes": [
-    "Block remcp connect on a computer already paired, before a new code can rotate its device credentials; require explicit --re-pair for intentional recovery or transfer.",
-    "Reject a workspace pairing claim for an existing machine unless the client expressly confirms re-pairing; retain the one-time code when the request is rejected.",
-    "Reload the managed macOS, Linux or Windows agent after an approved credential change so the running service does not remain Offline with its previous token.",
-    "Preserve account ownership boundaries and stable machine identity; verify pairing, service restart, security and isolated PostgreSQL regression suites.",
-    "Ship client and runtime as one public release before updating the private server; never deploy unpublished client changes."
+    "Display a compact QR in capable interactive terminals beside the existing single-use pairing code and browser URL. The phone opens the same signed-in /device confirmation page; approval remains explicit and is not a passwordless login.",
+    "Encode the QR locally with a pinned MIT library, require same-origin HTTPS and the matching code, and reject alternate hosts, redirects, modified parameters and insecure URLs.",
+    "Preserve the text URL/code fallback on narrow or noninteractive terminals and allow disabling QR with --no-qr.",
+    "Maintain the re-pairing safeguards introduced in 0.2.193; a previously paired computer does not request a new grant without explicit --re-pair.",
+    "Verify independent QR decodability, all CLI/auth/security regressions and a clean public package projection."
   ]
 }

@@ -16,6 +16,16 @@ it keeps the ReMCP runtime under `%LOCALAPPDATA%\ReMCP`. Generated one-time comm
 runtime, and registers a user service (systemd on Linux, LaunchAgent on macOS, Scheduled Task on
 Windows).
 
+## Scan to pair with a phone
+
+Run `remcp connect` in an interactive terminal to display a short-lived pairing code,
+a link, and a compact QR that opens the same ReMCP approval page on your phone.
+Sign in on your phone if needed, check the computer name, then explicitly approve.
+The QR contains only the one-time code in the existing device URL: it does **not**
+authorize the device on its own. The code expires and cannot be reused after approval.
+If your terminal cannot display a QR, use the printed link or code. Add `--no-qr`
+to suppress the QR; a custom non-HTTPS or cross-origin URL never gets one.
+
 ## Commands
 
 ```text
