@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.191 — 2026-10-28
+
+- Correct the catastrophic-command heuristic for shell wrappers that consume option values, including sudo, nice, ionice, and env split-string.
+- Add no-side-effect guardrail regression cases; no new MCP tool or expanded device permission.
+- Make the short-process terminal assertion wait for the real exit event after buffered output without changing runtime I/O behavior.
+- This matcher is not a shell sandbox and cannot protect computers running with unrestricted God Mode; deployment still requires OS least-privilege mitigation.
+
 ## 0.2.190 — 2026-10-27
 
 - Publish the runtime alongside the compatible ReMCP agent; the device HTTPS network probe is agent-owned and does not add runtime MCP tools.

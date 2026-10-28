@@ -13,16 +13,25 @@ function pidOf(result) {
   return Number(match[1]);
 }
 
-test('start_process runs a command and returns its output', async () => {
+test('start_process returns first output and the process eventually exits successfully', async () => {
   const result = await invokeTool('start_process', { command: 'printf "hello-from-runtime\\n"', timeout_ms: 3000 });
   assert.equal(isError(result), false);
   assert.match(body(result), /hello-from-runtime/);
-  assert.match(body(result), /finished with code 0/);
   assert.equal(typeof result.structuredContent?.pid, 'number');
-  assert.equal(result.structuredContent?.status, 'exited (code 0)');
-  assert.equal(result.structuredContent?.exitCode, 0);
-  assert.equal(result.structuredContent?.exited, true);
   assert.match(result.structuredContent?.output || '', /hello-from-runtime/);
+  // start_process intentionally returns early when stdout is ready. Under CPU
+  // contention the exit event may not have arrived yet; verify the final code
+  // through the session API rather than requiring synchronous process exit.
+  const final = result.structuredContent?.exited ? result : await waitFor(async () => {
+    const page = await invokeTool('read_process_output', {
+      pid: pidOf(result), offset: 0, length: 5, timeout_ms: 0,
+    });
+    return page.structuredContent?.exited ? page : null;
+  }, 3000);
+  assert.ok(final, 'short-lived process must eventually exit');
+  assert.equal(final.structuredContent?.status, 'exited (code 0)');
+  assert.equal(final.structuredContent?.exitCode, 0);
+  assert.equal(final.structuredContent?.exited, true);
 });
 
 test('start_process returns early on initial output from a long-running command', async () => {

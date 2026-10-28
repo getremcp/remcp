@@ -60,19 +60,49 @@ function segments(command) {
     .filter(Boolean);
 }
 
+// A wrapper option may consume the following token. Dropping the option but
+// not its value makes the guardrail examine "root"/"10" instead of "rm".
+const WRAPPER_VALUE_FLAGS = Object.freeze({
+  sudo: new Set(['-u', '--user', '-g', '--group', '-h', '--host', '-p', '--prompt', '-C', '--close-from', '-D', '--chdir', '-R', '--chroot', '-T', '--command-timeout']),
+  doas: new Set(['-u']),
+  env: new Set(['-u', '--unset', '-C', '--chdir', '-S', '--split-string']),
+  nice: new Set(['-n', '--adjustment']),
+  ionice: new Set(['-c', '--class', '-n', '--classdata', '-p', '--pid', '-P', '--pgid', '-u', '--uid']),
+  stdbuf: new Set(['-i', '--input', '-o', '--output', '-e', '--error']),
+  timeout: new Set(['-s', '--signal', '-k', '--kill-after']),
+});
+
 function commandWord(segment) {
   const tokens = matchingText(segment).split(' ').filter(Boolean);
   while (tokens.length) {
     const token = tokens[0];
     if (/^[A-Za-z_][A-Za-z0-9_]*=/.test(token)) { tokens.shift(); continue; }
     const tokenName = path.basename(token).replace(/\.(exe|cmd|bat)$/i, '').toLowerCase();
-    if (WRAPPERS.has(tokenName)) {
+    if (!WRAPPERS.has(tokenName)) break;
+    tokens.shift();
+    const valueFlags = WRAPPER_VALUE_FLAGS[tokenName];
+    while (tokens.length) {
+      const option = tokens[0];
+      if (option === '--') { tokens.shift(); break; }
+      if (tokenName === 'env' && /^[A-Za-z_][A-Za-z0-9_]*=/.test(option)) {
+        tokens.shift();
+        continue;
+      }
+      // env -S/--split-string executes its argument as command words; never
+      // discard that argument as an ordinary wrapper option value.
+      if (tokenName === 'env' && (option === '-S' || option === '--split-string')) {
+        tokens.shift();
+        break;
+      }
+      if (tokenName === 'env' && (option.startsWith('--split-string=') || /^-S.+/.test(option))) {
+        tokens[0] = option.startsWith('--split-string=') ? option.slice('--split-string='.length) : option.slice(2);
+        break;
+      }
+      if (!option.startsWith('-') || option === '-') break;
       tokens.shift();
-      while (tokens.length && tokens[0].startsWith('-')) tokens.shift();
-      if (tokenName === 'timeout' && tokens.length && /^\d+[smhd]?$/.test(tokens[0])) tokens.shift();
-      continue;
+      if (valueFlags?.has(option) && tokens.length) tokens.shift();
     }
-    break;
+    if (tokenName === 'timeout' && tokens.length && /^\d+(?:\.\d+)?[smhd]?$/.test(tokens[0])) tokens.shift();
   }
   const word = tokens[0] || '';
   return word.replace(/^.*[\\/]/, '').replace(/\.(exe|cmd|bat)$/i, '');
