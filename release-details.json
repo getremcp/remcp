@@ -1,11 +1,11 @@
 {
-  "version": "0.2.192",
-  "title": "Make browser search, waits and form input faster while handling CDP disconnects safely.",
+  "version": "0.2.193",
+  "title": "Prevent accidental device re-pairing and preserve supervised agent connectivity.",
   "changes": [
-    "Prefilter role and text candidates before expensive browser layout work, preserving ARIA and visible-text fallback semantics.",
-    "Combine browser-wait condition and observed URL reads while keeping independent before/after URL, DNS and SSRF checks.",
-    "Combine field focus and clear into one internal CDP action before native text insertion, preserving input/change events, password redaction and read-back verification.",
-    "Fail outstanding browser event waiters immediately after CDP disconnect and clear pending synchronous WebSocket send failures.",
-    "Keep existing browser tool schemas, authorization and loopback-only CDP policy. Validate with isolated Chrome and full runtime regressions before release."
+    "Block remcp connect on a computer already paired, before a new code can rotate its device credentials; require explicit --re-pair for intentional recovery or transfer.",
+    "Reject a workspace pairing claim for an existing machine unless the client expressly confirms re-pairing; retain the one-time code when the request is rejected.",
+    "Reload the managed macOS, Linux or Windows agent after an approved credential change so the running service does not remain Offline with its previous token.",
+    "Preserve account ownership boundaries and stable machine identity; verify pairing, service restart, security and isolated PostgreSQL regression suites.",
+    "Ship client and runtime as one public release before updating the private server; never deploy unpublished client changes."
   ]
 }

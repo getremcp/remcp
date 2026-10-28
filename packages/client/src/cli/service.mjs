@@ -245,6 +245,9 @@ export function restartPersistentServiceIfInstalled(config, { deferLinux = false
   if (platform === 'win32') {
     const result = spawnSync('schtasks.exe', ['/Query', '/TN', windowsTaskName], { stdio: 'ignore' });
     if (result.status === 0) {
+      // /Run does not restart a task that is already running; stop the previous
+      // process first so a rotated credential is loaded by the replacement.
+      spawnSync('schtasks.exe', ['/End', '/TN', windowsTaskName], { stdio: 'ignore' });
       run('schtasks.exe', ['/Run', '/TN', windowsTaskName]);
       return windowsTaskName;
     }

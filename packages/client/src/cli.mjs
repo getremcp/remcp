@@ -11,7 +11,7 @@ import { ensureMachineId, loadConfig, readJsonFile, saveConfig, setTelemetry, te
 import { assertRuntimeTrust, assertSecureServerUrl, pairWithDeviceCode } from './cli/connect.mjs';
 import { diagnoseLocalRuntime, installedVersion, runtimeAllowedRoots } from './cli/doctor.mjs';
 import { configFile, npm, officialOrigin, runtimeConfigFile } from './cli/env.mjs';
-import { currentInstallationInfo, ensureMacCliCommand, installPersistentAgent, persistentServiceState, rememberCurrentInstallation, restartPersistentServiceIfInstalled, serviceInstallationInfo, uninstallPersistentService } from './cli/service.mjs';
+import { currentInstallationInfo, ensureMacCliCommand, installPersistentAgent, persistentServiceState, servicePlatform, rememberCurrentInstallation, restartPersistentServiceIfInstalled, serviceInstallationInfo, uninstallPersistentService } from './cli/service.mjs';
 import { run } from './cli/shell.mjs';
 import { updateCommand } from './cli/update.mjs';
 function fetchConfiguredServer(url, options) {
@@ -49,6 +49,11 @@ export async function main(argv = process.argv.slice(2)) {
     // Like the desktop-app flow this mirrors: with no flags the command talks to the official
     // server, prints a code, opens the browser to approve it, and pairs. `--code` keeps working for
     // the workspace-generated command and for CI, and `--server` for self-hosted deployments.
+    const previous = loadConfig(false);
+    const alreadyPaired = Boolean(previous?.deviceId && previous?.deviceToken);
+    if (alreadyPaired && flags['re-pair'] !== true) {
+      throw new Error('This computer is already paired. Use `remcp doctor` or `remcp install` to repair it without changing credentials. To intentionally replace the pairing (possibly moving it to another account), add --re-pair.');
+    }
     const server = assertSecureServerUrl(flags.server || officialOrigin, { allowInsecure: flags['allow-insecure-transport'] === true });
     const code = String(flags.code || '').replace(/\s+/g, '').toUpperCase();
     assertRuntimeTrust(server, flags);
@@ -60,7 +65,7 @@ export async function main(argv = process.argv.slice(2)) {
         method: 'POST',
         redirect: 'error',
          headers: { 'content-type': 'application/json' },
-         body: JSON.stringify({ code, machineId: ensureMachineId(), name: String(flags.name || os.hostname()), hostname: os.hostname(), platform: process.platform, arch: process.arch }),
+         body: JSON.stringify({ code, machineId: ensureMachineId(), name: String(flags.name || os.hostname()), hostname: os.hostname(), platform: process.platform, arch: process.arch, rePair: flags['re-pair'] === true }),
 
       });
       if (!response.ok) throw new Error(`Pairing failed (${response.status}): ${await response.text()}`);
@@ -75,6 +80,7 @@ export async function main(argv = process.argv.slice(2)) {
       console.log('This computer was paired to another ReMCP account. That device was revoked and this machine now belongs to the account you approved.');
     }
     const config = {
+      ...(previous || {}),
       serverUrl: server,
       deviceId: paired.deviceId || paired.device_id,
       deviceToken: paired.deviceToken || paired.device_token,
@@ -90,8 +96,25 @@ export async function main(argv = process.argv.slice(2)) {
     saveConfig(config);
     const accountEmail = String(paired.account?.email || '');
     console.log(`Paired ${os.hostname()} with ${server}${accountEmail ? ` as ${accountEmail}` : ''}`);
+    // Credential rotation must reload the managed agent; a normal install of an already
+    // running systemd service does not restart it, and Windows /Run may keep the old task.
+    const managedBefore = alreadyPaired &&
+      (previous.serviceInstalled === true ||
+        (previous.serviceInstalled === undefined && persistentServiceState(previous).active));
     if (flags.install) {
       installPersistentAgent(config);
+      if (alreadyPaired && servicePlatform() !== 'darwin') {
+        restartPersistentServiceIfInstalled(config, { deferLinux: true });
+      }
+      return;
+    }
+    if (managedBefore) {
+      const restarted = restartPersistentServiceIfInstalled(config, { deferLinux: true });
+      if (!restarted) installPersistentAgent(config);
+      return;
+    }
+    if (alreadyPaired) {
+      console.log('Pairing credentials replaced. Restart any manually managed ReMCP agent to use the new token.');
       return;
     }
     // Only the command that asked for its own code keeps running: someone who ran `remcp connect` on

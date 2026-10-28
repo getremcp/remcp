@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.193 — 2026-10-28
+
+- Publish the unchanged 84-tool runtime interface in lockstep with the device pairing and agent update: the CLI requires the coordinated 0.2.193 release.
+- Preserve browser, terminal, filesystem and authorization semantics from 0.2.192; the pairing security change belongs to the agent/server, not to a new runtime tool.
+
 ## 0.2.192 — 2026-10-28
 
 - Accelerate `browser_find` role/text candidate filtering without omitting ARIA fallback semantics.
