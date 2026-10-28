@@ -284,7 +284,22 @@ export function findExpression(args) {
     const selector = ${JSON.stringify(selector)};
     const needle = ${JSON.stringify(needle)};
     const role = ${JSON.stringify(role)};
-    const source = selector ? Array.from(document.querySelectorAll(selector)) : Array.from(document.querySelectorAll('*'));
+    const wanted = needle ? needle.toLowerCase() : '';
+    const compactWanted = wanted.replace(/\\s+/g, '');
+    const wantedRole = role ? role.toLowerCase() : '';
+    // Native roles have a bounded set of possible tags. Include all explicit
+    // ARIA roles too, so role='button' on a custom element remains discoverable.
+    // Unknown roles deliberately retain the full-document fallback.
+    const nativeRoleSelectors = {
+      button:'button,summary,input', link:'a[href]',
+      heading:'h1,h2,h3,h4,h5,h6', textbox:'textarea,input',
+      searchbox:'input', combobox:'select,input', listbox:'select',
+      checkbox:'input', radio:'input', slider:'input', spinbutton:'input',
+      option:'option', img:'img', progressbar:'progress', meter:'meter',
+    };
+    const sourceSelector = selector || (Object.hasOwn(nativeRoleSelectors,wantedRole)
+      ? nativeRoleSelectors[wantedRole] + ',[role]' : '*');
+    const source = document.querySelectorAll(sourceSelector);
     function cssPath(el) {
       if (el.id) return '#' + CSS.escape(el.id);
       const parts = [];
@@ -328,9 +343,8 @@ export function findExpression(args) {
       return (el.innerText || el.textContent || el.getAttribute('aria-label') || '').trim();
     }
     function textQuality(value) {
-      if (!needle) return 0;
+      if (!wanted) return 0;
       const hay = value.toLowerCase();
-      const wanted = needle.toLowerCase();
       if (hay === wanted) return 0;
       if (hay.startsWith(wanted)) return 1;
       return 2;
@@ -340,19 +354,32 @@ export function findExpression(args) {
       for (let current = el.parentElement; current; current = current.parentElement) depth += 1;
       return depth;
     }
-    const candidates = source.filter(el => {
-      const style = getComputedStyle(el);
-      const visible = style.visibility !== 'hidden' && style.display !== 'none' && el.getClientRects().length > 0;
-      const hay = visibleText(el);
+    const rankAll = Boolean(wanted && !selector);
+    const candidates = [];
+    for (const el of source) {
       const r = semanticRole(el);
-      return visible && (!needle || hay.toLowerCase().includes(needle.toLowerCase())) && (!role || r === role.toLowerCase());
-    }).map((el, index) => ({
-      el,
-      index,
-      text: visibleText(el),
-      role: semanticRole(el),
-      depth: depthOf(el),
-    }));
+      if (wantedRole && r !== wantedRole) continue;
+      // Cheap raw text/label check before forcing layout via innerText,
+      // computed styles or bounding boxes. The final visibleText match is
+      // still required so hidden descendants do not become false positives.
+      if (wanted) {
+        const raw = String(el.textContent || '').toLowerCase();
+        const aria = String(el.getAttribute('aria-label') || '').toLowerCase();
+        // CSS layout can insert line breaks absent from textContent. Compare
+        // whitespace-free forms as a fallback to avoid missing those matches.
+        if (!raw.includes(wanted) && !aria.includes(wanted)
+            && !raw.replace(/\\s+/g, '').includes(compactWanted)
+            && !aria.replace(/\\s+/g, '').includes(compactWanted)) continue;
+      }
+      const style = getComputedStyle(el);
+      if (style.visibility === 'hidden' || style.display === 'none' || !el.getClientRects().length) continue;
+      const text = wanted ? visibleText(el) : '';
+      if (wanted && !text.toLowerCase().includes(wanted)) continue;
+      candidates.push({el,index:candidates.length,text,role:r,depth:rankAll ? depthOf(el) : 0});
+      // Text-only searches rank all matches to prefer exact interactive
+      // targets. Every other search uses DOM order and can stop at limit.
+      if (!rankAll && candidates.length >= ${limit}) break;
+    }
     let selected = candidates;
     if (needle && !selector) {
       selected = [...candidates].sort((a, b) =>

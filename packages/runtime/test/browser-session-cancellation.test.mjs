@@ -4,6 +4,8 @@ import { CdpSession } from '../src/extended/browser-session.mjs';
 
 test('aborting a navigation event waiter removes its listener and timer', async () => {
   const session = new CdpSession('ws://127.0.0.1:9999', 5000);
+  session.closed = false;
+  session.socket = { readyState: 1 };
   const controller = new AbortController();
   const awaited = session.waitFor('Page.loadEventFired', 5000, controller.signal);
   assert.equal(session.waiters.get('Page.loadEventFired')?.length, 1);
@@ -15,6 +17,8 @@ test('aborting a navigation event waiter removes its listener and timer', async 
 
 test('cancelling one waiter does not interrupt a different pending waiter', async () => {
   const session = new CdpSession('ws://127.0.0.1:9999', 5000);
+  session.closed = false;
+  session.socket = { readyState: 1 };
   const firstController = new AbortController();
   const secondController = new AbortController();
   const first = session.waitFor('Page.loadEventFired', 5000, firstController.signal);

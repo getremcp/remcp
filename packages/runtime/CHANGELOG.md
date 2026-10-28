@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.192 — 2026-10-28
+
+- Accelerate `browser_find` role/text candidate filtering without omitting ARIA fallback semantics.
+- Reduce redundant `browser_wait` Chrome reads and coalesce focus/clear for `browser_action` native text input.
+- Reject CDP event waits and pending writes promptly when the debugging WebSocket disconnects.
+- Preserve browser authorization, origin/DNS/SSRF checks, secure input events, credential redaction and the 84-tool contract.
+
 ## 0.2.191 — 2026-10-28
 
 - Correct the catastrophic-command heuristic for shell wrappers that consume option values, including sudo, nice, ionice, and env split-string.

@@ -115,11 +115,25 @@ export class CdpSession {
         reject(new Error(`${method} timed out`));
       }, timeoutMs);
       this.pending.set(key, { resolve, reject, timer });
-      this.socket.send(JSON.stringify({ id, method, params, ...(sessionId ? { sessionId } : {}) }));
+      try {
+        this.socket.send(JSON.stringify({ id, method, params, ...(sessionId ? { sessionId } : {}) }));
+      } catch (error) {
+        // A failed synchronous WebSocket write must not retain a pending
+        // request (and its timer) for the rest of the CDP deadline.
+        this.pending.delete(key);
+        clearTimeout(timer);
+        reject(error);
+      }
     });
   }
 
   waitFor(method, timeoutMs = this.timeoutMs, signal = null) {
+    if (signal?.aborted) return Promise.reject(new Error(`${method} aborted`));
+    // Chrome may disconnect between the preceding command and subscription.
+    // Do not turn an already-dead socket into a full navigation timeout.
+    if (this.closed || !this.socket || this.socket.readyState !== 1) {
+      return Promise.reject(new Error('CDP websocket is not open'));
+    }
     return new Promise((resolve, reject) => {
       if (signal?.aborted) { reject(new Error(`${method} aborted`)); return; }
       const listeners = this.waiters.get(method) || [];

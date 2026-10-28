@@ -74,15 +74,15 @@ export const PAGE_ELEMENT_ACTION = `function(selector, needle, action, value) {
     ) || null;
   }
   if (!el) throw new Error('Element not found');
-  if (action === 'click' || action === 'type' || action === 'scroll_into_view') {
+  if (action === 'click' || action === 'type' || action === 'type_clear' || action === 'scroll_into_view') {
     el.scrollIntoView({block:'center', inline:'center'});
   }
-  if (action === 'focus' || action === 'type') el.focus();
+  if (action === 'focus' || action === 'type' || action === 'type_clear') el.focus();
   if (action === 'select') {
     el.value = value;
     el.dispatchEvent(new Event('input', {bubbles:true}));
     el.dispatchEvent(new Event('change', {bubbles:true}));
-  } else if (action === 'set_value') {
+  } else if (action === 'set_value' || action === 'type_clear') {
     const proto = Object.getPrototypeOf(el);
     const own = Object.getOwnPropertyDescriptor(proto, 'value');
     const parent = Object.getPrototypeOf(proto);
@@ -307,8 +307,11 @@ export async function browserAction(args) {
     }
 
     if (action === 'type') {
-      const focused = await callPageFunction(session, PAGE_ELEMENT_ACTION, [selector, needle, 'type', '']);
-      if (args.clear === true) await callPageFunction(session, PAGE_ELEMENT_ACTION, [selector, needle, 'set_value', '']);
+      // Focus and clear must happen in that order, but they can share one
+      // guarded page evaluation. Keep native insertText and read-back CDP
+      // calls sequential so real keyboard input and verification are preserved.
+      const preparatoryAction = args.clear === true ? 'type_clear' : 'type';
+      const focused = await callPageFunction(session, PAGE_ELEMENT_ACTION, [selector, needle, preparatoryAction, '']);
       await session.send('Input.insertText', { text:value });
       const current = await callPageFunction(session, PAGE_ELEMENT_ACTION, [selector, needle, 'read_value', '']);
       return jsonResult({ target_id:target.id, action, result:{ ...focused, value:current.value } });
@@ -333,7 +336,10 @@ export async function browserWait(args = {}) {
   if (condition === 'expression') await assertSafeEvaluationExpression(wanted);
   return withTarget(args, async (session, target) => {
     const started = Date.now();
-    const initialUrl = await evaluate(session, 'location.href').catch(() => target.url || '');
+    // withTarget has already verified this live URL before calling us.
+    // Avoid reading it again just to establish the navigation baseline.
+    const initialUrl = target.url || '';
+    let observedUrl = initialUrl || null;
     const inflight = new Set();
     let lastResourceCount = -1;
     let stableSince = Date.now();
@@ -358,8 +364,9 @@ export async function browserWait(args = {}) {
       while (Date.now() - started < timeoutMs) {
         let matched = false;
         if (condition === 'network_idle') {
-          const state = await evaluate(session, `({ready:document.readyState,resources:performance.getEntriesByType('resource').length})`).catch(() => null);
+          const state = await evaluate(session, `({url:location.href,ready:document.readyState,resources:performance.getEntriesByType('resource').length})`).catch(() => null);
           if (state) {
+            if (typeof state.url === 'string') observedUrl = state.url;
             if (state.resources !== lastResourceCount) {
               lastResourceCount = state.resources;
               stableSince = Date.now();
@@ -373,7 +380,11 @@ export async function browserWait(args = {}) {
             : condition === 'load' ? `document.readyState === 'complete'`
             : condition === 'navigation' ? `location.href !== ${JSON.stringify(initialUrl)}`
             : `Boolean(${wanted})`;
-          matched = Boolean(await evaluate(session, expression));
+          // Capture the condition and its URL atomically in one CDP read.
+          // withTarget independently validates the final live URL afterward.
+          const state = await evaluate(session, `({url:location.href,matched:Boolean(${expression})})`);
+          if (typeof state?.url === 'string') observedUrl = state.url;
+          matched = Boolean(state?.matched);
         }
         if (matched) return jsonResult({
           target_id: target.id,
@@ -381,7 +392,7 @@ export async function browserWait(args = {}) {
           matched: true,
           elapsed_ms: Date.now() - started,
           ...(condition === 'network_idle' ? { inflight: inflight.size, idle_ms: idleMs } : {}),
-          url: await evaluate(session, 'location.href').catch(() => target.url || null),
+          url: observedUrl,
         });
         await new Promise(resolve => setTimeout(resolve, pollMs));
       }
@@ -391,7 +402,7 @@ export async function browserWait(args = {}) {
         matched: false,
         elapsed_ms: Date.now() - started,
         ...(condition === 'network_idle' ? { inflight: inflight.size, idle_ms: idleMs } : {}),
-        url: await evaluate(session, 'location.href').catch(() => target.url || null),
+        url: observedUrl,
       });
     } finally {
       for (const unsubscribe of unsubscribers) unsubscribe();
