@@ -40,6 +40,13 @@ function printHelp() {
 export async function main(argv = process.argv.slice(2)) {
   const { command, flags, positional } = parse(argv);
 
+  // Help must be side-effect free even for mutating subcommands. Older agents
+  // incorrectly treated `remcp update --help` as an update and ran npm.
+  if (command === '--help' || command === '-h' || flags.help === true || flags.h === true) {
+    printHelp();
+    return;
+  }
+
   if (command === '--version' || command === '-v' || command === 'version') {
     console.log(VERSION);
     return;

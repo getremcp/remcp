@@ -1,11 +1,11 @@
 {
-  "version": "0.2.203",
-  "title": "Stop Linux update loops and protect user-installed Node environments.",
+  "version": "0.2.204",
+  "title": "Prevent accidental CLI updates and verify Smithery publication reliably.",
   "changes": [
-    "Fix the systemd launcher global npm prefix when the saved ReMCP CLI path points directly inside the installed npm package. An update can no longer nest a new client under the old package while restarting the stale service.",
-    "Reject package-nested npm prefixes before package writes, and verify the exact client/runtime release pair at the managed-service path before restarting a pinned automatic update.",
-    "Keep other nvm, FNM, Homebrew and system Node/npm installations untouched by automatic synchronization; only the active managed ReMCP service remains a required installation target.",
-    "Make Linux automatic updates opt-in (remcp auto-update on) while honoring explicit saved preferences. Manual updates remain available, and macOS/Windows defaults are unchanged.",
-    "Add Linux prefix and restart regression tests, preserve legacy manual update and macOS/Windows service lifecycle behavior, and verify the CLI/runtime with an isolated npm prefix on ASUS."
+    "Treat remcp update --help and remcp --help as side-effect-free help requests. A help flag must never install packages, restart the agent, or change pairing.",
+    "Retry only transient Smithery public catalog HTTP 429/500/502/503/504 and temporary transport failures after an already successful publish, with bounded backoff.",
+    "Continue requiring an exact public Smithery catalog entry and canonical connection URL. Do not accept missing results, authentication errors, or exhausted retries as a successful publication.",
+    "Retry transient 409/503 release-coordination responses from the official version endpoint during Windows bootstrap, without accepting an unverified package version.",
+    "Retain and reverify all safe Linux updater and npm prefix fixes from v0.2.203."
   ]
 }

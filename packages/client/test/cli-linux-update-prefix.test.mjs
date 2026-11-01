@@ -9,6 +9,19 @@ import { assertSafeReMcpNpmPrefix } from '../src/cli/npm-global.mjs';
 import { verifyManagedServiceReleasePair } from '../src/cli/update.mjs';
 import { autoUpdateEnabled } from '../src/cli/config.mjs';
 
+test('remcp update --help and top-level --help never run an installer', () => {
+  const script = path.resolve('bin/remcp.mjs');
+  for (const args of [['update', '--help'], ['--help']]) {
+    const result = spawnSync(process.execPath, [script, ...args], {
+      encoding:'utf8', timeout:10000,
+      env:{ ...process.env, REMCP_NPM:'/does/not/exist', NPM_CONFIG_PREFIX:'/should/not/be/used' },
+    });
+    assert.equal(result.status, 0, String(result.stderr));
+    assert.match(result.stdout, /Commands:/);
+    assert.doesNotMatch(result.stdout + result.stderr, /Updating ReMCP|npm install|changed \d+ packages/);
+  }
+});
+
 test('Linux service launcher pins the npm prefix of its installed CLI', t => {
   const root = mkdtempSync(path.join(tmpdir(), 'remcp-prefix-'));
   t.after(() => rmSync(root, { recursive: true, force: true }));

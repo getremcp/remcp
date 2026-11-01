@@ -55,7 +55,27 @@ function Get-ReMCPRelease {
   # custom relay. The official version endpoint also prevents an npm @latest race during rollout:
   # Windows installs the exact client/runtime pair production currently advertises.
   $versionUrl = "$officialOrigin/api/agent/version"
-  $response = Invoke-WebRequest -UseBasicParsing -Uri $versionUrl -Headers @{ 'Cache-Control' = 'no-cache' }
+  # A rolling HA deployment intentionally advertises HTTP 409
+  # agent_update_paused until all backend replicas agree on the release.
+  # Retry that temporary coordination state (and HTTP 503 control-plane
+  # unavailability) without allowing an outdated or guessed npm version.
+  $response = $null
+  for ($attempt = 1; $attempt -le 4; $attempt++) {
+    try {
+      $response = Invoke-WebRequest -UseBasicParsing -Uri $versionUrl -Headers @{ 'Cache-Control' = 'no-cache' }
+      break
+    } catch {
+      $statusCode = 0
+      try { $statusCode = [int]$_.Exception.Response.StatusCode } catch {}
+      if ($attempt -ge 4 -or ($statusCode -ne 409 -and $statusCode -ne 503)) {
+        throw
+      }
+      $delaySeconds = [Math]::Min(20, 5 * [Math]::Pow(2, $attempt - 1))
+      Write-Warning "ReMCP version discovery temporarily unavailable (HTTP $statusCode); retrying."
+      Start-Sleep -Seconds $delaySeconds
+    }
+  }
+  if ($null -eq $response) { throw 'ReMCP version endpoint did not return a release after bounded retries.' }
   $release = $response.Content | ConvertFrom-Json
   $version = [string]$release.cliVersion
   $clientSpec = [string]$release.cli
