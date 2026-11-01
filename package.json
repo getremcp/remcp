@@ -1,6 +1,6 @@
 {
   "name": "remcp",
-  "version": "0.2.194",
+  "version": "0.2.195",
   "private": true,
   "description": "ReMCP: secure remote MCP bridge. Device client and first-party local runtime.",
   "type": "module",

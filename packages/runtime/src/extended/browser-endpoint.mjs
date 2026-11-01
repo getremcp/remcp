@@ -84,12 +84,23 @@ export function browserAutoLaunchArgs(profile, {
   return args;
 }
 
-export async function waitForBrowserEndpoint(timeoutMs = 5000) {
-  const deadline = Date.now() + timeoutMs;
+// macOS Chrome may take longer than 5 seconds to expose loopback CDP after
+// a cold launch with a separate profile (measured on real Apple Silicon).
+// Keep Linux/Windows fast-path unchanged; never auto-launch for read-only calls.
+export function browserStartupReadyTimeoutMs(platform = process.platform) {
+  return platform === 'darwin' ? 12000 : 5000;
+}
+
+export async function waitForBrowserEndpoint(timeoutMs = 5000, {
+  available = browserCapabilityAvailable,
+  now = Date.now,
+  pause = ms => new Promise(resolve => setTimeout(resolve, ms)),
+} = {}) {
+  const deadline = now() + timeoutMs;
   do {
-    if (await browserCapabilityAvailable(undefined, 250)) return true;
-    await new Promise(resolve => setTimeout(resolve, 100));
-  } while (Date.now() < deadline);
+    if (await available(undefined, 250)) return true;
+    await pause(100);
+  } while (now() < deadline);
   return false;
 }
 
@@ -114,7 +125,7 @@ export async function ensureBrowserEndpoint(endpoint) {
         onError:({ code }) => observeBrowserLaunchExit({ error:code || 'UNKNOWN' },
           { startedAt, restore, isolated:selected.isolated }),
       });
-      if (!await waitForBrowserEndpoint(5000)) throw new Error('ReMCP launched a browser but its local CDP endpoint did not become ready');
+      if (!await waitForBrowserEndpoint(browserStartupReadyTimeoutMs())) throw new Error('ReMCP launched a browser but its local CDP endpoint did not become ready');
       return true;
     })().finally(() => { browserLaunchPromise = null; });
   }

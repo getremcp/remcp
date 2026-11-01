@@ -15,4 +15,9 @@ printf '%s  %s\n' "$SHA256" "$tmp/$ARCHIVE" | sha256sum --check --status
 tar -xzf "$tmp/$ARCHIVE" -C "$tmp" gitleaks
 
 cd "$repo"
-"$tmp/gitleaks" git   --redact   --no-banner   --exit-code 1   --timeout 120   .
+# Check the complete history reachable from the exact checked-out revision.
+# A runner may fetch unrelated remote refs during checkout; scanning all refs
+# can make an otherwise clean main build fail on another work-in-progress branch.
+# PR checkouts still include the candidate commit and all reachable ancestors.
+"$tmp/gitleaks" git \
+  --redact --no-banner --log-opts=HEAD --exit-code 1 --timeout 120 .

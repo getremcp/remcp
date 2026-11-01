@@ -1,11 +1,11 @@
 {
-  "version": "0.2.194",
-  "title": "Scan a terminal QR on your phone to review and approve a new ReMCP computer.",
+  "version": "0.2.195",
+  "title": "Allow slow macOS Chrome CDP cold starts without false browser-unavailable failures.",
   "changes": [
-    "Display a compact QR in capable interactive terminals beside the existing single-use pairing code and browser URL. The phone opens the same signed-in /device confirmation page; approval remains explicit and is not a passwordless login.",
-    "Encode the QR locally with a pinned MIT library, require same-origin HTTPS and the matching code, and reject alternate hosts, redirects, modified parameters and insecure URLs.",
-    "Preserve the text URL/code fallback on narrow or noninteractive terminals and allow disabling QR with --no-qr.",
-    "Maintain the re-pairing safeguards introduced in 0.2.193; a previously paired computer does not request a new grant without explicit --re-pair.",
-    "Verify independent QR decodability, all CLI/auth/security regressions and a clean public package projection."
+    "Give a newly auto-launched macOS Chrome up to 12 seconds to expose its loopback CDP endpoint; Linux and Windows keep the existing 5-second budget.",
+    "Keep read-only browser tools non-launching and preserve loopback-only CDP, URL/SSRF checks, exact-target validation and session isolation.",
+    "Add deterministic startup-budget and target-liveness tests plus an owner-only repro harness.",
+    "Verify on real Apple Silicon: clean cold starts succeeded below 0.7 seconds in 28/30 runs; the two rejected runs needed 5.46 and 9.17 seconds, confirming the old 5-second budget was the failure.",
+    "Ship the public client/runtime release before any private server merge; no production migration or permission change."
   ]
 }
