@@ -139,11 +139,7 @@ jobs:
         run: node --test packages/runtime/test/temperature-inventory.test.mjs
       - name: Probe actual Windows temperature APIs without requiring physical sensors on CI
         shell: powershell
-        run: >-
-          node --input-type=module -e 'import { windowsTemperatureReadings } from "./packages/runtime/src/tools/windows-temperature.mjs";
-          const readings = await windowsTemperatureReadings();
-          if (!Array.isArray(readings) || readings.some(row => !Number.isFinite(row.celsius))) process.exit(2);
-          console.log("Windows hardware sensors exposed:", readings.length);'
+        run: node --test packages/runtime/test/windows-temperature-live.test.mjs
       - name: Verify Windows document capabilities and built-in OOXML backend
         shell: powershell
         run: >-
