@@ -1,6 +1,6 @@
 {
   "name": "@remcp/runtime",
-  "version": "0.2.198",
+  "version": "0.2.199",
   "description": "First-party ReMCP local device runtime: filesystem, terminal, computer-use, browser, diagnostics and document tools over MCP.",
   "type": "module",
   "license": "MIT",
@@ -26,6 +26,9 @@
   "dependencies": {
     "@jellybrick/dbus-next": "^0.11.3",
     "@modelcontextprotocol/server": "^2.3.0"
+  },
+  "optionalDependencies": {
+    "macos-temperature-sensor": "2.1.1"
   },
   "devDependencies": {
     "@modelcontextprotocol/client": "^2.3.1"

@@ -4,6 +4,7 @@ import { readFile, readdir } from 'node:fs/promises';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import process from 'node:process';
+import { darwinTemperatureReadings } from './darwin-temperature.mjs';
 
 const run = promisify(execFile);
 const numeric = value => Number.isFinite(value) && value >= 0 && value <= Number.MAX_SAFE_INTEGER;
@@ -60,6 +61,7 @@ export async function networkRates() {
 }
 
 export async function thermalReadings() {
+  if (process.platform === 'darwin') return darwinTemperatureReadings();
   if (process.platform !== 'linux') return [];
   const sensors = [];
   // Linux thermal zones expose millidegrees Celsius; only fixed kernel paths are read.

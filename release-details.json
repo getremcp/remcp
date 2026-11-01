@@ -1,12 +1,11 @@
 {
-  "version": "0.2.198",
-  "title": "Resolve Linux auto-update permissions and distinguish relay reconnects from revocation.",
+  "version": "0.2.199",
+  "title": "Read real CPU, SoC and GPU temperatures on Apple Silicon without privileged access.",
   "changes": [
-    "Pin the supervised Linux launcher's npm prefix to its installed CLI/Node tree so auto-update cannot unexpectedly write into system-owned global modules.",
-    "Treat WebSocket 1013 as a potentially transient overload, not proof of deployment, and bound rapid reconnect loops while retaining server-requested capacity delays.",
-    "Give revocation (1008) and duplicate-device ownership (1012) precedence over reconnect hints to prevent unauthorized retries and competing agents.",
-    "Rate-limit discovery triggered by repeated reconnections without delaying scheduled release/recovery convergence polls.",
-    "Retain the previously published hard HTTP/JSON update-manifest deadline and adaptive reconnect helper; include all imported agent modules in the public npm client.",
-    "Test Linux service prefix, user-visible reconnect behavior and safe rollout; release a new immutable client/runtime version, never overwrite 0.2.197."
+    "Use an optional, exact-pinned native Apple Silicon sensor adapter to report actual CPU, SoC and GPU measurements through the existing get_system_info.temperatures contract.",
+    "Preserve strictly bounded, allowlisted CPU/SoC/GPU names and finite measured Celsius values; an absent, broken or unsupported sensor remains unavailable rather than returning fabricated 0°C.",
+    "Continue using Linux kernel thermal zones and hwmon for ASUS and other hardware exposing readable sensors. Virtualized Backend and Edge machines without guest thermal devices explicitly remain unknown until an authorized host telemetry source is available.",
+    "Verify the temperature adapter on a physical Apple M1 MacBook without sudo, and cover malformed/absent native sensor values, backend normalization and public packaging in the release tests.",
+    "Keep native dependencies optional on unsupported platforms. Publish coordinated immutable runtime/client packages through public-first release checks before merging private source or deploying to production."
   ]
 }
