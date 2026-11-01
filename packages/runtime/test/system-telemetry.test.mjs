@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { cpuPerCoreUtilizationRatios } from '../src/tools/cpu-telemetry.mjs';
 import {
-  parseNetworkCounters, calculateNetworkRates, parseDiskVolumes, thermalReadings,
+  parseNetworkCounters, parseDarwinNetworkCounters, parseWindowsNetworkCounters, calculateNetworkRates, parseDiskVolumes, thermalReadings,
   diskVolumes, networkRates,
 } from '../src/tools/system-telemetry.mjs';
 
@@ -26,6 +26,44 @@ test('Linux network counter parsing accepts only bounded safe interface names', 
   ]);
 });
 
+test('macOS netstat parses one active link row without double-counting address rows or tunnels', () => {
+  const payload = [
+    'Name Mtu Network Address Ipkts Ierrs Ibytes Opkts Oerrs Obytes Coll',
+    'lo0 16384 <Link#1> 100 0 12000 200 0 13000 0',
+    'en0 1500 <Link#11> aa:bb:cc:dd:ee:ff 400 0 123456 200 0 654321 0',
+    'en0 1500 192.168.50 192.168.50.193 400 - 123456 200 - 654321 -',
+    'en1 1500 <Link#12> aa:bb:cc:dd:ee:ff 1 0 42 2 0 21 0',
+    'utun0 1500 <Link#14> aa:bb:cc:dd:ee:ff 9 0 99 8 0 88 0',
+    'bad/name 1500 <Link#15> aa:bb:cc:dd:ee:ff 1 0 20 1 0 40 0',
+  ].join('\n');
+  assert.deepEqual(parseDarwinNetworkCounters(payload, new Set(['en0', 'utun0'])),
+    [{name: 'en0', rx: 123456, tx: 654321}]);
+  assert.deepEqual(parseDarwinNetworkCounters('bad header'), []);
+});
+
+test('Windows NIC statistics parse active adapter aliases, preserving real 0 traffic', () => {
+  const rows = JSON.stringify([
+    { Name: 'Ethernet 2', ReceivedBytes: 250000, SentBytes: 6000 },
+    { Name: 'Wi-Fi', ReceivedBytes: 0, SentBytes: 0 },
+    { Name: 'vEthernet (WSL)', ReceivedBytes: 8000, SentBytes: 1234 },
+    { Name: 'unsafe;name', ReceivedBytes: 42, SentBytes: 32 },
+    { Name: 'broken', ReceivedBytes: null, SentBytes: 80 },
+  ]);
+  assert.deepEqual(parseWindowsNetworkCounters(rows, new Set(['Ethernet 2','Wi-Fi'])), [
+    { name: 'Ethernet 2', rx: 250000, tx: 6000 },
+    { name: 'Wi-Fi', rx: 0, tx: 0 },
+  ]);
+  assert.deepEqual(parseWindowsNetworkCounters('{broken'), []);
+  assert.deepEqual(parseWindowsNetworkCounters('null'), []);
+  for (const invalid of ['', '  ', true, -1, 5.5, '1e3', 'NaN', null]) {
+    assert.deepEqual(parseWindowsNetworkCounters(JSON.stringify({
+      Name: 'Wi-Fi', ReceivedBytes: invalid, SentBytes: 30,
+    })), [], 'Never coerce missing or malformed byte counters into zero');
+  }
+  assert.deepEqual(parseWindowsNetworkCounters(JSON.stringify({ Name: 'Wi-Fi',
+    ReceivedBytes: 'not a counter', SentBytes: 30 })), []);
+});
+
 test('network rates require two real samples, monotonic counters and elapsed time', () => {
   const prev = [{name:'eth0',rx:100,tx:1000}];
   assert.equal(calculateNetworkRates(prev, null, 10), null);
@@ -34,6 +72,10 @@ test('network rates require two real samples, monotonic counters and elapsed tim
   const rates = calculateNetworkRates([{name:'eth0',rx:5100,tx:3000}], prev, 10);
   assert.deepEqual(rates, {rxBytesPerSecond:500,txBytesPerSecond:200,
     interfaces:[{name:'eth0',rxBytesPerSecond:500,txBytesPerSecond:200}]});
+  assert.deepEqual(calculateNetworkRates(prev, prev, 2), {
+    rxBytesPerSecond:0, txBytesPerSecond:0,
+    interfaces:[{name:'eth0',rxBytesPerSecond:0,txBytesPerSecond:0}],
+  });
 });
 
 test('disk enumeration ignores virtual filesystems, handles no drives', () => {

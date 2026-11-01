@@ -67,11 +67,18 @@ irm https://remcp.site/i | iex
 ReMCP keeps its Windows runtime privately under `%LOCALAPPDATA%\ReMCP`; it does not install Node.js
 globally or add the private runtime directory to the system PATH.
 
-**macOS / Linux:** Node.js 22.5 or newer provides the current npm/npx distribution path.
+**macOS / Linux — no Node.js or npm needed beforehand:**
 
-```bash
-npx --yes @remcp/remcp@latest connect
+```sh
+curl -fsS https://remcp.site/i.sh | sh
 ```
+
+The installer asks before installing a vetted, checksum-verified Node.js runtime into your user
+profile when needed. It then runs the production-compatible ReMCP version. No `sudo` required.
+The downloaded script is parsed in full before any installation actions begin.
+
+If Node.js is already installed, the advanced npm shortcut is `npx --yes @remcp/remcp@latest connect`.
+For inspecting the script before running it, open `https://remcp.site/i.sh` in your browser.
 
 The browser can also generate a one-time pairing command. Run that exact command on the computer you
 want to connect; it installs the runtime and registers the background service.

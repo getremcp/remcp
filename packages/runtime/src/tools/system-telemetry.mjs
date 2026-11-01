@@ -3,7 +3,9 @@
 import { readFile, readdir } from 'node:fs/promises';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import os from 'node:os';
 import process from 'node:process';
+import { setTimeout as delay } from 'node:timers/promises';
 import { darwinTemperatureReadings } from './darwin-temperature.mjs';
 import { linuxTemperatureReadings } from './linux-temperature.mjs';
 import { windowsTemperatureReadings } from './windows-temperature.mjs';
@@ -27,6 +29,52 @@ export function parseNetworkCounters(input) {
   return interfaces;
 }
 
+// netstat -ib has multiple address rows per interface on macOS. Only the
+// <Link#N> row contains the canonical byte counters; never sum duplicates.
+export function parseDarwinNetworkCounters(input, activeNames = null) {
+  const lines = String(input).split(/\r?\n/);
+  const header = lines[0]?.trim().split(/\s+/) ?? [];
+  const rxIndex = header.indexOf('Ibytes');
+  const txIndex = header.indexOf('Obytes');
+  if (rxIndex < 0 || txIndex < 0) return [];
+  const found = new Map();
+  for (const line of lines.slice(1, 160)) {
+    const parts = line.trim().split(/\s+/);
+    const name = parts[0];
+    if (!safeName(name) || !/^<Link#\d+>$/.test(parts[2]) ||
+        /^(?:lo\d*|awdl\d*|llw\d*|utun\d*|bridge\d*|gif\d*|stf\d*|ap\d*|anpi\d*)$/.test(name) ||
+        (activeNames && !activeNames.has(name))) continue;
+    const rx = Number(parts[rxIndex]);
+    const tx = Number(parts[txIndex]);
+    if (!numeric(rx) || !numeric(tx)) continue;
+    found.set(name, { name, rx, tx });
+    if (found.size >= 24) break;
+  }
+  return [...found.values()];
+}
+
+// Windows adapter statistics are real cumulative counters, not link-speed estimates.
+export function parseWindowsNetworkCounters(input, activeNames = null) {
+  let parsed;
+  try { parsed = JSON.parse(String(input)); } catch { return []; }
+  const rows = Array.isArray(parsed) ? parsed : [parsed];
+  const found = new Map();
+  for (const row of rows.slice(0, 128)) {
+    const name = row?.Name;
+    if (typeof name !== 'string' || !/^[\p{L}\p{N} _().:#-]{1,64}$/u.test(name) ||
+        (activeNames && !activeNames.has(name))) continue;
+    const parseCounter = value => typeof value === 'number' && Number.isSafeInteger(value) && value >= 0
+      ? value : typeof value === 'string' && /^\d{1,16}$/.test(value) && numeric(Number(value))
+        ? Number(value) : null;
+    const rx = parseCounter(row?.ReceivedBytes);
+    const tx = parseCounter(row?.SentBytes);
+    if (rx === null || tx === null) continue;
+    found.set(name, { name, rx, tx });
+    if (found.size >= 24) break;
+  }
+  return [...found.values()];
+}
+
 export function calculateNetworkRates(current, previous, elapsedSeconds) {
   if (!Array.isArray(current) || !Array.isArray(previous) || !Number.isFinite(elapsedSeconds) ||
       elapsedSeconds < 1 || elapsedSeconds > 300) return null;
@@ -47,19 +95,64 @@ export function calculateNetworkRates(current, previous, elapsedSeconds) {
 }
 
 let lastNetwork = null;
-export async function networkRates() {
-  if (process.platform !== 'linux') return null;
+let pendingNetwork = null;
+
+async function readNetworkCounters() {
+  if (process.platform === 'linux') {
+    const active = new Set(Object.entries(os.networkInterfaces())
+      .filter(([, addresses]) => addresses?.some(address => !address.internal))
+      .map(([name]) => name));
+    return parseNetworkCounters(await readFile('/proc/net/dev', 'utf8'))
+      .filter(row => active.has(row.name) && !/^(?:veth|docker|br-|virbr|tun|tap|wg|lo)/.test(row.name));
+  }
+  if (process.platform === 'darwin') {
+    const { stdout } = await run('/usr/sbin/netstat', ['-ibn'],
+      { timeout: 2500, maxBuffer: 128 * 1024 });
+    const active = new Set(Object.entries(os.networkInterfaces())
+      .filter(([, addresses]) => addresses?.some(address => !address.internal &&
+        !address.address.startsWith('fe80:'))).map(([name]) => name));
+    return parseDarwinNetworkCounters(stdout, active);
+  }
+  if (process.platform === 'win32') {
+    const script = 'Get-NetAdapterStatistics | Select-Object Name,ReceivedBytes,SentBytes | ConvertTo-Json -Compress';
+    const { stdout } = await run('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script],
+      { windowsHide: true, timeout: 5000, maxBuffer: 128 * 1024 });
+    const active = new Set(Object.entries(os.networkInterfaces())
+      .filter(([, addresses]) => addresses?.some(address => !address.internal))
+      .map(([name]) => name));
+    return parseWindowsNetworkCounters(stdout, active);
+  }
+  return [];
+}
+
+async function sampleNetworkRates() {
   try {
-    const input = await readFile('/proc/net/dev', 'utf8');
-    const current = parseNetworkCounters(input);
-    const now = performance.now();
-    const previous = lastNetwork;
+    let current = await readNetworkCounters();
+    let now = performance.now();
+    let previous = lastNetwork;
+    const elapsed = previous ? (now - previous.at) / 1000 : 0;
+    // The first diagnostics request must return a measured rate, not null.
+    // Bootstrap from two real counters; never manufacture a zero-rate sample.
+    if (elapsed < 1 || elapsed > 300) {
+      previous = { at: now, interfaces: current };
+      await delay(1100);
+      current = await readNetworkCounters();
+      now = performance.now();
+    }
     lastNetwork = { at: now, interfaces: current };
-    return previous ? calculateNetworkRates(current, previous.interfaces, (now - previous.at) / 1000) : null;
+    return calculateNetworkRates(current, previous.interfaces, (now - previous.at) / 1000);
   } catch {
     lastNetwork = null;
     return null;
   }
+}
+
+export async function networkRates() {
+  if (!['linux', 'darwin', 'win32'].includes(process.platform)) return null;
+  if (pendingNetwork) return pendingNetwork;
+  pendingNetwork = sampleNetworkRates();
+  try { return await pendingNetwork; }
+  finally { pendingNetwork = null; }
 }
 
 export async function thermalReadings() {

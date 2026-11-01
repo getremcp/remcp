@@ -1,12 +1,12 @@
 {
-  "version": "0.2.201",
-  "title": "Read every available and permitted CPU, GPU, NVMe, Wi-Fi and ACPI temperature channel on Ubuntu and Windows.",
+  "version": "0.2.202",
+  "title": "Measure real network throughput on Linux, macOS and Windows; unblock System Monitor without requiring a page switch.",
   "changes": [
-    "Merge Linux kernel hwmon and thermal-zone inventories instead of stopping at the first ACPI channel. Keep chip and sensor labels, de-duplicate equivalent ACPI readings and distinguish multiple disks with identical labels.",
-    "On Linux and Windows, optionally include NVIDIA GPU die temperatures through a fixed, read-only, timeout-bounded nvidia-smi query. Keep sensor and output limits to 64 validated Celsius readings; never synthesize missing measurements.",
-    "On Windows, probe available LibreHardwareMonitor/OpenHardwareMonitor WMI temperature providers and firmware-exposed ACPI thermal zones with a fixed, noninteractive PowerShell script. Correctly convert ACPI tenths of Kelvin to Celsius without claiming it measures CPU die temperature.",
-    "Preserve the larger hardware inventory through the owner-only diagnostic normalization boundary and System Monitor, rejecting suspicious names, nonnumeric values and out-of-range temperatures.",
-    "Verify on ASUS: six simultaneous real hwmon channels instead of one; desktop and 390/320-pixel browser screenshots without horizontal overflow. Add Linux/Windows parsing, failure-mode, source-label and NVIDIA regressions.",
-    "Retain the verified Apple Silicon native-addon installation fix from v0.2.200. On Windows, full hardware coverage depends on exposed vendor data; no external driver installation, elevation, or permission changes occur automatically."
+    "Read monotonic RX/TX byte counters from active Linux /proc/net/dev adapters, bounded macOS /usr/sbin/netstat -ibn link rows and Windows Get-NetAdapterStatistics; discard duplicate, inactive and unsafe interface records.",
+    "Compute real per-second rates from two device-side samples even on cold start, coalesce concurrent probes, preserve genuine 0 B/s, and never convert unavailable counters into fabricated values.",
+    "Normalize bounded Windows adapter aliases (including spaces), preserve existing owner-scoped diagnostics API contracts and show measured rates in the device header, System Monitor summary and per-interface panels.",
+    "Start the first live scan independently of archive history while avoiding StrictMode duplicate requests; resume missing network measurements from sibling tabs even with numeric-only archived history.",
+    "Use skeletons only while scans are pending, then show actual readings or explicit unavailable/retry states; never leave the lower System Monitor visually empty after history loading.",
+    "Verify Linux device-side rates, Windows parser/backend regressions and desktop/mobile Playwright scenarios with delayed history. A physical Windows runtime smoke remains required before release approval."
   ]
 }
