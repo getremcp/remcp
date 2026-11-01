@@ -1,12 +1,11 @@
 {
-  "version": "0.2.202",
-  "title": "Measure real network throughput on Linux, macOS and Windows; unblock System Monitor without requiring a page switch.",
+  "version": "0.2.203",
+  "title": "Stop Linux update loops and protect user-installed Node environments.",
   "changes": [
-    "Read monotonic RX/TX byte counters from active Linux /proc/net/dev adapters, bounded macOS /usr/sbin/netstat -ibn link rows and Windows Get-NetAdapterStatistics; discard duplicate, inactive and unsafe interface records.",
-    "Compute real per-second rates from two device-side samples even on cold start, coalesce concurrent probes, preserve genuine 0 B/s, and never convert unavailable counters into fabricated values.",
-    "Normalize bounded Windows adapter aliases (including spaces), preserve existing owner-scoped diagnostics API contracts and show measured rates in the device header, System Monitor summary and per-interface panels.",
-    "Start the first live scan independently of archive history while avoiding StrictMode duplicate requests; resume missing network measurements from sibling tabs even with numeric-only archived history.",
-    "Use skeletons only while scans are pending, then show actual readings or explicit unavailable/retry states; never leave the lower System Monitor visually empty after history loading.",
-    "Verify Linux device-side rates, Windows parser/backend regressions and desktop/mobile Playwright scenarios with delayed history. A physical Windows runtime smoke remains required before release approval."
+    "Fix the systemd launcher global npm prefix when the saved ReMCP CLI path points directly inside the installed npm package. An update can no longer nest a new client under the old package while restarting the stale service.",
+    "Reject package-nested npm prefixes before package writes, and verify the exact client/runtime release pair at the managed-service path before restarting a pinned automatic update.",
+    "Keep other nvm, FNM, Homebrew and system Node/npm installations untouched by automatic synchronization; only the active managed ReMCP service remains a required installation target.",
+    "Make Linux automatic updates opt-in (remcp auto-update on) while honoring explicit saved preferences. Manual updates remain available, and macOS/Windows defaults are unchanged.",
+    "Add Linux prefix and restart regression tests, preserve legacy manual update and macOS/Windows service lifecycle behavior, and verify the CLI/runtime with an isolated npm prefix on ASUS."
   ]
 }

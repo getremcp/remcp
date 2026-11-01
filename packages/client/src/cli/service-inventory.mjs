@@ -189,10 +189,11 @@ export function rememberCurrentInstallation(config, { service = false } = {}) {
 export function syncKnownInstallations(config, ...specs) {
   const serviceInfo = serviceInstallationInfo(config);
   const current = currentInstallationInfo(config);
-  const candidates = [
-    ...(Array.isArray(config?.installations) ? config.installations : []),
-    ...(serviceInfo.nodePath ? [{ nodePath:serviceInfo.nodePath, cliPath:serviceInfo.cliPath, service:true }] : []),
-  ];
+  // Only the active service installation is mandatory. Other recorded Node manager prefixes
+  // can host unrelated user scripts and must not be mutated by an automatic agent update.
+  const candidates = serviceInfo.nodePath
+    ? [{ nodePath:serviceInfo.nodePath, cliPath:serviceInfo.cliPath, service:true }]
+    : [];
   const currentNode = (() => { try { return fs.realpathSync(current.nodePath); } catch { return current.nodePath; } })();
   const seen = new Set();
   const results = [];

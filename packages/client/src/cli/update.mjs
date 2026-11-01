@@ -12,7 +12,7 @@ import { loadConfig, saveConfig } from './config.mjs';
 import { assertSecureServerUrl } from './connect.mjs';
 import { installedVersion } from './doctor.mjs';
 import { linuxServiceFile, macServiceFile, officialOrigin } from './env.mjs';
-import { currentInstallationInfo, ensureMacCliCommand, ensureServiceIfRecorded, installationVersionsAtCliPath, npmGlobalUpdate, persistentServiceExpected, rememberCurrentInstallation, restartPersistentServiceIfInstalled, serviceInstallationInfo, syncKnownInstallations } from './service.mjs';
+import { currentInstallationInfo, ensureMacCliCommand, ensureServiceIfRecorded, npmGlobalUpdate, persistentServiceExpected, rememberCurrentInstallation, restartPersistentServiceIfInstalled, serviceInstallationInfo, syncKnownInstallations } from './service.mjs';
 
 const UPDATE_DISCOVERY_TIMEOUT_MS = 5000;
 
@@ -188,17 +188,17 @@ export function updateAlreadyCurrent({ cfg, targets, currentInstall, serviceInst
     if (String(serviceInstall?.runtimeVersion || '').trim() !== targetRuntimeVersion) return false;
   }
 
-  // A machine can have more than one Node manager. Do not claim "already current" while a known,
-  // still-existing ReMCP installation is recorded on an older release; the normal update path will
-  // converge it through syncKnownInstallations().
-  for (const item of Array.isArray(cfg?.installations) ? cfg.installations : []) {
-    const cliPath = String(item?.cliPath || '').trim();
-    if (!cliPath || !fs.existsSync(cliPath)) continue;
-    const actual = installationVersionsAtCliPath(cliPath, cfg.runtime.packageName);
-    if (String(actual.cliVersion || '').trim() !== targetClientVersion) return false;
-    if (String(actual.runtimeVersion || '').trim() !== targetRuntimeVersion) return false;
-  }
+  // Historic secondary installations may belong to other Node managers and applications.
+  // Never let one stale record force an automatic update of the active, healthy service.
   return true;
+}
+
+export function verifyManagedServiceReleasePair(serviceInstall, clientSpec, runtimePackageName, runtimeSpec) {
+  const expectedClient = specVersion(PACKAGE_NAME, clientSpec);
+  const expectedRuntime = specVersion(runtimePackageName, runtimeSpec);
+  if (!expectedClient || !expectedRuntime || serviceInstall?.cliVersion !== expectedClient || serviceInstall?.runtimeVersion !== expectedRuntime) {
+    throw new Error(`ReMCP update refused to restart: managed service still runs client ${serviceInstall?.cliVersion || 'missing'} / runtime ${serviceInstall?.runtimeVersion || 'missing'}; expected ${expectedClient || 'invalid'} / ${expectedRuntime || 'invalid'}. Repair npm prefix and retry.`);
+  }
 }
 
 export async function updateCommand(flags) {
@@ -253,12 +253,23 @@ export async function updateCommand(flags) {
   console.log(`Updating ReMCP to ${targets.clientSpec} with ${targets.runtimeSpec}…`);
   npmGlobalUpdate([PACKAGE_NAME, cfg.runtime.packageName], targets.clientSpec, targets.runtimeSpec);
 
-  // Converge every ReMCP installation this account has actually used on this machine. The canonical
-  // service installation is mandatory; secondary nvm/Hermes/Homebrew copies are best-effort and
-  // remain visible in status if they cannot be updated.
+  // Converge only the canonical service installation. Never update secondary nvm/Hermes/
+  // Homebrew installations implicitly: they may be managed by other applications.
   const synced = syncKnownInstallations(cfg, targets.clientSpec, targets.runtimeSpec);
   for (const item of synced) {
     if (!item.ok) console.error(`ReMCP update: could not sync secondary installation at ${item.nodePath}: ${item.error}`);
+  }
+
+  // npm can report a successful install into a wrong global prefix. Before touching
+  // systemd/launchd, verify the exact release pair at the canonical service CLI path.
+  // Otherwise a stale launcher repeatedly restarts the old agent and loses device RPCs.
+  // Exact server-advertised or explicit release pairs must match the service on disk.
+  // A legacy manual `remcp update` against an untrusted/custom server may use @latest,
+  // for which no exact version is known until npm resolves it. Keep that manual path
+  // compatible; the automatic agent always supplies an exact version.
+  if (serviceExpected && specVersion(PACKAGE_NAME, targets.clientSpec)
+      && specVersion(cfg.runtime.packageName, targets.runtimeSpec)) {
+    verifyManagedServiceReleasePair(serviceInstallationInfo(cfg), targets.clientSpec, cfg.runtime.packageName, targets.runtimeSpec);
   }
 
   // Persist the validated runtime pair before repairing the supervisor so a repair cannot be

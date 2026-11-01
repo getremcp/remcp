@@ -40,6 +40,14 @@ test('manual update is a no-op when the running and managed service release pair
   }), true);
 
   assert.equal(updateAlreadyCurrent({
+    cfg:{ ...cfg, installations:[{ cliPath:process.execPath, cliVersion:'0.2.1', runtimeVersion:'0.2.1' }] },
+    targets,
+    currentInstall:{ cliVersion:VERSION, runtimeVersion:VERSION },
+    serviceInstall:{ cliVersion:VERSION, runtimeVersion:VERSION },
+    serviceExpected:true,
+  }), true, 'a secondary Node manager installation must not force an update of a healthy service');
+
+  assert.equal(updateAlreadyCurrent({
     cfg,
     targets,
     currentInstall:{ cliVersion:VERSION, runtimeVersion:VERSION },

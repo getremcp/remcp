@@ -11,7 +11,26 @@ export function servicePlatform() {
   return process.env.NODE_ENV === 'test' && process.env.REMCP_TEST_PLATFORM ? process.env.REMCP_TEST_PLATFORM : process.platform;
 }
 
+export function assertSafeReMcpNpmPrefix(value) {
+  const prefix = String(value || '').trim();
+  if (!path.isAbsolute(prefix)) throw new Error('ReMCP update refused: npm global prefix must be an absolute directory.');
+  const normalized = path.resolve(prefix);
+  const parts = normalized.split(path.sep).filter(Boolean);
+  // An inherited NPM_CONFIG_PREFIX aimed inside an already-installed package creates a
+  // second copy in its lib/node_modules. npm then reports success but systemd still starts
+  // the old agent, causing endless replacement attempts and offline device flapping.
+  for (let index = 0; index < parts.length - 2; index += 1) {
+    if (parts[index] === 'node_modules' && parts[index + 1] === '@remcp'
+      && (parts[index + 2] === 'remcp' || parts[index + 2] === 'runtime')) {
+      throw new Error('ReMCP update refused: npm prefix points inside a ReMCP package. Repair the service launcher before retrying.');
+    }
+  }
+  return normalized;
+}
+
 export function globalPrefix() {
+  // Read-only diagnostics must work even when a legacy launcher exports a broken prefix.
+  // Validate only at installation/update write boundaries, not while discovering paths.
   return output(npm.command, [...npm.args, 'prefix', '--global']);
 }
 
@@ -34,6 +53,7 @@ function npmGlobalInstallArgs(specs, { preferOnline = false } = {}) {
 }
 
 export function npmGlobalInstall(...specs) {
+  assertSafeReMcpNpmPrefix(globalPrefix()); // Reject an unsafe prefix before npm writes anything.
   run(npm.command, [...npm.args, ...npmGlobalInstallArgs(specs)]);
   if (servicePlatform() === 'darwin' && specs.some(spec => /^@remcp\/runtime@[0-9]/.test(spec))) {
     try {
@@ -198,7 +218,7 @@ function transactionalWindowsGlobalInstall({ resolved, prefix, packageNames, spe
 // version, so updates revalidate metadata while retaining npm's cache for package bytes.
 export function npmGlobalUpdate(packageNames, ...specs) {
   const platform = servicePlatform();
-  const prefix = globalPrefix();
+  const prefix = assertSafeReMcpNpmPrefix(globalPrefix());
   if (platform === 'darwin') {
     transactionalMacGlobalInstall({ resolved:npm, prefix, packageNames, specs, preferOnline:true });
     return;
@@ -213,7 +233,7 @@ export function npmGlobalUpdate(packageNames, ...specs) {
 export function npmGlobalUpdateForNode(nodePath, packageNames, ...specs) {
   const platform = servicePlatform();
   const resolved = resolveNpm({ nodePath, home, platform });
-  const prefix = output(resolved.command, [...resolved.args, 'prefix', '--global']);
+  const prefix = assertSafeReMcpNpmPrefix(output(resolved.command, [...resolved.args, 'prefix', '--global']));
   if (platform === 'darwin') {
     transactionalMacGlobalInstall({ resolved, prefix, packageNames, specs, preferOnline:true });
     return;

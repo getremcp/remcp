@@ -16,7 +16,10 @@ test('doctor resolves the runtime, performs a real handshake and reports a verdi
     }));
     const result = spawnSync(process.execPath, ['bin/remcp.mjs', 'doctor'], {
       cwd: new URL('..', import.meta.url).pathname,
-      env: { ...process.env, REMCP_CONFIG_DIR: configDir },
+      // A legacy Linux service can export a package-nested npm prefix. Doctor is read-only
+      // and must remain available to diagnose and repair that exact broken installation.
+      env: { ...process.env, REMCP_CONFIG_DIR: configDir,
+        NPM_CONFIG_PREFIX: path.join(configDir, 'lib', 'node_modules', '@remcp', 'remcp') },
       encoding: 'utf8',
       timeout: 30_000,
       killSignal: 'SIGKILL',

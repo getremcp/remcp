@@ -7,7 +7,7 @@ import { normalizeRuntime } from './runtime.mjs';
 import { PACKAGE_NAME, VERSION } from './version.mjs';
 import { probeFilesystemAccess } from './fs-access.mjs';
 
-import { ensureMachineId, loadConfig, readJsonFile, saveConfig, setTelemetry, telemetryState, writeJsonFile } from './cli/config.mjs';
+import { autoUpdateEnabled, ensureMachineId, loadConfig, readJsonFile, saveConfig, setTelemetry, telemetryState, writeJsonFile } from './cli/config.mjs';
 import { assertRuntimeTrust, assertSecureServerUrl, pairWithDeviceCode } from './cli/connect.mjs';
 import { diagnoseLocalRuntime, installedVersion, runtimeAllowedRoots } from './cli/doctor.mjs';
 import { configFile, npm, officialOrigin, runtimeConfigFile } from './cli/env.mjs';
@@ -144,7 +144,7 @@ export async function main(argv = process.argv.slice(2)) {
     const telemetry = telemetryState();
     await runAgent({
       ...cfg,
-      autoUpdate: cfg.autoUpdate !== false,
+      autoUpdate: autoUpdateEnabled(cfg),
       trustRuntime: cfg.trustRuntime === true
         || process.env.REMCP_TRUST_RUNTIME === '1'
         || new URL(cfg.serverUrl).origin === officialOrigin,
@@ -160,7 +160,7 @@ export async function main(argv = process.argv.slice(2)) {
     const action = String(positional[0] || 'status').toLowerCase();
     const cfg = loadConfig(false) || {};
     if (action === 'status') {
-      console.log(JSON.stringify({ autoUpdate: cfg.autoUpdate !== false, checkIntervalHours: 6 }, null, 2));
+      console.log(JSON.stringify({ autoUpdate: autoUpdateEnabled(cfg), checkIntervalHours: 6 }, null, 2));
       return;
     }
     if (action === 'on' || action === 'enable') { saveConfig({ ...cfg, autoUpdate: true }); console.log('Auto-update enabled.'); return; }
@@ -301,7 +301,7 @@ export async function main(argv = process.argv.slice(2)) {
         ...(health.error ? { error:health.error } : {}),
       },
       update:{
-        auto:cfg.autoUpdate !== false,
+        auto:autoUpdateEnabled(cfg),
         targetClient,
         targetRuntime,
         multipleInstallations,

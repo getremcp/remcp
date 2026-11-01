@@ -29,8 +29,14 @@ export function linuxServiceLauncherText(cliPath, nodePath) {
   if (!path.isAbsolute(cliPath) || !path.isAbsolute(nodePath) || path.basename(path.dirname(cliPath)) !== 'bin') {
     throw new Error('Linux service needs absolute CLI and Node paths in a global bin directory');
   }
-  const prefix = path.dirname(path.dirname(cliPath));
   const cliScript = resolvedCliScript(cliPath);
+  // A saved service CLI is often the resolved package entry rather than the global bin shim.
+  // Using dirname(dirname(cliPath)) for that case targets the package itself as npm prefix,
+  // nesting each update under @remcp/remcp/lib/node_modules while leaving the agent stale.
+  const packageEntrySuffix = path.join('lib', 'node_modules', ...PACKAGE_NAME.split('/'), 'bin', 'remcp.mjs');
+  const prefix = cliScript.endsWith(`${path.sep}${packageEntrySuffix}`)
+    ? cliScript.slice(0, -(packageEntrySuffix.length + 1)) || path.sep
+    : path.dirname(path.dirname(cliPath));
   const lines = [
     '#!/bin/sh',
     'NPM_CONFIG_PREFIX=' + shellQuote(prefix),
