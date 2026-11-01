@@ -6,6 +6,7 @@ import { runtimeConfig } from '../config.mjs';
 import { clampInteger, fail, requireInteger, text } from '../util.mjs';
 import { cpuUtilizationRatio, cpuFrequencyMHz, cpuPerCoreUtilizationRatios } from './cpu-telemetry.mjs';
 import { diskVolumes, networkRates, thermalReadings } from './system-telemetry.mjs';
+import { readDarwinMemoryPressure } from './darwin-memory-pressure.mjs';
 
 const run = promisify(execFile);
 
@@ -50,6 +51,7 @@ export async function getSystemInfoTool() {
   const volumesPromise = diskVolumes();
   const thermalPromise = thermalReadings();
   const networkPromise = networkRates();
+  const memoryPressurePromise = process.platform === 'darwin' ? readDarwinMemoryPressure() : Promise.resolve(null);
   const sampledCpus = await new Promise(resolve => setTimeout(() => resolve(os.cpus()), 140));
   const utilizationRatio = cpuUtilizationRatio(cpus, sampledCpus);
   const frequencyMHz = cpuFrequencyMHz(sampledCpus);
@@ -74,6 +76,8 @@ export async function getSystemInfoTool() {
       totalBytes: totalMem,
       freeBytes: freeMem,
       usedRatio: totalMem ? Number(((totalMem - freeMem) / totalMem).toFixed(3)) : 0,
+      usedMethod: 'os.freemem-physical-occupancy',
+      ...(await memoryPressurePromise),
     },
     disk: await diskPromise,
     volumes: await volumesPromise,

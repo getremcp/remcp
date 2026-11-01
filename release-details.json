@@ -1,11 +1,12 @@
 {
-  "version": "0.2.195",
-  "title": "Allow slow macOS Chrome CDP cold starts without false browser-unavailable failures.",
+  "version": "0.2.196",
+  "title": "Separate macOS physical RAM occupancy from real kernel memory pressure.",
   "changes": [
-    "Give a newly auto-launched macOS Chrome up to 12 seconds to expose its loopback CDP endpoint; Linux and Windows keep the existing 5-second budget.",
-    "Keep read-only browser tools non-launching and preserve loopback-only CDP, URL/SSRF checks, exact-target validation and session isolation.",
-    "Add deterministic startup-budget and target-liveness tests plus an owner-only repro harness.",
-    "Verify on real Apple Silicon: clean cold starts succeeded below 0.7 seconds in 28/30 runs; the two rejected runs needed 5.46 and 9.17 seconds, confirming the old 5-second budget was the failure.",
-    "Ship the public client/runtime release before any private server merge; no production migration or permission change."
+    "Add bounded, read-only memory_pressure -Q and kern.memorystatus_vm_pressure_level sampling on macOS, with explicit method/provenance labels and nullable values when unavailable.",
+    "Keep physical RAM occupancy, effective free percentage and kernel pressure level as separate measurements; never label tiny os.freemem() as kernel pressure.",
+    "Add additive PostgreSQL diagnostic columns and owner-scoped history/cache propagation; legacy rows stay unknown rather than being backfilled or interpolated across method changes.",
+    "Use kernel pressure for macOS warning/critical states in Device Overview, Monitor, Fleet and diagnostics, while retaining clearly labeled physical occupancy.",
+    "Verify real Apple Silicon sampling (30% effective free, warning level), synthetic 99%/37%/warning UI cases, build/type checks and targeted unit tests.",
+    "Ship the public client/runtime release before any private server merge; no production data mutation or permission change."
   ]
 }
