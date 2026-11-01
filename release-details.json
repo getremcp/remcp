@@ -1,11 +1,12 @@
 {
-  "version": "0.2.200",
-  "title": "Build the vetted Apple Silicon temperature addon after safe npm installation.",
+  "version": "0.2.201",
+  "title": "Read every available and permitted CPU, GPU, NVMe, Wi-Fi and ACPI temperature channel on Ubuntu and Windows.",
   "changes": [
-    "Keep global npm installs and agent auto-updates protected by --ignore-scripts; explicitly build only the reviewed macos-temperature-sensor@2.1.1 native addon if the installed first-party runtime pins that exact optional package and script.",
-    "Verify module paths, installed manifests and build directories before invoking the bounded, rootless node-gyp rebuild. Reject arbitrary package scripts, symlinks, unexpected versions and unsafe paths.",
-    "Support both fresh macOS installs and rollback-safe transactional updates. A missing compiler or unsupported sensor remains unavailable without disabling other ReMCP tools.",
-    "Reproduce the 0.2.199 failure on a real M1 Mac: --ignore-scripts leaves the native .node file absent. Confirm the approved build produces real CPU, SoC and GPU Celsius measurements without sudo.",
-    "Add deterministic installer, rollback, optional failure and security regression tests; retain the release-first public npm/tag verification before private merge and deployment."
+    "Merge Linux kernel hwmon and thermal-zone inventories instead of stopping at the first ACPI channel. Keep chip and sensor labels, de-duplicate equivalent ACPI readings and distinguish multiple disks with identical labels.",
+    "On Linux and Windows, optionally include NVIDIA GPU die temperatures through a fixed, read-only, timeout-bounded nvidia-smi query. Keep sensor and output limits to 64 validated Celsius readings; never synthesize missing measurements.",
+    "On Windows, probe available LibreHardwareMonitor/OpenHardwareMonitor WMI temperature providers and firmware-exposed ACPI thermal zones with a fixed, noninteractive PowerShell script. Correctly convert ACPI tenths of Kelvin to Celsius without claiming it measures CPU die temperature.",
+    "Preserve the larger hardware inventory through the owner-only diagnostic normalization boundary and System Monitor, rejecting suspicious names, nonnumeric values and out-of-range temperatures.",
+    "Verify on ASUS: six simultaneous real hwmon channels instead of one; desktop and 390/320-pixel browser screenshots without horizontal overflow. Add Linux/Windows parsing, failure-mode, source-label and NVIDIA regressions.",
+    "Retain the verified Apple Silicon native-addon installation fix from v0.2.200. On Windows, full hardware coverage depends on exposed vendor data; no external driver installation, elevation, or permission changes occur automatically."
   ]
 }

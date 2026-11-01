@@ -5,6 +5,8 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import process from 'node:process';
 import { darwinTemperatureReadings } from './darwin-temperature.mjs';
+import { linuxTemperatureReadings } from './linux-temperature.mjs';
+import { windowsTemperatureReadings } from './windows-temperature.mjs';
 
 const run = promisify(execFile);
 const numeric = value => Number.isFinite(value) && value >= 0 && value <= Number.MAX_SAFE_INTEGER;
@@ -62,35 +64,9 @@ export async function networkRates() {
 
 export async function thermalReadings() {
   if (process.platform === 'darwin') return darwinTemperatureReadings();
-  if (process.platform !== 'linux') return [];
-  const sensors = [];
-  // Linux thermal zones expose millidegrees Celsius; only fixed kernel paths are read.
-  try {
-    const names = (await readdir('/sys/class/thermal')).filter(name => /^thermal_zone\d{1,3}$/.test(name)).slice(0, 16);
-    for (const name of names) {
-      try {
-        const value = Number((await readFile('/sys/class/thermal/' + name + '/temp', 'utf8')).trim()) / 1000;
-        if (Number.isFinite(value) && value >= -40 && value <= 125)
-          sensors.push({ name: 'Thermal ' + name.slice(12), celsius: Number(value.toFixed(1)) });
-      } catch { /* Sensor is optional or permissions deny reading it. */ }
-    }
-  } catch { /* No thermal zone inventory. */ }
-  // hwmon is common on desktop hardware without usable thermal zones.
-  if (!sensors.length) {
-    try {
-      const chips = (await readdir('/sys/class/hwmon')).filter(name => /^hwmon\d{1,3}$/.test(name)).slice(0, 12);
-      for (const chip of chips) {
-        for (let index = 1; index <= 4 && sensors.length < 12; index++) {
-          try {
-            const value = Number((await readFile('/sys/class/hwmon/' + chip + '/temp' + index + '_input', 'utf8')).trim()) / 1000;
-            if (Number.isFinite(value) && value >= -40 && value <= 125)
-              sensors.push({ name: 'Sensor ' + (sensors.length + 1), celsius: Number(value.toFixed(1)) });
-          } catch { /* Not every chip exposes every temperature index. */ }
-        }
-      }
-    } catch { /* No readable hwmon inventory. */ }
-  }
-  return sensors.slice(0, 12);
+  if (process.platform === 'linux') return linuxTemperatureReadings();
+  if (process.platform === 'win32') return windowsTemperatureReadings();
+  return [];
 }
 
 export function parseDiskVolumes(input) {
