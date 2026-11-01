@@ -23,9 +23,28 @@ export function quoteSystemd(value) {
   return `"${String(value).replaceAll('\\', '\\\\').replaceAll('"', '\\"')}"`;
 }
 
-function writeLinuxServiceLauncher(cliPath = globalCliPath(), nodePath = process.execPath) {
+// A systemd user's PATH may resolve system npm even when the CLI lives under nvm.
+// Pin the npm installation target to the CLI's own existing global prefix.
+export function linuxServiceLauncherText(cliPath, nodePath) {
+  if (!path.isAbsolute(cliPath) || !path.isAbsolute(nodePath) || path.basename(path.dirname(cliPath)) !== 'bin') {
+    throw new Error('Linux service needs absolute CLI and Node paths in a global bin directory');
+  }
+  const prefix = path.dirname(path.dirname(cliPath));
   const cliScript = resolvedCliScript(cliPath);
-  const launcher = `#!/bin/sh\nexec ${shellQuote(nodePath)} ${shellQuote(cliScript)} \"$@\"\n`;
+  const lines = [
+    '#!/bin/sh',
+    'NPM_CONFIG_PREFIX=' + shellQuote(prefix),
+    'export NPM_CONFIG_PREFIX',
+    'PATH=' + shellQuote(path.dirname(nodePath)) + ':"$PATH"',
+    'export PATH',
+    'exec ' + shellQuote(nodePath) + ' ' + shellQuote(cliScript) + ' "$@"',
+    '',
+  ];
+  return lines.join('\n');
+}
+
+function writeLinuxServiceLauncher(cliPath = globalCliPath(), nodePath = process.execPath) {
+  const launcher = linuxServiceLauncherText(cliPath, nodePath);
   fs.mkdirSync(path.dirname(linuxServiceLauncherFile), { recursive: true, mode: 0o700 });
   const temporary = `${linuxServiceLauncherFile}.${process.pid}.${Date.now()}.tmp`;
   fs.writeFileSync(temporary, launcher, { mode: 0o700 });

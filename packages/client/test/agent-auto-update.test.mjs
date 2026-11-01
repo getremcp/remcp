@@ -85,6 +85,7 @@ printf '%s\\n' '${modules}'
     deviceId:'fixture-device',
     telemetryEnabled:false,
     updateRecheckDelaysMs:[25, 60],
+    updateCheckMinGapMs:0, // exercise fast, explicitly configured convergence checks
     updateRecheckJitterMs:0,
     runtime:{
       kind:'npm',

@@ -9,7 +9,6 @@ import { nextDeployReconnect } from './agent-deploy-reconnect.mjs';
 const RECONNECT_BASE_MS = 2_000;
 const RECONNECT_FIRST_MS = 500;
 const RECONNECT_MAX_MS = 60_000;
-
 // Higher-level agent owns runtime supervision/telemetry; this controller owns only relay transport.
 export function createAgentRelayConnection({
   agentUrl, serverUrl, deviceToken, deviceId, deviceName,
@@ -22,6 +21,7 @@ export function createAgentRelayConnection({
   let reconnectTimer = null;
   let askedToReconnect = false;
   let requestedReconnectDelayMs = 0;
+  let requestedReconnectReason = '';
   let connectedAt = 0;
   let rapidDeployDisconnects = 0;
   function scheduleReconnect(delay) {
@@ -121,6 +121,8 @@ export function createAgentRelayConnection({
       if (message?.type === 'reconnect') {
         askedToReconnect = true;
         requestedReconnectDelayMs = boundedReconnectDelay(message.delayMs, 150);
+        requestedReconnectReason = ['deploy', 'credentials', 'capacity'].includes(message.reason)
+          ? message.reason : 'transient';
         return;
       }
       if (message?.type === 'request') void respond(ws, message);
@@ -133,37 +135,33 @@ export function createAgentRelayConnection({
       clearPostConnectUpdateChecks();
       for (const controller of inFlight.values()) controller.abort();
       if (isStopping()) return;
-      // 1013 ('reconnect') is what a replica sends before it is replaced by a deployment. The machine
-      // is not down, it is moving: reconnect at once and forget the backoff, so the person and the
-      // model see nothing at all.
+      // A replacement owner or revoked device takes precedence over a reconnect hint.
+      if (code === 1008 || revoked) {
+        console.error('ReMCP access for this device was revoked. Pair the machine again from the ReMCP workspace: remcp connect --server <url> --code <code> --install');
+        return;
+      }
+      if (code === 1012) {
+        console.error('Another ReMCP agent connected for this device; this process will stop. Run one agent per machine (a service manager or the remcp start command).');
+        markStopping();
+        void stop().finally(() => setTimeout(() => process.exit(0), 100));
+        return;
+      }
       if (code === 1013 || askedToReconnect) {
+        // 1013 covers transient overload and relay-store failures, not just deployment.
+        // Preserve a fast first handover while bounding repeated short-lived sessions.
         const reconnect = nextDeployReconnect({
           requestedDelayMs: requestedReconnectDelayMs || 150,
           rapidDisconnects: rapidDeployDisconnects,
           connectionUptimeMs: connectedAt ? Date.now() - connectedAt : 0,
         });
         rapidDeployDisconnects = reconnect.rapidDisconnects;
-        const delayMs = reconnect.delayMs;
+        const reason = requestedReconnectReason || 'transient';
         askedToReconnect = false;
+        requestedReconnectReason = '';
         requestedReconnectDelayMs = 0;
         setReconnects(0);
-        console.log(`ReMCP relay is being redeployed; reconnecting in ${delayMs}ms.`);
-        scheduleReconnect(delayMs);
-        return;
-      }
-      if (code === 1008 || revoked) {
-        // The relay closes with 1008 when the device was revoked. Retrying forever would
-        // hide that from the person at the computer.
-        console.error('ReMCP access for this device was revoked. Pair the machine again from the ReMCP workspace: remcp connect --server <url> --code <code> --install');
-        return;
-      }
-      if (code === 1012) {
-        // 1012 ('service restart') is what the relay sends when another agent process took over this
-        // device. Staying alive would keep a second runtime and a reconnect loop, so this process
-        // stops and leaves the device to the agent that owns the connection.
-        console.error('Another ReMCP agent connected for this device; this process will stop. Run one agent per machine (a service manager or the remcp start command).');
-        markStopping();
-        void stop().finally(() => setTimeout(() => process.exit(0), 100));
+        console.log(`ReMCP relay reconnect (${reason}); retrying in ${reconnect.delayMs}ms.`);
+        scheduleReconnect(reconnect.delayMs);
         return;
       }
       scheduleBackoffReconnect();

@@ -6,7 +6,9 @@ import { fetchUpdateManifest } from './fetch-update-manifest.mjs';
 import { globalCliEntry, globalInstalledVersion, isNewer, restartToApplyUpdate, updateDecision, updateInvocationArgs } from './agent-update.mjs';
 
 export const UPDATE_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
-const UPDATE_CHECK_TIMEOUT_MS = 5000;
+const UPDATE_CHECK_TIMEOUT_MS = 12000;
+// A flapping relay must not trigger update discovery on every successful reconnect.
+const UPDATE_CHECK_RECONNECT_GAP_MS = 30000;
 const POST_CONNECT_UPDATE_RECHECK_DELAYS_MS = Object.freeze([60_000, 5 * 60_000, 15 * 60_000]);
 const POST_CONNECT_UPDATE_RECHECK_JITTER_MS = 30_000;
 const UPDATE_RETRY_COOLDOWN_MS = 30 * 60 * 1000;
@@ -32,6 +34,7 @@ export function createAgentUpdateMonitor({ options, serverUrl, queueEvent, getRu
   let lastAttemptAt = 0;
   let lastUpdateCheckError = '';
   let lastUpdateCheckErrorAt = 0;
+  let lastDiscoveryAt = 0;
 
   function clearPostConnectUpdateChecks() {
     for (const timer of postConnectUpdateTimers) clearTimeout(timer);
@@ -47,16 +50,24 @@ export function createAgentUpdateMonitor({ options, serverUrl, queueEvent, getRu
         : 0;
       const timer = setTimeout(() => {
         postConnectUpdateTimers = postConnectUpdateTimers.filter(candidate => candidate !== timer);
-        void checkForUpdate();
+        void checkForUpdate({ scheduled: true });
       }, delay + jitter);
       timer.unref?.();
       postConnectUpdateTimers.push(timer);
     }
   }
 
-  async function checkForUpdate() {
+  async function checkForUpdate({ scheduled = false } = {}) {
     if (options.autoUpdate === false) return;
     if (updateInFlight) return;
+    const minimumGap = Number.isFinite(Number(options.updateCheckMinGapMs))
+      ? Math.max(0, Math.min(UPDATE_CHECK_RECONNECT_GAP_MS, Number(options.updateCheckMinGapMs)))
+      : UPDATE_CHECK_RECONNECT_GAP_MS;
+    const now = Date.now();
+    // Scheduled bounded convergence polls are distinct from reconnect-triggered discovery.
+    // Do not starve release-pause/Redis-recovery checks behind the reconnect storm cooldown.
+    if (!scheduled && lastDiscoveryAt && now - lastDiscoveryAt < minimumGap) return;
+    lastDiscoveryAt = now;
     try {
       // This request contains no local file payload; the config-derived URL is the explicitly paired relay.
       // codeql[js/file-access-to-http]
