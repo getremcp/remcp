@@ -1,11 +1,11 @@
 {
-  "version": "0.2.199",
-  "title": "Read real CPU, SoC and GPU temperatures on Apple Silicon without privileged access.",
+  "version": "0.2.200",
+  "title": "Build the vetted Apple Silicon temperature addon after safe npm installation.",
   "changes": [
-    "Use an optional, exact-pinned native Apple Silicon sensor adapter to report actual CPU, SoC and GPU measurements through the existing get_system_info.temperatures contract.",
-    "Preserve strictly bounded, allowlisted CPU/SoC/GPU names and finite measured Celsius values; an absent, broken or unsupported sensor remains unavailable rather than returning fabricated 0°C.",
-    "Continue using Linux kernel thermal zones and hwmon for ASUS and other hardware exposing readable sensors. Virtualized Backend and Edge machines without guest thermal devices explicitly remain unknown until an authorized host telemetry source is available.",
-    "Verify the temperature adapter on a physical Apple M1 MacBook without sudo, and cover malformed/absent native sensor values, backend normalization and public packaging in the release tests.",
-    "Keep native dependencies optional on unsupported platforms. Publish coordinated immutable runtime/client packages through public-first release checks before merging private source or deploying to production."
+    "Keep global npm installs and agent auto-updates protected by --ignore-scripts; explicitly build only the reviewed macos-temperature-sensor@2.1.1 native addon if the installed first-party runtime pins that exact optional package and script.",
+    "Verify module paths, installed manifests and build directories before invoking the bounded, rootless node-gyp rebuild. Reject arbitrary package scripts, symlinks, unexpected versions and unsafe paths.",
+    "Support both fresh macOS installs and rollback-safe transactional updates. A missing compiler or unsupported sensor remains unavailable without disabling other ReMCP tools.",
+    "Reproduce the 0.2.199 failure on a real M1 Mac: --ignore-scripts leaves the native .node file absent. Confirm the approved build produces real CPU, SoC and GPU Celsius measurements without sudo.",
+    "Add deterministic installer, rollback, optional failure and security regression tests; retain the release-first public npm/tag verification before private merge and deployment."
   ]
 }

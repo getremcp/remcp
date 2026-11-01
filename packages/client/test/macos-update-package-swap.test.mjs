@@ -30,11 +30,11 @@ function seedOldInstall(prefix) {
   symlinkSync('../lib/node_modules/@remcp/remcp/bin/remcp.mjs', path.join(prefix, 'bin', 'remcp'));
 }
 
-function runUpdateHelper(root, npmBody) {
+function runUpdateHelper(root, npmBody, { initial = false } = {}) {
   const prefix = path.join(root, 'prefix');
   const bin = path.join(root, 'bin');
   mkdirSync(bin, { recursive:true });
-  seedOldInstall(prefix);
+  if (!initial) seedOldInstall(prefix);
   executable(path.join(bin, 'npm'), npmBody);
   const env = {
     ...process.env,
@@ -44,8 +44,9 @@ function runUpdateHelper(root, npmBody) {
     REMCP_NPM:path.join(bin, 'npm'),
     PATH:bin + ':' + process.env.PATH,
   };
-  const code = 'import { npmGlobalUpdate } from ' + JSON.stringify(serviceUrl) + ';\n'
-    + "npmGlobalUpdate(['@remcp/remcp','@remcp/runtime'], '@remcp/remcp@0.2.54', '@remcp/runtime@0.2.54');\n";
+  const code = 'import { npmGlobalInstall, npmGlobalUpdate } from ' + JSON.stringify(serviceUrl) + ';\n'
+    + (initial ? "npmGlobalInstall('@remcp/remcp@0.2.54', '@remcp/runtime@0.2.54');\n"
+      : "npmGlobalUpdate(['@remcp/remcp','@remcp/runtime'], '@remcp/remcp@0.2.54', '@remcp/runtime@0.2.54');\n");
   const result = spawnSync(process.execPath, ['--input-type=module', '-e', code], { env, encoding:'utf8' });
   return { prefix, result };
 }
@@ -110,4 +111,64 @@ test('macOS global update restores the previous live pair when npm leaves a part
   assert.equal(lstatSync(path.join(prefix, 'bin', 'remcp')).isSymbolicLink(), true, 'the old CLI bin link is restored too');
   assert.deepEqual(readdirSync(prefix).filter(name => name.startsWith('.remcp-update-backup-')), []);
   assert.equal(existsSync(path.join(packageDir(prefix, '@remcp/runtime'), 'src', 'partial-only')), false);
+});
+
+test('macOS transactional update builds only the exact reviewed native addon after safe install', () => {
+  const root = mkdtempSync(path.join(os.tmpdir(), 'remcp-mac-native-update-'));
+  const npmBody = [
+    'if [ "$1" = "prefix" ] && [ "$2" = "--global" ]; then printf "%s\\n" "$REMCP_TEST_PREFIX"; exit 0; fi',
+    'if [ "$1" = "install" ]; then',
+    '  case " $* " in *" --ignore-scripts "*) ;; *) exit 94;; esac',
+    '  dir="$REMCP_TEST_PREFIX/lib/node_modules/@remcp/runtime"',
+    '  addon="$dir/node_modules/macos-temperature-sensor"',
+    '  mkdir -p "$REMCP_TEST_PREFIX/lib/node_modules/@remcp/remcp/bin" "$addon" "$REMCP_TEST_PREFIX/bin"',
+    '  printf \'{"name":"@remcp/remcp","version":"0.2.54"}\\n\' > "$REMCP_TEST_PREFIX/lib/node_modules/@remcp/remcp/package.json"',
+    '  printf \'{"name":"@remcp/runtime","version":"0.2.54","optionalDependencies":{"macos-temperature-sensor":"2.1.1"}}\\n\' > "$dir/package.json"',
+    '  printf \'{"name":"macos-temperature-sensor","version":"2.1.1","scripts":{"install":"node-gyp rebuild"}}\\n\' > "$addon/package.json"',
+    '  printf "client\\n" > "$REMCP_TEST_PREFIX/lib/node_modules/@remcp/remcp/bin/remcp.mjs"',
+    '  ln -s ../lib/node_modules/@remcp/remcp/bin/remcp.mjs "$REMCP_TEST_PREFIX/bin/remcp"',
+    '  exit 0',
+    'fi',
+    'if [ "$1" = "--prefix" ]; then',
+    '  case " $* " in *" run install "*" --ignore-scripts=false "*) ;; *) exit 95;; esac',
+    '  case "$2" in "$REMCP_TEST_PREFIX"/lib/node_modules/@remcp/runtime/node_modules/macos-temperature-sensor) ;; *) exit 96;; esac',
+    '  mkdir -p "$2/build/Release"',
+    '  printf "trusted-native-fixture\\n" > "$2/build/Release/mac_temp_native.node"',
+    '  exit 0',
+    'fi',
+    'exit 97',
+  ].join('\n');
+  const { prefix, result } = runUpdateHelper(root, npmBody);
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  const built = path.join(packageDir(prefix, '@remcp/runtime'),
+    'node_modules', 'macos-temperature-sensor', 'build', 'Release', 'mac_temp_native.node');
+  assert.match(readFileSync(built, 'utf8'), /trusted-native-fixture/);
+  assert.deepEqual(readdirSync(prefix).filter(name => name.startsWith('.remcp-update-backup-')), []);
+});
+
+test('clean macOS global install also builds the reviewed temperature addon', () => {
+  const root = mkdtempSync(path.join(os.tmpdir(), 'remcp-mac-native-first-install-'));
+  const npmBody = [
+    'if [ "$1" = "prefix" ] && [ "$2" = "--global" ]; then echo "$REMCP_TEST_PREFIX"; exit 0; fi',
+    'if [ "$1" = "install" ]; then',
+    '  case " $* " in *" --ignore-scripts "*) ;; *) exit 91;; esac',
+    '  addon="$REMCP_TEST_PREFIX/lib/node_modules/@remcp/runtime/node_modules/macos-temperature-sensor"',
+    '  mkdir -p "$addon"',
+    "  echo '{\"name\":\"@remcp/runtime\",\"version\":\"0.2.54\",\"optionalDependencies\":{\"macos-temperature-sensor\":\"2.1.1\"}}' > \"$REMCP_TEST_PREFIX/lib/node_modules/@remcp/runtime/package.json\"",
+    "  echo '{\"name\":\"macos-temperature-sensor\",\"version\":\"2.1.1\",\"scripts\":{\"install\":\"node-gyp rebuild\"}}' > \"$addon/package.json\"",
+    '  exit 0',
+    'fi',
+    'if [ "$1" = "--prefix" ]; then',
+    '  case " $* " in *" run install "*" --ignore-scripts=false "*) ;; *) exit 92;; esac',
+    '  mkdir -p "$2/build/Release"',
+    '  echo built > "$2/build/Release/mac_temp_native.node"',
+    '  exit 0',
+    'fi',
+    'exit 93',
+  ].join('\n');
+  const { prefix, result } = runUpdateHelper(root, npmBody, { initial: true });
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  const binary = path.join(packageDir(prefix, '@remcp/runtime'),
+    'node_modules', 'macos-temperature-sensor', 'build', 'Release', 'mac_temp_native.node');
+  assert.equal(readFileSync(binary, 'utf8').trim(), 'built');
 });

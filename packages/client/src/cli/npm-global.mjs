@@ -4,6 +4,7 @@ import process from 'node:process';
 import { resolveNpm } from '../npm.mjs';
 import { PACKAGE_NAME } from '../version.mjs';
 import { home, npm } from './env.mjs';
+import { buildVettedMacTemperatureAddon } from './mac-native-temperature.mjs';
 import { output, run } from './shell.mjs';
 
 export function servicePlatform() {
@@ -34,6 +35,16 @@ function npmGlobalInstallArgs(specs, { preferOnline = false } = {}) {
 
 export function npmGlobalInstall(...specs) {
   run(npm.command, [...npm.args, ...npmGlobalInstallArgs(specs)]);
+  if (servicePlatform() === 'darwin' && specs.some(spec => /^@remcp\/runtime@[0-9]/.test(spec))) {
+    try {
+      buildVettedMacTemperatureAddon({
+        runtimeRoot:globalPackagePath(globalPrefix(), '@remcp/runtime'), resolved:npm, runCommand:run,
+      });
+    } catch {
+      // Native temperature is optional; a second prefix lookup cannot undo a successful CLI install.
+      console.error('ReMCP: optional macOS temperature sensor unavailable; other tools remain functional.');
+    }
+  }
 }
 
 function pathEntryExists(file) {
@@ -110,6 +121,9 @@ function transactionalMacGlobalInstall({ resolved, prefix, packageNames, specs, 
     if (uniqueNames.includes(PACKAGE_NAME)) moveAside(path.join(prefix, 'bin', 'remcp'), 'bin-remcp');
 
     run(resolved.command, [...resolved.args, ...npmGlobalInstallArgs(specs, { preferOnline })]);
+    if (uniqueNames.includes('@remcp/runtime')) buildVettedMacTemperatureAddon({
+      runtimeRoot:globalPackagePath(prefix, '@remcp/runtime'), resolved, runCommand:run,
+    });
   } catch (error) {
     restore(error);
     throw error;
