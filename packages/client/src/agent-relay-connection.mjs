@@ -4,6 +4,7 @@ import process from 'node:process';
 import WebSocket from 'ws';
 import { VERSION } from './version.mjs';
 import { boundedReconnectDelay, jitter, sendRelayMessage } from './agent-utilities.mjs';
+import { nextDeployReconnect } from './agent-deploy-reconnect.mjs';
 
 const RECONNECT_BASE_MS = 2_000;
 const RECONNECT_FIRST_MS = 500;
@@ -21,6 +22,8 @@ export function createAgentRelayConnection({
   let reconnectTimer = null;
   let askedToReconnect = false;
   let requestedReconnectDelayMs = 0;
+  let connectedAt = 0;
+  let rapidDeployDisconnects = 0;
   function scheduleReconnect(delay) {
     if (isStopping() || revoked || reconnectTimer) return;
     // Keep the upper-bound guard in control flow immediately before the timer sink. CodeQL's
@@ -88,6 +91,7 @@ export function createAgentRelayConnection({
     });
     setSocket(ws);
     ws.on('open', () => {
+      connectedAt = Date.now();
       if (reconnectTimer) {
         clearTimeout(reconnectTimer);
         reconnectTimer = null;
@@ -133,7 +137,13 @@ export function createAgentRelayConnection({
       // is not down, it is moving: reconnect at once and forget the backoff, so the person and the
       // model see nothing at all.
       if (code === 1013 || askedToReconnect) {
-        const delayMs = requestedReconnectDelayMs || 150;
+        const reconnect = nextDeployReconnect({
+          requestedDelayMs: requestedReconnectDelayMs || 150,
+          rapidDisconnects: rapidDeployDisconnects,
+          connectionUptimeMs: connectedAt ? Date.now() - connectedAt : 0,
+        });
+        rapidDeployDisconnects = reconnect.rapidDisconnects;
+        const delayMs = reconnect.delayMs;
         askedToReconnect = false;
         requestedReconnectDelayMs = 0;
         setReconnects(0);

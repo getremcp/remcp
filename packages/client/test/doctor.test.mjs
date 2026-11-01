@@ -18,6 +18,8 @@ test('doctor resolves the runtime, performs a real handshake and reports a verdi
       cwd: new URL('..', import.meta.url).pathname,
       env: { ...process.env, REMCP_CONFIG_DIR: configDir },
       encoding: 'utf8',
+      timeout: 30_000,
+      killSignal: 'SIGKILL',
     });
     const output = `${result.stdout}`;
     const start = output.indexOf('{');
@@ -36,4 +38,11 @@ test('doctor resolves the runtime, performs a real handshake and reports a verdi
   } finally {
     rmSync(configDir, { recursive: true, force: true });
   }
+});
+
+test('diagnostic deadline rejects stalled handshakes without AbortSignal cooperation', async () => {
+  const { doctorDeadline } = await import('../src/cli/doctor.mjs');
+  const started = Date.now();
+  await assert.rejects(doctorDeadline(new Promise(() => {}), 30), /timed out/);
+  assert.ok(Date.now() - started < 500);
 });

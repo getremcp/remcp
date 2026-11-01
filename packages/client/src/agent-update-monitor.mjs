@@ -2,6 +2,7 @@ import { existsSync } from 'node:fs';
 import { spawn } from 'node:child_process';
 import process from 'node:process';
 import { VERSION } from './version.mjs';
+import { fetchUpdateManifest } from './fetch-update-manifest.mjs';
 import { globalCliEntry, globalInstalledVersion, isNewer, restartToApplyUpdate, updateDecision, updateInvocationArgs } from './agent-update.mjs';
 
 export const UPDATE_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
@@ -59,9 +60,11 @@ export function createAgentUpdateMonitor({ options, serverUrl, queueEvent, getRu
     try {
       // This request contains no local file payload; the config-derived URL is the explicitly paired relay.
       // codeql[js/file-access-to-http]
-      const response = await fetch(`${serverUrl}/api/agent/version`, { redirect: 'error', signal: AbortSignal.timeout(UPDATE_CHECK_TIMEOUT_MS) });
-      if (!response.ok) return;
-      const advertised = await response.json();
+      // Bound both connection and JSON body parsing even if platform fetch ignores AbortSignal.
+      const advertised = await fetchUpdateManifest(`${serverUrl}/api/agent/version`, {
+        timeoutMs: UPDATE_CHECK_TIMEOUT_MS,
+      });
+      if (!advertised) return;
       const minimum = advertised.minimum;
       if (minimum && isNewer(minimum, VERSION)) {
         console.error(`ReMCP ${VERSION} is older than the minimum supported agent ${minimum}; update with: remcp update`);

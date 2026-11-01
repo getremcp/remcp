@@ -15,6 +15,21 @@ import { npm, runtimeConfigFile } from './env.mjs';
 // that would take the device offline.
 // One real handshake with the local runtime, plus everything needed to explain a failure: where the
 // entry resolved, whether the package is installed, the node that would run it, and the exact error.
+// A stuck local MCP transport must not hold remcp doctor indefinitely.
+export async function doctorDeadline(promise, timeoutMs) {
+  let timer;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error('Runtime diagnostic timed out after ' + timeoutMs + 'ms')), timeoutMs);
+      }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export async function diagnoseLocalRuntime(cfg) {
   const packageName = cfg.runtime?.packageName || '';
   const diagnosis = {
@@ -54,16 +69,24 @@ export async function diagnoseLocalRuntime(cfg) {
       { name: 'remcp-doctor', version: VERSION },
       { versionNegotiation:{ mode:'auto' } },
     );
-    const stdio = new StdioClientTransport({ command: process.execPath, args: [entry], env: { ...process.env }, maxBufferSize: 4 * 1024 * 1024 });
-    const stderr = [];
-    stdio.onerror = error => stderr.push(String(error?.message || error));
-    await client.connect(stdio);
-    diagnosis.runtimeVersion = client.getServerVersion()?.version || 'unknown';
-    const tools = await client.listTools(undefined, { timeout: 20000 });
-    diagnosis.tools = tools.tools.length;
-    diagnosis.verdict = 'ok';
-    await client.close();
-    return diagnosis;
+    // Keep runtime stderr off the inherited CLI pipe: it must not block a
+    // parent test runner when a diagnostic child remains active.
+    const stdio = new StdioClientTransport({
+      command: process.execPath, args: [entry], env: { ...process.env },
+      stderr: 'pipe', maxBufferSize: 4 * 1024 * 1024,
+    });
+    stdio.stderr?.on('data', () => {}); // drain; do not log potentially sensitive output
+    try {
+      await doctorDeadline(client.connect(stdio), 20_000);
+      diagnosis.runtimeVersion = client.getServerVersion()?.version || 'unknown';
+      const tools = await doctorDeadline(client.listTools(undefined, { timeout: 20_000 }), 25_000);
+      diagnosis.tools = tools.tools.length;
+      diagnosis.verdict = 'ok';
+      return diagnosis;
+    } finally {
+      // Clean up even on a failed handshake. Never let close hang the doctor.
+      await doctorDeadline(client.close(), 6_000).catch(() => {});
+    }
   } catch (error) {
     diagnosis.verdict = 'runtime-handshake-failed';
     diagnosis.error = error instanceof Error ? error.message : String(error);

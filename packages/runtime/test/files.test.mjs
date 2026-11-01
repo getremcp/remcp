@@ -178,3 +178,38 @@ test('get_runtime_stats counts local tool usage', async () => {
   assert.equal(typeof stats.sessions.processSessions, 'number');
   assert.equal(stats.telemetry.transport, 'paired-agent-only');
 });
+
+
+test('get_file_info reports files and directories but rejects symlink leaves', async () => {
+  const { symlinkSync } = await import('node:fs');
+  const regular = join(root, 'metadata-regular.txt');
+  const directory = join(root, 'metadata-directory');
+  const symlink = join(root, 'metadata-link');
+  writeFileSync(regular, 'file\n');
+  mkdirSync(directory, { recursive: true });
+  symlinkSync(regular, symlink);
+  const fileInfo = JSON.parse(body(await invokeTool('get_file_info', { path: regular })));
+  const dirInfo = JSON.parse(body(await invokeTool('get_file_info', { path: directory })));
+  assert.equal(fileInfo.type, 'file');
+  assert.equal(dirInfo.type, 'directory');
+  assert.equal(isError(await invokeTool('get_file_info', { path: symlink })), true);
+});
+
+test('read_multiple_files preserves request order with parallel workers and isolated failures', async () => {
+  const entries = ['parallel-a.txt', 'parallel-b.txt', 'parallel-c.txt', 'parallel-d.txt'].map(name => join(root, name));
+  entries.forEach((name, index) => writeFileSync(name, `entry-${index}\n`));
+  const missing = join(root, 'parallel-missing.txt');
+  const output = body(await invokeTool('read_multiple_files', { paths: [entries[3], missing, entries[0], entries[2], entries[1]] }));
+  const labels = ['parallel-d.txt:', 'parallel-missing.txt:', 'parallel-a.txt:', 'parallel-c.txt:', 'parallel-b.txt:'];
+  for (let index = 1; index < labels.length; index++) {
+    assert.ok(output.indexOf(labels[index - 1]) < output.indexOf(labels[index]), `out-of-order: ${labels[index]}`);
+  }
+  assert.match(output, /parallel-missing.txt: error/);
+  assert.match(output, /entry-3/);
+});
+
+test('read_multiple_files rejects oversized batches rather than starting unbounded I/O', async () => {
+  const paths = Array.from({ length: 51 }, (_, index) => join(root, `oversized-${index}.txt`));
+  const result = await invokeTool('read_multiple_files', { paths });
+  assert.equal(isError(result), true);
+});

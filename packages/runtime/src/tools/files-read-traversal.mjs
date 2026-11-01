@@ -144,27 +144,36 @@ ${page.slice.join('\n')}`);
 export async function readMultipleFilesTool(args, extra = {}) {
   if (!Array.isArray(args.paths) || !args.paths.length) fail('paths must be a non-empty array');
   if (args.paths.length > 50) fail('paths accepts at most 50 entries per call');
-  const sections = [];
-  for (const entry of args.paths) {
-    throwIfCancelled(extra.signal);
-    let absolute;
-    try {
-      absolute = await resolveSafePath(entry, 'paths[]');
-    } catch (error) {
-      sections.push(`${String(entry)}: error - ${describeFilesystemFailure(error, { path: error?.path })}`);
-      continue;
-    }
-    try {
-      const { content } = await readTextFile(absolute);
-      const lines = splitLines(content);
-      const limit = liveConfig('maxReadLines');
-      const slice = lines.slice(0, limit);
-      const suffix = lines.length > limit ? `\n… ${lines.length - limit} more lines truncated` : '';
-      sections.push(`${displayPath(absolute)}:\n${slice.join('\n')}${suffix}`);
-    } catch (error) {
-      sections.push(`${displayPath(absolute)}: error - ${describeFilesystemFailure(error, { path: error?.path })}`);
+  // Four bounded I/O workers avoid serial head-of-line blocking while retaining
+  // deterministic input order and the existing per-file error behavior.
+  const sections = new Array(args.paths.length);
+  let cursor = 0;
+  async function worker() {
+    while (true) {
+      throwIfCancelled(extra.signal);
+      const index = cursor++;
+      if (index >= args.paths.length) return;
+      const entry = args.paths[index];
+      let absolute;
+      try {
+        absolute = await resolveSafePath(entry, 'paths[]');
+      } catch (error) {
+        sections[index] = `${String(entry)}: error - ${describeFilesystemFailure(error, { path: error?.path })}`;
+        continue;
+      }
+      try {
+        const { content } = await readTextFile(absolute);
+        const lines = splitLines(content);
+        const limit = liveConfig('maxReadLines');
+        const slice = lines.slice(0, limit);
+        const suffix = lines.length > limit ? `\n… ${lines.length - limit} more lines truncated` : '';
+        sections[index] = `${displayPath(absolute)}:\n${slice.join('\n')}${suffix}`;
+      } catch (error) {
+        sections[index] = `${displayPath(absolute)}: error - ${describeFilesystemFailure(error, { path: error?.path })}`;
+      }
     }
   }
+  await Promise.all(Array.from({ length: Math.min(4, args.paths.length) }, worker));
   return text(sections.join('\n\n'));
 }
 
@@ -288,9 +297,16 @@ export async function openPathForInfo(absolute) {
     directory = await openDirectoryPath(absolute);
     return { info: await directory.handle.stat(), close: directory.close };
   } catch (directoryError) {
-    const canTryFile = directoryError?.code === 'ENOTDIR'
+    let canTryFile = directoryError?.code === 'ENOTDIR'
       || directoryError?.code === 'EISDIR'
       || (!directoryError?.code && /not a directory/i.test(directoryError?.message || ''));
+    // macOS/BSD lstat rejects a regular file when opening it as a directory.
+    // Retry only regular-file leaves; never bypass canonical allowed-root checks.
+    if (!canTryFile && process.platform !== 'linux'
+        && directoryError?.message === 'Filesystem path component is not a safe directory') {
+      const leaf = await lstat(absolute).catch(() => null);
+      canTryFile = Boolean(leaf?.isFile() && !leaf?.isSymbolicLink());
+    }
     if (!canTryFile) throw directoryError;
   }
   const opened = await openEntryAtPath(absolute, READ_NOFOLLOW_NONBLOCK);

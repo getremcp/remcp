@@ -1,12 +1,12 @@
 {
-  "version": "0.2.196",
-  "title": "Separate macOS physical RAM occupancy from real kernel memory pressure.",
+  "version": "0.2.197",
+  "title": "Improve macOS filesystem compatibility, multi-file read performance and agent reliability.",
   "changes": [
-    "Add bounded, read-only memory_pressure -Q and kern.memorystatus_vm_pressure_level sampling on macOS, with explicit method/provenance labels and nullable values when unavailable.",
-    "Keep physical RAM occupancy, effective free percentage and kernel pressure level as separate measurements; never label tiny os.freemem() as kernel pressure.",
-    "Add additive PostgreSQL diagnostic columns and owner-scoped history/cache propagation; legacy rows stay unknown rather than being backfilled or interpolated across method changes.",
-    "Use kernel pressure for macOS warning/critical states in Device Overview, Monitor, Fleet and diagnostics, while retaining clearly labeled physical occupancy.",
-    "Verify real Apple Silicon sampling (30% effective free, warning level), synthetic 99%/37%/warning UI cases, build/type checks and targeted unit tests.",
-    "Ship the public client/runtime release before any private server merge; no production data mutation or permission change."
+    "Fix regular-file metadata on macOS without relaxing allowed-root or symbolic-link protections.",
+    "Read multiple requested files with at most four concurrent workers while preserving order, cancellation, per-file errors and output limits.",
+    "Bound agent version checks including stalled response bodies; avoid reconnect storms during repeated relay redeployments.",
+    "Bound the local CLI diagnostic handshake and cleanup so stuck runtime children cannot indefinitely block remcp doctor.",
+    "Add focused regression tests for symlinks, path metadata, concurrent reads, update timeouts, reconnection and doctor cleanup.",
+    "Publish public runtime and client together before merging private changes and deploying to paired agents."
   ]
 }
