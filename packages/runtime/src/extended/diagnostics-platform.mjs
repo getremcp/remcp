@@ -25,6 +25,7 @@ import {
   spawnDetached,
   unavailable,
 } from './common.mjs';
+import { parseWindowsServiceStatus } from './windows-scm-status.mjs';
 
 
 function durationSpec(value) {
@@ -52,6 +53,16 @@ export async function serviceTool(args) {
     }
     const safe = escapePowerShellSingle(name);
     if (action === 'status') {
+      const scm = process.env.SystemRoot
+        ? path.join(process.env.SystemRoot, 'System32', 'sc.exe') : 'sc.exe';
+      const [state, config] = await Promise.all([
+        runFile(scm, ['query', name], { label: 'Windows SCM state', timeout: 8_000, allowFailure: true }),
+        runFile(scm, ['qc', name], { label: 'Windows SCM config', timeout: 8_000, allowFailure: true }),
+      ]);
+      if (state.code === 0 && config.code === 0) {
+        const parsed = parseWindowsServiceStatus(state.stdout, config.stdout, name);
+        if (parsed) return text(JSON.stringify(parsed));
+      }
       const { stdout } = await runPowerShell(`Get-Service -Name '${safe}' | Select-Object Name,DisplayName,Status,StartType | ConvertTo-Json -Compress`, { label: 'service status' });
       return text(stdout.trim());
     }

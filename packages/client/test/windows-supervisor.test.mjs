@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { windowsServiceLauncherText, windowsTaskReliabilityCommand } from '../src/cli/windows-supervisor.mjs';
+import { windowsServiceLauncherText, windowsTaskReliabilityCommand, windowsTaskScriptText } from '../src/cli/windows-supervisor.mjs';
 
 test('Windows wrapper pins its private install and re-launches after every agent exit', () => {
   const launcher = windowsServiceLauncherText(
@@ -13,6 +13,14 @@ test('Windows wrapper pins its private install and re-launches after every agent
   assert.match(launcher, /:remcp_restart\r\ncall "[^"]+remcp\.cmd" start --service\r\n/);
   assert.match(launcher, /ping\.exe -n 6 127\.0\.0\.1 >nul\r\ngoto remcp_restart/);
   assert.doesNotMatch(launcher, /powershell|cmd\.exe \/c/i);
+});
+
+test('Windows scheduled task hides the persistent CMD process without detaching its lifetime', () => {
+  const script = windowsTaskScriptText('C:\\Users\\anton\\.config\\remcp\\remcp-agent.cmd');
+  assert.match(script, /WScript\.Shell/);
+  assert.match(script, /remcpShell\.Run Chr\(34\).* 0, True/);
+  assert.doesNotMatch(script, /powershell\.exe|cmd\.exe \/c/i);
+  assert.throws(() => windowsTaskScriptText('C:\\unsafe\\bad" & MsgBox(1) & ".cmd'), /Invalid ReMCP Windows task launcher/);
 });
 
 test('Windows wrapper preserves escaped percent signs in unusual private paths', () => {

@@ -71,6 +71,44 @@ export function windowsServiceLauncherText(cliPath, nodePath, { localAppData = p
   ].join('\r\n');
 }
 
+export const WINDOWS_TASK_MARKER = "' ReMCP managed scheduled task (do not edit)";
+
+// WScript is a GUI subsystem executable: it starts the existing CMD supervisor
+// with SW_HIDE, while waiting for it so Task Scheduler still owns its lifetime.
+// A Task Scheduler "Hidden" setting only hides the task in its UI, not the console.
+export function windowsTaskScriptText(launcherPath) {
+  if (typeof launcherPath !== 'string' || !launcherPath ||
+      /["\0\r\n]/.test(launcherPath) ||
+      !(path.isAbsolute(launcherPath) || path.win32.isAbsolute(launcherPath))) {
+    throw new Error('Invalid ReMCP Windows task launcher');
+  }
+  return [
+    WINDOWS_TASK_MARKER,
+    'Set remcpShell = CreateObject("WScript.Shell")',
+    `remcpShell.Run Chr(34) & "${launcherPath}" & Chr(34), 0, True`,
+    '',
+  ].join('\r\n');
+}
+
+export function windowsTaskScriptInstalled(file, expectedLauncherPath = null) {
+  try {
+    const text = fs.readFileSync(file, 'utf16le');
+    const lines = text.replace(/^\uFEFF/, '').split('\r\n');
+    if (!text.startsWith('\uFEFF') || lines.length !== 4 ||
+        lines[0] !== WINDOWS_TASK_MARKER ||
+        lines[1] !== 'Set remcpShell = CreateObject("WScript.Shell")' ||
+        lines[3] !== '') return false;
+    const match = lines[2].match(/^remcpShell\.Run Chr\(34\) & "([^"]+)" & Chr\(34\), 0, True$/);
+    if (!match) return false;
+    const launcher = match[1];
+    const absolute = path.isAbsolute(launcher) || path.win32.isAbsolute(launcher);
+    const expected = expectedLauncherPath === null ||
+      path.win32.normalize(launcher).toLowerCase() === path.win32.normalize(expectedLauncherPath).toLowerCase();
+    return absolute && expected &&
+      path.posix.basename(launcher.replaceAll('\\', '/')) === 'remcp-agent.cmd';
+  } catch { return false; }
+}
+
 export const WINDOWS_STARTUP_MARKER = "' ReMCP managed user startup (do not edit)";
 
 // Start the existing private launcher in the interactive user's session without displaying

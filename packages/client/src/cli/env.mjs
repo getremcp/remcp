@@ -17,6 +17,7 @@ export const macServiceFile = path.join(home, 'Library', 'LaunchAgents', `${macS
 export const macLogFile = path.join(home, 'Library', 'Logs', 'remcp-agent.log');
 export const windowsTaskName = 'ReMCP Agent';
 export const windowsServiceLauncherFile = path.join(configDir, 'remcp-agent.cmd');
+export const windowsTaskScriptFile = path.join(configDir, 'remcp-agent.vbs');
 // Task Scheduler may refuse to create a task for a standard Windows account.
 // This per-user Startup folder runs without administrator privileges.
 export const windowsStartupScriptFile = path.join(

@@ -15,9 +15,9 @@ export { macLaunchDomain, ensureMacCliCommand, installMacService } from './servi
 import { PACKAGE_NAME, VERSION } from '../version.mjs';
 
 import { saveConfig } from './config.mjs';
-import { configDir, home, linuxServiceFile, linuxServiceLauncherFile, macServiceFile, macServiceLabel, windowsServiceLauncherFile, windowsStartupScriptFile, windowsTaskName } from './env.mjs';
+import { configDir, home, linuxServiceFile, linuxServiceLauncherFile, macServiceFile, macServiceLabel, windowsServiceLauncherFile, windowsTaskScriptFile, windowsStartupScriptFile, windowsTaskName } from './env.mjs';
 import { run } from './shell.mjs';
-import { windowsServiceLauncherText, windowsTaskReliabilityCommand, windowsTaskAbsenceCommand, windowsBatchUnsafeProfile, windowsStartupScriptText, windowsStartupScriptInstalled } from './windows-supervisor.mjs';
+import { windowsServiceLauncherText, windowsTaskReliabilityCommand, windowsTaskAbsenceCommand, windowsBatchUnsafeProfile, windowsTaskScriptText, windowsTaskScriptInstalled, windowsStartupScriptText, windowsStartupScriptInstalled } from './windows-supervisor.mjs';
 import { ensureWindowsSupervisorKey, windowsSupervisorCommand } from './windows-user-supervisor.mjs';
 import { scheduleWindowsTaskRestart } from './windows-task-restart.mjs';
 
@@ -77,6 +77,20 @@ export function writeWindowsServiceLauncher(cliPath = globalCliPath(), nodePath 
   fs.writeFileSync(temporary, launcher, { mode:0o700 });
   fs.renameSync(temporary, windowsServiceLauncherFile);
   return windowsServiceLauncherFile;
+}
+
+function writeWindowsTaskScript(launcherFile) {
+  if (fs.existsSync(windowsTaskScriptFile) && !windowsTaskScriptInstalled(windowsTaskScriptFile, windowsServiceLauncherFile)) {
+    throw new Error('The ReMCP scheduled task script is not owned by ReMCP; refusing to overwrite it');
+  }
+  const script = windowsTaskScriptText(launcherFile);
+  fs.mkdirSync(configDir, { recursive:true, mode:0o700 });
+  const temporary = `${windowsTaskScriptFile}.${process.pid}.${Date.now()}.tmp`;
+  try {
+    fs.writeFileSync(temporary, '\uFEFF' + script, { flag:'wx', encoding:'utf16le', mode:0o600 });
+    fs.renameSync(temporary, windowsTaskScriptFile);
+  } finally { try { fs.unlinkSync(temporary); } catch {} }
+  return windowsTaskScriptFile;
 }
 
 function installWindowsUserStartup(cliPath, nodePath) {
@@ -149,7 +163,10 @@ export function installWindowsService(cliPath = globalCliPath(), { nodePath = pr
     return;
   }
   const launcherFile = writeWindowsServiceLauncher(cliPath, nodePath);
-  const command = `"${launcherFile}"`;
+  const taskScript = writeWindowsTaskScript(launcherFile);
+  // WScript has no console; its hidden CMD child remains attached until it exits.
+  // /IT keeps desktop/UI automation in the signed-in user's session.
+  const command = `wscript.exe //B //Nologo "${taskScript}"`;
   // Current-user interactive tasks need /IT. /RL LIMITED avoids requiring elevation.
   // An organization may still disable creation of all tasks by standard users.
   const created = spawnSync('schtasks.exe',
@@ -411,6 +428,7 @@ export function uninstallPersistentService() {
     }
     spawnSync('schtasks.exe', ['/End', '/TN', windowsTaskName], { stdio: 'ignore' });
     spawnSync('schtasks.exe', ['/Delete', '/TN', windowsTaskName, '/F'], { stdio: 'ignore' });
+    try { if (windowsTaskScriptInstalled(windowsTaskScriptFile, windowsServiceLauncherFile)) fs.unlinkSync(windowsTaskScriptFile); } catch {}
     try { fs.unlinkSync(windowsServiceLauncherFile); } catch {}
   }
 }

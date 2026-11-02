@@ -1,14 +1,12 @@
 {
-  "version": "0.2.213",
-  "title": "Execute Windows commands and desktop actions reliably, and retain a runnable managed agent after restart.",
+  "version": "0.2.214",
+  "title": "Synchronize published ReMCP 0.2.213 Windows improvements and accelerate Windows service status.",
   "changes": [
-    "Preserve quoted CMD executable paths, arguments and ampersands; use the correct switches for a configured PowerShell shell.",
-    "Discover Edge in Program Files (x86), and keep all generated Windows UI action scripts parseable when no numeric range value is supplied.",
-    "Clear the Windows clipboard through its native API, including empty writes, and honor ignored-file searches with ripgrep.",
-    "Read Windows clipboard text and PowerShell output as UTF-8 so Unicode names, clipboard contents and Chinese/Japanese/Cyrillic text are not corrupted.",
-    "Apply browser scroll requests immediately even when the page uses CSS smooth scrolling, instead of reporting success with an unchanged position.",
-    "Reject substituted screenshot source leaves using precise file identity checks; preserve existing filesystem confinement.",
-    "Restore the npm command shim from persisted Windows service module paths and defer remote policy-change restarts until the command can acknowledge completion.",
-    "Verify restart-helper handoff with a disposable Interactive/Limited Scheduled Task; make runtime command fixtures portable and test asynchronous compact terminal output correctly."
+    "Preserve the full published 0.2.213 runtime and Windows client fixes, including Unicode clipboard reading, signed scroll deltas, startup recovery and terminal quoting; retain their regression tests.",
+    "Query Windows SCM through native sc.exe for read-only service status, avoiding PowerShell startup delays on heavily loaded virtual machines while preserving JSON status fields.",
+    "Fall back to the previous PowerShell service reader for unexpected or localized SCM output; keep all service mutation permissions unchanged.",
+    "Add a native Windows CI check for the service status fast path and diagnostics module API contract.",
+    "Start the managed Windows logon task through a hidden Windows Script Host wrapper, so the persistent ReMCP agent no longer leaves a visible terminal window; retain interactive, least-privilege startup, crash recovery and safe uninstall.",
+    "Preserve public-first source parity, authentication constraints, path restrictions and normal release checks; do not replace production agents before package release."
   ]
 }
