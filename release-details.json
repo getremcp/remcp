@@ -1,11 +1,10 @@
 {
-  "version": "0.2.204",
-  "title": "Prevent accidental CLI updates and verify Smithery publication reliably.",
+  "version": "0.2.205",
+  "title": "Restore real Apple Silicon temperature readings when ReMCP starts under launchd's minimal PATH.",
   "changes": [
-    "Treat remcp update --help and remcp --help as side-effect-free help requests. A help flag must never install packages, restart the agent, or change pairing.",
-    "Retry only transient Smithery public catalog HTTP 429/500/502/503/504 and temporary transport failures after an already successful publish, with bounded backoff.",
-    "Continue requiring an exact public Smithery catalog entry and canonical connection URL. Do not accept missing results, authentication errors, or exhausted retries as a successful publication.",
-    "Retry transient 409/503 release-coordination responses from the official version endpoint during Windows bootstrap, without accepting an unverified package version.",
-    "Retain and reverify all safe Linux updater and npm prefix fixes from v0.2.203."
+    "Build only the pinned, vetted macos-temperature-sensor@2.1.1 native addon with the active Node.js executable's directory prepended to the build subprocess's PATH.",
+    "Prevent node-gyp rebuild from failing with node: command not found under macOS launchd and fnm-managed Node installations; retain global npm --ignore-scripts protection for all other dependencies.",
+    "Preserve truthful unknown temperature when native sensors are unavailable; verify CPU, SoC and GPU measurements on Apple M1, restricted-PATH compilation and failure-mode regression tests without sudo.",
+    "Keep the generated public npm lockfile in npm's canonical package order so the reproducible release projection does not drift after npm install --package-lock-only."
   ]
 }

@@ -20,7 +20,10 @@ function checkedDirectory(directory) {
   if (!stats.isDirectory() || stats.isSymbolicLink()) throw new Error('unsafe addon directory');
 }
 
-export function buildVettedMacTemperatureAddon({ runtimeRoot, resolved, runCommand, warn = console.error }) {
+export function buildVettedMacTemperatureAddon({
+  runtimeRoot, resolved, runCommand, warn = console.error,
+  nodeExecutable = process.execPath, environment = process.env,
+}) {
   try {
     checkedDirectory(runtimeRoot);
     const runtime = checkedManifest(path.join(runtimeRoot, 'package.json'));
@@ -51,10 +54,17 @@ export function buildVettedMacTemperatureAddon({ runtimeRoot, resolved, runComma
     }
     // Execute precisely this verified package's known node-gyp script. Do not
     // re-enable arbitrary transitive lifecycle scripts in global npm install.
+    // launchd uses a minimal PATH: npm itself is invoked by absolute node path,
+    // but node-gyp's nested executable uses `#!/usr/bin/env node`. Without the
+    // running Node binary's directory, the verified native addon never builds.
+    const nativeBuildEnv = {
+      ...environment,
+      PATH: [path.dirname(nodeExecutable), environment.PATH].filter(Boolean).join(path.delimiter),
+    };
     runCommand(resolved.command, [
       ...resolved.args, '--prefix', addonRoot, 'run', 'install',
       '--foreground-scripts', '--ignore-scripts=false', '--no-audit', '--no-fund',
-    ], { timeout:90_000 });
+    ], { timeout:90_000, env:nativeBuildEnv });
     if (!fs.existsSync(nativeBinary) || !fs.lstatSync(nativeBinary).isFile())
       throw new Error('native build did not create its module');
     return true;
