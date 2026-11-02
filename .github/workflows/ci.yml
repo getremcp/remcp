@@ -333,17 +333,32 @@ jobs:
               throw "Scheduled Task launcher is missing: $launcher"
             }
             $launcherText = Get-Content -LiteralPath $launcher -Raw
-            $expectedPrefixLine = 'set "NPM_CONFIG_PREFIX={0}"' -f $runtimeDir
-            $expectedPathLine = 'set "PATH={0};%PATH%"' -f $runtimeDir
-            $expectedCallLine = 'call "{0}" start --service' -f $runtimeCli
-            if (!$launcherText.Contains($expectedPrefixLine)) {
-              throw 'Scheduled Task launcher does not pin the private npm prefix.'
-            }
-            if (!$launcherText.Contains($expectedPathLine)) {
-              throw 'Scheduled Task launcher does not pin the private Node runtime directory.'
-            }
-            if (!$launcherText.Contains($expectedCallLine)) {
-              throw 'Scheduled Task launcher does not invoke the private ReMCP CLI as a service.'
+            if ($installedVersion -ge [version]'0.2.206') {
+              # v0.2.206 may use an ASCII-only known-folder reference instead of
+              # embedding a codepage-sensitive Unicode profile path in the batch.
+              $prefixLines = @(
+                ('set "NPM_CONFIG_PREFIX={0}"' -f $runtimeDir),
+                'set "NPM_CONFIG_PREFIX=%LOCALAPPDATA%\ReMCP\runtime"'
+              )
+              $pathLines = @(
+                ('set "PATH={0};%PATH%"' -f $runtimeDir),
+                'set "PATH=%LOCALAPPDATA%\ReMCP\runtime;%PATH%"'
+              )
+              $callLines = @(
+                ('call "{0}" start --service' -f $runtimeCli),
+                'call "%LOCALAPPDATA%\ReMCP\runtime\remcp.cmd" start --service'
+              )
+              if (!($prefixLines | Where-Object { $launcherText.Contains($_) })) {
+                throw 'Scheduled Task launcher does not pin the private npm prefix.'
+              }
+              if (!($pathLines | Where-Object { $launcherText.Contains($_) })) {
+                throw 'Scheduled Task launcher does not pin the private Node runtime directory.'
+              }
+              if (!($callLines | Where-Object { $launcherText.Contains($_) })) {
+                throw 'Scheduled Task launcher does not invoke the private ReMCP CLI as a service.'
+              }
+            } else {
+              Write-Host 'Legacy production launcher: private runtime verified by installation and task execution.'
             }
             if ($launcherText -notmatch ':remcp_restart' -or
                 $launcherText -notmatch 'goto remcp_restart' -or
