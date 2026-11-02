@@ -222,6 +222,7 @@ ReMCP publishes host-native metadata for coding agents plus directory records fo
 | **MCPfinder** | [Submission portal](https://www.mcpfinder.org/submit) | submitted through free tier 24 Oct 2026; approval pending |
 | **Kilo Marketplace** | [PR #480](https://github.com/Kilo-Org/kilo-marketplace/pull/480) | submitted, awaiting independent review |
 | **MCP.Directory** | [Publisher submission](https://mcp.directory/submit) | direct ReMCP GitHub URL submitted successfully 24 Oct 2026; approval not verified |
+| **Smithery (retired)** | [Smithery shutdown notice](https://www.smithery.ai/future); the former ReMCP listing returns 404. | unavailable since 31 Oct 2026 |
 | **Glama** | Open the ownership-verified connector at <https://glama.ai/mcp/connectors/site.remcp/re-mcp>. | verified / healthy |
 | **Awesome Remote MCP Servers** | Open the [community directory](https://github.com/punkpeye/awesome-remote-mcp-servers); ReMCP is listed under Developer Tools after [PR #435](https://github.com/punkpeye/awesome-remote-mcp-servers/pull/435) was merged. | listed |
 | **Official MCP Registry** | Search for `io.github.getremcp/remcp`; GitHub resolves the project release URL `antonbaider/remcp` to the transferred `getremcp` repository, so this Registry namespace remains the active identity. | published |
