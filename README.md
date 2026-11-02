@@ -24,10 +24,9 @@
   <a href="https://remcp.site/plugins"><img alt="MCP clients" src="https://img.shields.io/badge/MCP-client%20setup-1f2328?style=flat-square"></a>
   <a href="https://kiro.dev/powers/"><img alt="Kiro Power" src="https://img.shields.io/badge/Kiro-power-1f2328?style=flat-square"></a>
   <a href="https://github.com/cline/marketplace/pull/125"><img alt="Cline MCP Marketplace" src="https://img.shields.io/badge/Cline-MCP-1f2328?style=flat-square"></a>
-  <a href="https://smithery.ai/servers/antonbaider/remcp"><img alt="Smithery directory" src="https://img.shields.io/badge/Smithery-directory-1f2328?style=flat-square"></a>
   <a href="https://glama.ai/mcp/connectors/site.remcp/re-mcp"><img alt="Glama quality score" src="https://glama.ai/mcp/connectors/site.remcp/re-mcp/badges/score.svg"></a>
   <a href="https://github.com/punkpeye/awesome-remote-mcp-servers"><img alt="Awesome Remote MCP Servers" src="https://img.shields.io/badge/Awesome%20Remote%20MCP-listed-1f2328?style=flat-square"></a>
-  <a href="docs/PLUGINS.md#smithery-glama-awesome-remote-mcp-servers-and-the-official-mcp-registry"><img alt="Official MCP Registry" src="https://img.shields.io/badge/MCP%20Registry-published-1f2328?style=flat-square"></a>
+  <a href="docs/PLUGINS.md#glama-awesome-remote-mcp-servers-and-the-official-mcp-registry"><img alt="Official MCP Registry" src="https://img.shields.io/badge/MCP%20Registry-published-1f2328?style=flat-square"></a>
 </p>
 
 <p align="center">
@@ -222,7 +221,7 @@ ReMCP publishes host-native metadata for coding agents plus directory records fo
 | **MCPfinder** | [Submission portal](https://www.mcpfinder.org/submit) | submitted through free tier 24 Oct 2026; approval pending |
 | **Kilo Marketplace** | [PR #480](https://github.com/Kilo-Org/kilo-marketplace/pull/480) | submitted, awaiting independent review |
 | **MCP.Directory** | [Publisher submission](https://mcp.directory/submit) | direct ReMCP GitHub URL submitted successfully 24 Oct 2026; approval not verified |
-| **Smithery** | Open <https://smithery.ai/servers/antonbaider/remcp>. | published |
+| **Smithery (retired)** | [Smithery shutdown notice](https://www.smithery.ai/future); the former ReMCP listing returns 404. | unavailable since 31 Oct 2026 |
 | **Glama** | Open the ownership-verified connector at <https://glama.ai/mcp/connectors/site.remcp/re-mcp>. | verified / healthy |
 | **Awesome Remote MCP Servers** | Open the [community directory](https://github.com/punkpeye/awesome-remote-mcp-servers); ReMCP is listed under Developer Tools after [PR #435](https://github.com/punkpeye/awesome-remote-mcp-servers/pull/435) was merged. | listed |
 | **Official MCP Registry** | Search for `io.github.getremcp/remcp`; GitHub resolves the project release URL `antonbaider/remcp` to the transferred `getremcp` repository, so this Registry namespace remains the active identity. | published |

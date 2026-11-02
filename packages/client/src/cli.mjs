@@ -13,6 +13,7 @@ import { assertRuntimeTrust, assertSecureServerUrl, pairWithDeviceCode } from '.
 import { diagnoseLocalRuntime, installedVersion, runtimeAllowedRoots } from './cli/doctor.mjs';
 import { configFile, npm, officialOrigin, runtimeConfigFile } from './cli/env.mjs';
 import { currentInstallationInfo, ensureMacCliCommand, installPersistentAgent, persistentServiceState, servicePlatform, rememberCurrentInstallation, restartPersistentServiceIfInstalled, serviceInstallationInfo, uninstallPersistentService } from './cli/service.mjs';
+import { auditKnownInstallations } from './cli/installation-audit.mjs';
 import { scheduleMacTemperatureRepair } from './cli/mac-native-temperature.mjs';
 import { repairMacTemperatureAfterStart } from './cli/npm-global.mjs';
 import { run } from './cli/shell.mjs';
@@ -305,16 +306,13 @@ export async function main(argv = process.argv.slice(2)) {
     const targetClient = String(advertised?.cliVersion || '').trim() || null;
     const targetRuntime = String(advertised?.runtime || '').trim() || null;
     const configuredRuntime = String(cfg.runtime.packageSpec || '');
-    // The history also records CLI paths from old Node.js environments. An entry for
-    // a no-longer-existing path is not an additional installed package or agent.
-    const installationPaths = new Set([
-      currentInstall.cliPath,
-      serviceInstall.cliPath,
-      ...(Array.isArray(cfg.installations) ? cfg.installations.map(item => item?.cliPath) : []),
-    ].filter(file => typeof file === 'string' && fs.existsSync(file)).map(file => {
-      try { return fs.realpathSync(file); } catch { return file; }
-    }));
-    const multipleInstallations = installationPaths.size > 1;
+    // Count verified physical ReMCP package roots, not merely surviving paths or
+    // shell aliases. This is NOT a concurrent-agent/process count.
+    const installationAudit = auditKnownInstallations(cfg, {
+      currentCliPath:currentInstall.cliPath,
+      serviceCliPath:service.installed ? serviceInstall.cliPath : null,
+    });
+    const multipleInstallations = installationAudit.packageCopyCount > 1;
     const knownCliVersions = [VERSION, serviceInstall.cliVersion].filter(Boolean);
     const knownRuntimeVersions = [installedRuntime, serviceInstall.runtimeVersion].filter(Boolean);
     const versionConsistent = cfg.runtime.packageName === '@remcp/runtime'
@@ -368,6 +366,9 @@ export async function main(argv = process.argv.slice(2)) {
         targetClient,
         targetRuntime,
         multipleInstallations,
+        knownPackageCopies:installationAudit.packageCopyCount,
+        additionalKnownPackageCopies:installationAudit.otherCopyCount,
+        installationCountScope:'verified_physical_packages_not_running_agents',
         versionConsistent,
         state:updateState,
         upToDate,
@@ -382,6 +383,7 @@ export async function main(argv = process.argv.slice(2)) {
         serviceInstalled:service.installed,
         runtimeEntry:cfg.runtime.entry,
         npmManaged:true,
+        installations:installationAudit,
       };
     }
     console.log(JSON.stringify(report, null, 2));

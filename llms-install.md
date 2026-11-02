@@ -82,8 +82,9 @@ submission is tracked in the marketplace source of truth at <https://github.com/
 
 The same production remote is published or indexed at:
 
-- Smithery: <https://smithery.ai/servers/antonbaider/remcp>
 - Glama: <https://glama.ai/mcp/connectors/site.remcp/re-mcp>
 - Official MCP Registry: `io.github.getremcp/remcp` (active Registry identity; GitHub resolves the project release URL `antonbaider/remcp` to the transferred `getremcp` repository).
+
+**Smithery (retired):** Its former ReMCP listing now returns HTTP 404. Smithery stopped its API/CLI on 31 October 2026 ([official notice](https://www.smithery.ai/future)).
 
 These directories do not create a second ReMCP account or a separate device fleet.

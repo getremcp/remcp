@@ -133,14 +133,15 @@ cline mcp install remcp --transport http https://remcp.site/mcp --yes --json
 After marketplace approval, users can find **ReMCP** in Cline's MCP Marketplace instead of entering
 the endpoint manually.
 
-## Smithery, Glama, Awesome Remote MCP Servers, and the Official MCP Registry
+## Glama, Awesome Remote MCP Servers, and the Official MCP Registry
 
-ReMCP is also published or indexed in the main MCP discovery layers:
+ReMCP is published or indexed in these active MCP discovery layers:
 
-- **Smithery:** <https://smithery.ai/servers/antonbaider/remcp>
 - **Glama:** <https://glama.ai/mcp/connectors/site.remcp/re-mcp>
 - **Awesome Remote MCP Servers:** ReMCP is listed under Developer Tools after [PR #435](https://github.com/punkpeye/awesome-remote-mcp-servers/pull/435) was merged; the directory points to `https://remcp.site/mcp`.
 - **Official MCP Registry:** published as `io.github.getremcp/remcp`; GitHub resolves the project release URL `antonbaider/remcp` to the transferred repository owned by `getremcp`, so the Registry namespace remains valid while project-facing links use `antonbaider/remcp`. The former `io.github.antonbaider/remcp` Registry identity is legacy only.
+
+**Former Smithery listing:** The old ReMCP page returns HTTP 404. Smithery discontinued its API, CLI, and publishing service on 31 October 2026 ([official notice](https://www.smithery.ai/future)); it is no longer an active ReMCP listing.
 
 These are discovery/catalog surfaces rather than separate ReMCP accounts. They point users back to
 the same production service, OAuth boundary, and paired computers.

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -10,7 +10,7 @@ import { VERSION } from '../src/version.mjs';
 const root = fileURLToPath(new URL('..', import.meta.url));
 const source = pathToFileURL(path.join(root, 'src', 'cli.mjs')).href;
 
-function statusWithMismatchedNpmPrefix({ runtimePresent, historicalMissingCli = false }) {
+function statusWithMismatchedNpmPrefix({ runtimePresent, historicalMissingCli = false, historicalInstalledCli = false, historicalAliasCli = false }) {
   const dir = mkdtempSync(path.join(tmpdir(), 'remcp-status-npm-prefix-'));
   try {
     const home = path.join(dir, 'home');
@@ -21,6 +21,25 @@ function statusWithMismatchedNpmPrefix({ runtimePresent, historicalMissingCli = 
     mkdirSync(runtimeDir, { recursive:true });
     mkdirSync(configDir, { recursive:true });
     writeFileSync(cliPath, `import { main } from ${JSON.stringify(source)}; await main();\n`);
+    writeFileSync(path.join(dir, 'global', 'lib', 'node_modules', '@remcp', 'remcp', 'package.json'),
+      JSON.stringify({ name:'@remcp/remcp', version:VERSION }));
+    const installations = [];
+    if (historicalMissingCli) installations.push({ cliPath:path.join(dir, 'removed-node', 'remcp.mjs') });
+    if (historicalInstalledCli) {
+      const oldCli = path.join(dir, '.npm', '_npx', 'id', 'node_modules', '@remcp', 'remcp', 'bin', 'remcp.mjs');
+      mkdirSync(path.dirname(oldCli), { recursive:true });
+      writeFileSync(oldCli, '// historical cli');
+      writeFileSync(path.join(path.dirname(oldCli), '..', 'package.json'),
+        JSON.stringify({ name:'@remcp/remcp', version:'0.2.100' }));
+      installations.push({ cliPath:oldCli });
+    }
+    if (historicalAliasCli) {
+      const oldAlias = path.join(dir, 'prior-bin', 'remcp');
+      mkdirSync(path.dirname(oldAlias), { recursive:true });
+      symlinkSync(cliPath, oldAlias);
+      installations.push({ cliPath:oldAlias });
+    }
+
     if (runtimePresent) {
       writeFileSync(path.join(runtimeDir, 'package.json'), JSON.stringify({ name:'@remcp/runtime', version:VERSION }));
     }
@@ -30,7 +49,7 @@ function statusWithMismatchedNpmPrefix({ runtimePresent, historicalMissingCli = 
       deviceId:'fixture-device',
       deviceName:'isolated fixture',
       serviceInstalled:false,
-      ...(historicalMissingCli ? { installations:[{ cliPath:path.join(dir, 'removed-node', 'remcp.mjs') }] } : {}),
+      installations,
       runtime:{ kind:'npm', packageName:'@remcp/runtime', packageSpec:`@remcp/runtime@${VERSION}`, entry:'src/index.mjs' },
     }));
     const result = spawnSync(process.execPath, [cliPath, 'status'], {
@@ -62,5 +81,21 @@ test('status never invents a runtime when both CLI-adjacent and npm prefixes lac
 
 test('status does not mistake historical CLI paths removed during a Node.js upgrade for extra installations', () => {
   const status = statusWithMismatchedNpmPrefix({ runtimePresent:true, historicalMissingCli:true });
+  assert.equal(status.update.multipleInstallations, false);
+});
+
+test('status counts actual dormant package roots but not CLI aliases or removed Node versions', () => {
+  const status = statusWithMismatchedNpmPrefix({
+    runtimePresent:true, historicalMissingCli:true, historicalInstalledCli:true, historicalAliasCli:true,
+  });
+  assert.equal(status.update.knownPackageCopies, 2);
+  assert.equal(status.update.additionalKnownPackageCopies, 1);
+  assert.equal(status.update.multipleInstallations, true);
+  assert.equal(status.update.installationCountScope, 'verified_physical_packages_not_running_agents');
+});
+test('status does not mistake symlink aliases as independent npm packages', () => {
+  const status = statusWithMismatchedNpmPrefix({ runtimePresent:true, historicalAliasCli:true });
+  assert.equal(status.update.knownPackageCopies, 1);
+  assert.equal(status.update.additionalKnownPackageCopies, 0);
   assert.equal(status.update.multipleInstallations, false);
 });

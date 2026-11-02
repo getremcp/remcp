@@ -1,11 +1,11 @@
 {
-  "version": "0.2.209",
-  "title": "Restore automatic ReMCP package updates independently of the installed Node.js environment.",
+  "version": "0.2.210",
+  "title": "Fix broken Smithery directory links and accurately audit legacy ReMCP package copies.",
   "changes": [
-    "Enable automatic updates of the first-party @remcp/remcp and @remcp/runtime npm packages by default on Linux, macOS and Windows, while preserving an explicit owner opt-out.",
-    "Reload the managed agent after an effective remcp auto-update on/off change, deferring Linux restarts so remote commands complete.",
-    "Keep existing exact server-advertised client/runtime release-pair and isolated npm-prefix safeguards; never update Node.js, npm or unrelated global packages.",
-    "Do not label historical CLI paths that disappeared after a Node.js change as multiple live installations.",
-    "Expand regression coverage and clarify in public documentation how ReMCP package updates differ from Node.js upgrades."
+    "Remove the retired Smithery discovery badge and broken 404 links from public documentation; point readers to Smithery's shutdown notice and working Glama / official MCP Registry options.",
+    "Detect real installed @remcp/remcp package roots from current service, invoked CLI and bounded historical paths; deduplicate shell aliases and ignore files absent after Node.js upgrades.",
+    "Make remcp status report verified package-copy counts rather than implying concurrent agents. Add read-only remcp doctor inventory of client/runtime versions, historical npm/npx copies, alias paths and explicit process-usage uncertainty.",
+    "Preserve the canonical managed agent, pairing, Node.js installations and all unrelated npm packages. Do not silently clean up old ReMCP copies or turn on unrestricted access.",
+    "Ship regressions in both private CI and the projected public client, including a test that no longer demands a deleted Smithery badge."
   ]
 }
