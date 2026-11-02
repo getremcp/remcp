@@ -12,6 +12,8 @@ import { assertRuntimeTrust, assertSecureServerUrl, pairWithDeviceCode } from '.
 import { diagnoseLocalRuntime, installedVersion, runtimeAllowedRoots } from './cli/doctor.mjs';
 import { configFile, npm, officialOrigin, runtimeConfigFile } from './cli/env.mjs';
 import { currentInstallationInfo, ensureMacCliCommand, installPersistentAgent, persistentServiceState, servicePlatform, rememberCurrentInstallation, restartPersistentServiceIfInstalled, serviceInstallationInfo, uninstallPersistentService } from './cli/service.mjs';
+import { scheduleMacTemperatureRepair } from './cli/mac-native-temperature.mjs';
+import { repairMacTemperatureAfterStart } from './cli/npm-global.mjs';
 import { run } from './cli/shell.mjs';
 import { updateCommand } from './cli/update.mjs';
 function fetchConfiguredServer(url, options) {
@@ -156,6 +158,9 @@ export async function main(argv = process.argv.slice(2)) {
       console.log(`ReMCP is already running as a background service (${service.name}). Use \`remcp status\` to inspect it or \`remcp doctor\` to diagnose it.`);
       return;
     }
+    // Older updaters can leave the optional native binary absent. Repair via
+    // a separate, fixed-purpose process without delaying the relay connection.
+    scheduleMacTemperatureRepair({ runtimePackageName: cfg.runtime?.packageName });
     const telemetry = telemetryState();
     const agent = await runAgent({
       ...cfg,
@@ -175,6 +180,16 @@ export async function main(argv = process.argv.slice(2)) {
       const closeOrphan = () => void agent.stop().finally(() => process.exit(0));
       process.once('disconnect', closeOrphan);
       if (!process.connected) closeOrphan();
+    }
+    return;
+  }
+
+  if (command === '__repair-macos-temperature') {
+    // Only the pinned first-party sensor is eligible; no external script input.
+    if (servicePlatform() !== 'darwin') return;
+    const cfg = loadConfig(false);
+    if (repairMacTemperatureAfterStart(cfg?.runtime?.packageName)) {
+      console.log('ReMCP: vetted macOS temperature sensor is ready.');
     }
     return;
   }

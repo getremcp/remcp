@@ -3,11 +3,34 @@
 // after verifying its installed manifest and on-disk path. No sudo or shell.
 import fs from 'node:fs';
 import path from 'node:path';
+import process from 'node:process';
+import { spawn } from 'node:child_process';
 
 const SENSOR_NAME = 'macos-temperature-sensor';
 const SENSOR_VERSION = '2.1.1';
 const SCRIPT = 'node-gyp rebuild';
 const BINARY = path.join('build', 'Release', 'mac_temp_native.node');
+
+// Repair a module omitted by an old updater after starting the new agent.
+export function scheduleMacTemperatureRepair({
+  platform = process.platform, runtimePackageName, nodeExecutable = process.execPath,
+  cliEntry = process.argv[1], environment = process.env,
+  spawnProcess = spawn, warn = console.error,
+} = {}) {
+  if (platform !== 'darwin' || runtimePackageName !== '@remcp/runtime') return false;
+  if (!path.isAbsolute(nodeExecutable) || !path.isAbsolute(cliEntry || '')) return false;
+  try {
+    const child = spawnProcess(nodeExecutable, [cliEntry, '__repair-macos-temperature'], {
+      detached: true, stdio: ['ignore', 'inherit', 'inherit'], env: environment,
+    });
+    child.on?.('error', () => warn('ReMCP: optional macOS temperature repair could not start.'));
+    child.unref?.();
+    return true;
+  } catch {
+    warn('ReMCP: optional macOS temperature repair could not start.');
+    return false;
+  }
+}
 
 function checkedManifest(file) {
   const stats = fs.lstatSync(file);

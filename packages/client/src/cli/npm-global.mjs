@@ -67,6 +67,23 @@ export function npmGlobalInstall(...specs) {
   }
 }
 
+// Called only by the post-start macOS helper: an older updater may have
+// installed this version while leaving the optional native binary missing.
+// The same version-pinned, path-checked installer is reused; no npm install
+// or arbitrary dependency lifecycle scripts are permitted.
+export function repairMacTemperatureAfterStart(runtimePackageName) {
+  if (servicePlatform() !== 'darwin' || runtimePackageName !== '@remcp/runtime') return false;
+  try {
+    return buildVettedMacTemperatureAddon({
+      runtimeRoot:globalPackagePath(assertSafeReMcpNpmPrefix(globalPrefix()), '@remcp/runtime'),
+      resolved:npm, runCommand:run,
+    });
+  } catch {
+    console.error('ReMCP: optional macOS temperature sensor unavailable; other tools remain functional.');
+    return false;
+  }
+}
+
 function pathEntryExists(file) {
   try {
     fs.lstatSync(file);

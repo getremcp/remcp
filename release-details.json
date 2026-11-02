@@ -1,12 +1,9 @@
 {
-  "version": "0.2.206",
-  "title": "Make the one-command Windows ReMCP installation resilient to non-admin permissions and multilingual user profiles.",
+  "version": "0.2.207",
+  "title": "Recover macOS temperature sensors automatically after ReMCP updates.",
   "changes": [
-    "Keep irm https://remcp.site/i | iex as the sole Windows onboarding command. Retry an interrupted, already-approved pairing without rotating its device credentials.",
-    "Create an interactive least-privilege Windows Task Scheduler entry when permitted. When task registration is denied, verify nonexistence using locale-independent COM status and use per-user Startup without elevation.",
-    "Route localized, Unicode or shell-sensitive Windows account paths through Windows Script Host and a managed Node supervisor instead of codepage-dependent CMD scripts; preserve safe ASCII profiles with ordinary Task Scheduler.",
-    "Authenticate local control commands and responses, prevent duplicate agents, stop or restart only owned child processes and clean stale per-user Startup registrations safely.",
-    "Keep denied writes to the user PATH nonfatal, report policy restrictions honestly and never bypass enterprise application-control policies.",
-    "Validate the Windows lifecycle on native hosted Windows with CMD, WScript, Unicode and six UI language cultures, plus ASUS regressions and release checks."
+    "Repair missing Apple Silicon native thermal sensor binaries after starting the updated agent, even when the previous CLI installer lacked the launchd PATH fix.",
+    "Keep the agent connection responsive while a separate vetted, version-pinned macos-temperature-sensor@2.1.1 worker builds the native addon, with no privileged operation or unrelated npm scripts.",
+    "Skip the repair worker for non-macOS devices and custom runtimes; preserve truthful unavailable readings if native compilation cannot run."
   ]
 }
