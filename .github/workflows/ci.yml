@@ -276,7 +276,6 @@ jobs:
 
           import fs from 'node:fs';
           import path from 'node:path';
-          import { spawn } from 'node:child_process';
           import { windowsStartupScriptText } from '$launcherModuleUri';
 
           const cliPath = process.argv[2];
@@ -310,25 +309,28 @@ jobs:
               'Start Menu', 'Programs', 'Startup', 'ReMCP Agent.vbs');
             if (fs.existsSync(startup)) throw new Error('Failed WSH launch left a false-success startup entry');
             launchMode = 'hosted-headless-wsh-denied';
-            const dummy = path.join(process.env.RUNNER_TEMP, 'remcp-ci-dummy-agent.mjs');
-            fs.writeFileSync(dummy, 'setInterval(() => {}, 1000);\n');
-            const child = spawn(nodePath, ['$supervisorModule', 'serve', dummy], {
-              detached: true, windowsHide: true, stdio: 'ignore', env: process.env,
-            });
-            child.on('error', () => {});
-            child.unref();
           }
-          const live = windowsSupervisorCommand('wait');
-          if (live.running !== true || !live.childPid || live.uptimeMs < 700) {
-            throw new Error('Windows authenticated supervisor is not ready: ' + JSON.stringify(live));
+          if (launchMode === 'interactive-wsh') {
+            const live = windowsSupervisorCommand('wait');
+            if (live.running !== true || !live.childPid || live.uptimeMs < 700) {
+              throw new Error('Windows interactive Startup supervisor not ready: ' + JSON.stringify(live));
+            }
           }
           configureWindowsWriteAccess();
-          console.log('WINDOWS_SUPERVISOR_E2E ' + launchMode + ' childReady=true');
+          console.log('WINDOWS_SUPERVISOR_E2E mode=' + launchMode);
           "@ | Set-Content -LiteralPath $probe -Encoding UTF8
 
             & $node $probe $runtimeCli $node
             if ($LASTEXITCODE -ne 0) {
               throw "Hidden Startup supervisor probe failed with exit code $LASTEXITCODE."
+            }
+
+            # GH-hosted runners have no logged-in user desktop for WSH.
+            # Prove the real authenticated named-pipe/owned-child lifecycle in
+            # a separate asynchronous native Windows test (never fake readiness).
+            & $node --test '.\packages\client\test\windows-user-supervisor-control.test.mjs'
+            if ($LASTEXITCODE -ne 0) {
+              throw 'Native Windows supervisor IPC and owned-child lifecycle failed.'
             }
 
             # The 0.2.212 installer deliberately avoids a visible interactive
