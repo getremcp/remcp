@@ -40,6 +40,10 @@ test('safe codes and unknown messages cannot leak secret data through telemetry'
   assert.equal(classifyRuntimeToolError(Object.assign(new Error('access denied'), {code:'EACCES'}), 'read_file'), 'permission');
   assert.equal(classifyRuntimeToolError(Object.assign(new Error('path'), {code:'ENOENT'}), 'read_file'), 'not_found');
   assert.equal(classifyRuntimeToolError(Object.assign(new Error('deadline'), {code:'ETIMEDOUT'}), 'read_file'), 'timeout');
+  assert.equal(classifyRuntimeToolError(Object.assign(new Error('quota'), {code:'EDQUOT'}), 'copy_file'), 'resource_exhausted');
+  assert.equal(classifyRuntimeToolError(Object.assign(new Error('disk'), {code:'ENOSPC'}), 'write_file'), 'resource_exhausted');
+  assert.equal(classifyRuntimeToolError(Object.assign(new Error('locked'), {code:'EBUSY'}), 'copy_file'), 'busy');
+  assert.equal(classifyRuntimeToolError(new ToolError('Path not found: C:\\Missing'), 'list_directory'), 'not_found');
 });
 
 test('malformed errors still return a stable category', () => {

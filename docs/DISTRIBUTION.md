@@ -79,7 +79,6 @@ ReMCP keeps one public source repository and publishes host-native discovery met
 | MCPfinder | [Submission portal](https://www.mcpfinder.org/submit) | free submission accepted 24 Oct 2026; approval pending |
 | Kilo Marketplace | [PR #498](https://github.com/Kilo-Org/kilo-marketplace/pull/498) | submitted, waiting for catalog approval |
 | MCP.Directory | [Submission portal](https://mcp.directory/submit) | submitted successfully on 24 Oct 2026, not approved |
-| Smithery (retired) | [Official shutdown notice](https://www.smithery.ai/future); former listing returns 404 | unavailable since 31 Oct 2026 |
 | Glama | glama.ai/mcp/connectors/site.remcp/re-mcp | verified / healthy |
 | Awesome Remote MCP Servers | [punkpeye/awesome-remote-mcp-servers](https://github.com/punkpeye/awesome-remote-mcp-servers) ([PR #435](https://github.com/punkpeye/awesome-remote-mcp-servers/pull/435)) | listed; PR #435 merged |
 | Official MCP Registry | registry.modelcontextprotocol.io | published remote Streamable HTTP server |

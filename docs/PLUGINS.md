@@ -15,7 +15,8 @@ Shareable install guides:
 
 - All integrations and current status: <https://remcp.site/plugins>
 - [Complete tool reference](TOOLS.md): current production exposes 10 model-visible hosted definitions (8 device-facing façade tools + 2 account/fleet) covering all 83 granular runtime operations; explicitly re-enabling widgets adds 5 app-only UI helpers for 15 total definitions.
-- ChatGPT & Codex: <https://remcp.site/install/chatgpt>
+- ChatGPT plugin (direct): <https://chatgpt.com/plugins/plugin_asdk_app_6aaaba1295a4819195a4987e18e43428>
+- ChatGPT & Codex setup guide: <https://remcp.site/install/chatgpt>
 - Claude Code: <https://remcp.site/install/claude>
 - Cursor Marketplace: <https://cursor.com/marketplace>
 
@@ -27,14 +28,13 @@ ChatGPT and Codex share OpenAI's unified public plugin directory.
 
 ### ChatGPT
 
-Open <https://chatgpt.com/plugins>, search for **ReMCP**, and open the ReMCP plugin card when it is available for your account.
+Open the [published ReMCP plugin page](https://chatgpt.com/plugins/plugin_asdk_app_6aaaba1295a4819195a4987e18e43428) in ChatGPT. If it is not available for your account, search for **ReMCP** in <https://chatgpt.com/plugins>.
 
 Then:
 
-1. Choose **Install plugin**.
-2. Choose **Connect** if ReMCP authorization is requested.
-3. Complete ReMCP OAuth.
-4. Start a new chat and use **@ReMCP** or **+ → More** when those controls are available.
+1. Review the ReMCP listing and choose **Install plugin**.
+2. If ChatGPT displays **Connect**, sign in to the ReMCP account with your paired computers and approve access. Installing the plugin does not by itself authorize your account.
+3. In ChatGPT ask **“@ReMCP List my paired computers and show which are online.”** You can also select the plugin from the composer, or ask directly when ChatGPT automatically selects installed plugins.
 
 If ReMCP is not visible yet, the listing or rollout is not available to that account. Do not paste an
 MCP endpoint or create a manual connection as a substitute for the catalog plugin.

@@ -19,15 +19,17 @@ export function macosProtectedLocation(target, { platform = process.platform, ho
   if (platform !== 'darwin') return null;
   const value = typeof target === 'string' ? target.trim() : '';
   if (!value) return null;
-  const resolved = path.resolve(value);
-  if (resolved === '/Volumes' || resolved.startsWith(`/Volumes${path.sep}`)) return 'an external or network volume';
+  // Evaluate macOS paths with POSIX semantics even when diagnostics/tests run on
+  // Windows. Using the host path module turns /Users/... into a Windows path.
+  const resolved = path.posix.resolve(value);
+  if (resolved === '/Volumes' || resolved.startsWith('/Volumes/')) return 'an external or network volume';
   // The kernel reports the absolute path, so a folder can be recognised even when it belongs to
   // another account: every /Users/<name>/Desktop is somebody's Desktop, and it is protected for the
   // process that is asking, whatever this runtime's own home directory is.
-  const segments = resolved.split(path.sep);
-  const relative = home ? path.relative(path.resolve(home), resolved) : '';
-  const insideHome = relative && !relative.startsWith('..') && !path.isAbsolute(relative);
-  const candidate = insideHome ? relative.split(path.sep) : segments[0] === '' && segments[1] === 'Users' ? segments.slice(3) : null;
+  const segments = resolved.split(path.posix.sep);
+  const relative = home ? path.posix.relative(path.posix.resolve(home), resolved) : '';
+  const insideHome = relative && !relative.startsWith('..') && !path.posix.isAbsolute(relative);
+  const candidate = insideHome ? relative.split(path.posix.sep) : segments[0] === '' && segments[1] === 'Users' ? segments.slice(3) : null;
   if (!candidate?.length) return null;
   const [first, second] = candidate;
   if (MACOS_HOME_FOLDERS.includes(first)) return `~/${first}`;
@@ -63,6 +65,9 @@ export function filesystemErrorExplanation(error, options = {}) {
   const code = typeof error?.code === 'string' ? error.code : '';
   const where = typeof target === 'string' && target.trim() ? target.trim() : 'that path';
   if (code === 'ENOSPC') return 'The disk is full (ENOSPC). Free some space or write to another volume.';
+  if (code === 'EDQUOT') return 'The disk or temporary-file quota is exhausted (EDQUOT). Free quota space or select another writable volume.';
+  if (code === 'ENOENT') return `The file or folder does not exist (ENOENT): ${where}. Check its name and drive letter.`;
+  if (code === 'ENOTDIR') return `A component of ${where} is a file instead of a directory (ENOTDIR). Check the parent path.`;
   if (code === 'EROFS') return `${where} is on a read-only file system (EROFS). Write somewhere else, or remount it read-write.`;
   if (code === 'EBUSY') return `${where} is in use by another program (EBUSY). Close whatever holds it and try again.`;
   if (!PERMISSION_CODES.has(code)) return null;

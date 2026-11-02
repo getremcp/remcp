@@ -4,25 +4,20 @@
 
 Normal users should **not** configure the MCP endpoint or edit plugin files.
 
-1. Open <https://chatgpt.com/plugins>.
-2. Search for **ReMCP**.
-3. Open the ReMCP card and choose the add/install action.
-4. Complete ReMCP OAuth when prompted.
-5. Start a new chat and ask ChatGPT or Codex to use ReMCP on a paired computer.
+1. Open the [published ReMCP plugin listing](https://chatgpt.com/plugins/plugin_asdk_app_6aaaba1295a4819195a4987e18e43428).
+2. Review the listing and select **Install plugin** if available for your ChatGPT account/workspace.
+3. If **Connect** appears, sign in to your ReMCP account and approve access to your paired computers. Plugin installation and app authorization are separate.
+4. In ChatGPT ask **“@ReMCP List my paired computers and show which are online.”** Use the composer plugin selector or automatic plugin selection where supported. Start with a read-only request.
 
 In Codex CLI, run `/plugins`, search **ReMCP**, and install it from the same shared directory.
 
-OpenAI direct plugin detail URLs contain a platform-generated opaque connector identifier, so the
-final ReMCP direct URL must be copied from the published directory card rather than guessed from the
-plugin name.
+The platform-generated plugin identifier above was supplied after publication on November 2, 2026.
+Do not construct new plugin URLs from display names or internal MCP IDs.
 
-> **Public review blocker (October 2026):** current production is still on the compact
-> 10-tool private-connection profile, which does not meet the public directory's
-> independent-tool exposure rule. Before resubmitting, enable and test the separate
-> `/mcp-review` endpoint behind `REMCP_REVIEW_ENDPOINT_ENABLED=true`, regenerate the release submission
-> artifacts under that profile, run scans and reviewer sandbox tests, then use the
-> new Plugins ZIP submission flow. See [review-tool-profile.md](runbooks/openai-review-tool-profile.md).
-> Do not claim the current private ZIP is already an approved public plugin.
+> **Historical note (October 2026):** before publication, the compact private-connection
+> profile required additional OpenAI review. The November 2 published listing supersedes
+> this historical blocker for the public install flow. Runtime and tool coverage remain
+> version-dependent; see the review-tool-profile runbook.
 
 The rest of this document is for **developers and reviewers**.
 

@@ -309,6 +309,14 @@ export async function openPathForInfo(absolute) {
     }
     if (!canTryFile) throw directoryError;
   }
+  // Metadata on Windows must not require opening a file for reading. Another
+  // process may deny FILE_SHARE_READ while lstat still succeeds (e.g. Office).
+  // lstat also does not traverse a final symbolic link or junction.
+  if (process.platform === 'win32') {
+    const info = await lstat(absolute);
+    if (info.isSymbolicLink()) fail('Path is a symbolic link');
+    if (info.isFile()) return { info, close: async () => {} };
+  }
   const opened = await openEntryAtPath(absolute, READ_NOFOLLOW_NONBLOCK);
   try {
     return { info: await opened.handle.stat(), close: opened.close };

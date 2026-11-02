@@ -399,7 +399,11 @@ export async function moveFileTool(args) {
 export async function copyFileTool(args) {
   const source = await resolveSafePath(args.source, 'source');
   const destination = await resolveSafePath(args.destination, 'destination');
-  if (source === destination) fail('source and destination are the same path');
+  // Windows paths normally refer to the same file irrespective of case.
+  // Refuse to overwrite the still-open source via a differently cased name.
+  if (source === destination || (process.platform === 'win32' && source.toLowerCase() === destination.toLowerCase())) {
+    fail('source and destination are the same path');
+  }
   const overwrite = args.overwrite !== false;
   let info;
   await withExistingParent(source, async anchoredSource => {

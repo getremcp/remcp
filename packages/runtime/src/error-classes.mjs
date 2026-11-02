@@ -5,6 +5,7 @@ const PERMISSION_CODES = new Set(['EACCES', 'EPERM']);
 const MISSING_CODES = new Set(['ENOENT', 'ENOTDIR']);
 const TIMEOUT_CODES = new Set(['ETIMEDOUT', 'ETIME']);
 const CONNECTION_CODES = new Set(['ECONNREFUSED', 'ECONNRESET', 'EHOSTUNREACH']);
+const STORAGE_CODES = new Set(['ENOSPC', 'EDQUOT']);
 
 export function classifyRuntimeToolError(error, toolName = '') {
   const code = typeof error?.code === 'string' ? error.code.toUpperCase() : '';
@@ -12,6 +13,8 @@ export function classifyRuntimeToolError(error, toolName = '') {
   const browserTool = typeof toolName === 'string' && toolName.startsWith('browser_');
   if (PERMISSION_CODES.has(code)) return 'permission';
   if (MISSING_CODES.has(code)) return 'not_found';
+  if (STORAGE_CODES.has(code)) return 'resource_exhausted';
+  if (code === 'EBUSY') return 'busy';
   if (TIMEOUT_CODES.has(code)) return 'timeout';
   if (browserTool && CONNECTION_CODES.has(code)) return 'browser_unavailable';
   if (browserTool && code === 'BROWSER_TARGET_DISAPPEARED') return 'browser_target_stale';
@@ -37,6 +40,7 @@ export function classifyRuntimeToolError(error, toolName = '') {
     }
   }
   if (/permission denied|access is denied|not authorized|not authorised|accessibility permission/.test(message)) return 'permission';
+  if (/\b(?:file|path|source) not found\b|\bis not a directory\b/.test(message)) return 'not_found';
   if (/timed out|timeout after|time limit exceeded/.test(message)) return 'timeout';
   if (/element not found|no element matches|no matching ui window|target not found|not found in the current/.test(message)) return 'not_found';
   if (/requires .*|must be (?:a |an |positive |between )|invalid (?:argument|selector|field|parameter)/.test(message)) return 'invalid_input';

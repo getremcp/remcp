@@ -47,7 +47,9 @@ test('other platforms and other errnos get their own sentence, or none at all', 
   assert.match(filesystemErrorExplanation(errno('EROFS'), { path: '/mnt/ro' }), /read-only file system/);
   assert.match(filesystemErrorExplanation(errno('EBUSY'), { path: 'C:\\logs\\app.log' }), /in use by another program/);
   assert.match(filesystemErrorExplanation(errno('ENOSPC'), {}), /disk is full/);
-  assert.equal(filesystemErrorExplanation(errno('ENOENT'), { path: '/tmp/x' }), null);
+  assert.match(filesystemErrorExplanation(errno('ENOENT'), { path: '/tmp/x' }), /does not exist.*drive letter/);
+  assert.match(filesystemErrorExplanation(errno('ENOTDIR'), { path: '/tmp/file/child' }), /parent path/);
+  assert.match(filesystemErrorExplanation(errno('EDQUOT'), {}), /quota is exhausted/);
   assert.equal(filesystemErrorExplanation(new Error('not found'), {}), null);
 });
 
@@ -85,7 +87,7 @@ test('a real permission failure reaches the caller with a fix attached', {
   // UID 0 bypasses ordinary Unix directory write permissions, so chmod(0500) cannot produce
   // the EACCES path this integration probe is meant to exercise. The pure errno/description
   // tests above still cover the user-facing remediation text on root-runner environments.
-  skip: typeof process.getuid === 'function' && process.getuid() === 0,
+  skip: process.platform === 'win32' || (typeof process.getuid === 'function' && process.getuid() === 0),
 }, async () => {
   const root = freshWorkspace('permissions');
   const locked = join(root, 'locked');
