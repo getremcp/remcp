@@ -184,7 +184,9 @@ function runRipgrep(session, { target, pattern, searchType, filePattern, ignoreC
   const searchTarget = target.anchor;
   if (ignoreCase) args.push('--ignore-case');
   if (includeHidden) args.push('--hidden');
-  if (!includeIgnored) for (const glob of SKIP_GLOBS) args.push('-g', glob);
+  // includeIgnored must override both our skip globs and ripgrep's own ignore files.
+  if (includeIgnored) args.push('--no-ignore');
+  else for (const glob of SKIP_GLOBS) args.push('-g', glob);
   for (const glob of splitGlobs(filePattern)) args.push('-g', glob);
   if (searchType === 'files') {
     args.push('--files');

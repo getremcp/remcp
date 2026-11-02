@@ -72,6 +72,19 @@ function inferServiceIdentity() {
 
 export function canonicalServiceCliPath(config) {
   const configured = String(config?.serviceCliPath || '').trim();
+  if (servicePlatform() === 'win32' && configured) {
+    // Saved serviceCliPath is the resolved npm package entry (remcp.mjs), not
+    // the Windows executable shim. CMD `call remcp.mjs` opens the Windows
+    // "Choose an app" dialog instead of starting Node, and dirname(entry) is
+    // an invalid NPM_CONFIG_PREFIX. Recover the sibling npm global shim.
+    const suffix = '/node_modules/@remcp/remcp/bin/remcp.mjs';
+    if (configured.replaceAll('\\', '/').toLowerCase().endsWith(suffix)) {
+      const prefix = configured.slice(0, -suffix.length);
+      const shim = path.join(prefix, 'remcp.cmd');
+      if (!fs.existsSync(shim)) throw new Error('Windows ReMCP npm shim is missing; refusing a .mjs Scheduled Task');
+      return shim;
+    }
+  }
   if (configured && fs.existsSync(configured)) return configured;
   const inferred = inferServiceIdentity().cliPath;
   if (inferred && fs.existsSync(inferred)) return inferred;

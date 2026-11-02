@@ -9,14 +9,13 @@ import { officialOrigin } from './env.mjs';
 import { sleep } from './shell.mjs';
 import { printPairingQr } from './pairing-qr.mjs';
 
-// Keep the server-provided approval URL as one argument all the way to the OS.
-// Windows Explorer can treat a URL as a shell path and open Documents instead.
-// FileProtocolHandler dispatches to the default browser without a cmd/PowerShell shell,
-// where a URL query containing '&' could otherwise be interpreted as a command.
+// Keep the server-provided approval URL as data all the way to the OS. In particular, do not route it
+// through `cmd /c start` on Windows: cmd reparses metacharacters such as `&`, so a custom pairing
+// server could otherwise turn a verification URL into a local shell command.
 export function browserLaunchCommand(url, platform = process.platform) {
   const target = String(url);
   if (platform === 'darwin') return { command: 'open', args: [target] };
-  if (platform === 'win32') return { command: 'rundll32.exe', args: ['url.dll,FileProtocolHandler', target] };
+  if (platform === 'win32') return { command: 'explorer.exe', args: [target] };
   return { command: 'xdg-open', args: [target] };
 }
 

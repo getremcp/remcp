@@ -9,6 +9,7 @@ import { join } from 'node:path';
 import { Client } from '@modelcontextprotocol/client';
 import { StdioClientTransport } from '@modelcontextprotocol/client/stdio';
 import { body, freshWorkspace, isError } from './helpers.mjs';
+import { portableCommand } from './fixtures/portable-command.mjs';
 import { globToRegExp } from '../src/util.mjs';
 
 const run = promisify(execFile);
@@ -66,7 +67,7 @@ test('an unreadable runtime.json stops the device loudly instead of silently dro
 });
 
 test('a stream with no newlines is bounded instead of growing until the runtime dies', async () => {
-  const started = await invokeTool('start_process', { command: 'head -c 3000000 /dev/zero | tr "\\0" "x"', timeout_ms: 4000 });
+  const started = await invokeTool('start_process', { command: portableCommand('head -c 3000000 /dev/zero | tr "\\0" "x"', "process.stdout.write('x'.repeat(3000000))"), timeout_ms: 4000 });
   assert.equal(isError(started), false);
   assert.equal(typeof started.structuredContent?.pid, 'number', 'oversized output keeps the declared start_process structured shape');
   assert.equal(typeof started.structuredContent?.output, 'string');
@@ -82,7 +83,7 @@ test('a stream with no newlines is bounded instead of growing until the runtime 
 });
 
 test('writing to a finished process returns an error instead of raising EPIPE', async () => {
-  const started = await invokeTool('start_process', { command: 'true', timeout_ms: 2000 });
+  const started = await invokeTool('start_process', { command: portableCommand('true', "process.exit(0)"), timeout_ms: 2000 });
   const pid = Number(body(started).match(/Process (\d+)/)[1]);
   const result = await invokeTool('interact_with_process', { pid, input: 'hello', timeout_ms: 200 });
   assert.equal(isError(result), true);
@@ -91,7 +92,7 @@ test('writing to a finished process returns an error instead of raising EPIPE', 
 });
 
 test('force_terminate stops the whole process tree', async () => {
-  const started = await invokeTool('start_process', { command: 'sleep 30 | cat', timeout_ms: 300 });
+  const started = await invokeTool('start_process', { command: portableCommand('sleep 30 | cat', "setTimeout(()=>{},30000)"), timeout_ms: 300 });
   const pid = Number(body(started).match(/Process (\d+)/)[1]);
   assert.equal(isError(await invokeTool('force_terminate', { pid })), false);
   const sessions = body(await invokeTool('list_sessions', {}));

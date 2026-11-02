@@ -197,7 +197,7 @@ while($q.Count -gt 0 -and $seen -lt ${maxNodes}){
   return jsonResult(parsed);
 }
 
-export async function uiAction(args = {}) {
+export async function uiAction(args = {}, { runPowerShellFn = runPowerShell } = {}) {
   const action = requireEnum(args.action, 'action', [
     'click','invoke','focus','set_value','select','toggle','expand','collapse',
     'scroll_into_view','set_range_value','add_to_selection','remove_from_selection',
@@ -207,7 +207,8 @@ export async function uiAction(args = {}) {
   const role = escapePowerShellSingle(optionalString(args.role) || '');
   const automationId = escapePowerShellSingle(optionalString(args.automation_id || args.automationId) || '');
   const value = escapePowerShellSingle(String(args.value ?? ''));
-  const numericValue = Number(args.value);
+  // The entire switch must parse even when the selected action has no numeric value.
+  const numericValue = action === 'set_range_value' ? Number(args.value) : 0;
   if (action === 'set_range_value' && !Number.isFinite(numericValue)) throw new Error('set_range_value requires a finite numeric value');
   const script = String.raw`
 Add-Type -AssemblyName UIAutomationClient;Add-Type -AssemblyName UIAutomationTypes
@@ -278,16 +279,40 @@ switch('${action}'){
  }
 }
 [pscustomobject]@{id=('win:'+($found.GetRuntimeId()-join '.'));name=$found.Current.Name;role=$found.Current.ControlType.ProgrammaticName.Replace('ControlType.','');action='${action}';backend=$used}|ConvertTo-Json -Compress`;
-  const raw = (await runPowerShell(script, { label:'UI action', timeout:30_000 })).stdout.trim();
+  const raw = (await runPowerShellFn(script, { label:'UI action', timeout:30_000 })).stdout.trim();
   return jsonResult(raw ? JSON.parse(raw) : { action });
+}
+
+export function buildWindowsClipboardPowerShell(action, value = '') {
+  // Set-Clipboard rejects an empty value in Windows PowerShell 5.1.
+  // Clear the clipboard using the OS clipboard API instead of treating it as a write.
+  if (action === 'clear' || value.length === 0) {
+    return 'Add-Type -AssemblyName System.Windows.Forms;[System.Windows.Forms.Clipboard]::Clear()';
+  }
+  const encoded = Buffer.from(value, 'utf16le').toString('base64');
+  return `$b=[Convert]::FromBase64String('${encoded}');Set-Clipboard -Value ([Text.Encoding]::Unicode.GetString($b))`;
+}
+
+export function buildWindowsClipboardReadPowerShell() {
+  // Windows PowerShell writes redirected stdout in the OEM code page, which
+  // corrupts non-ASCII clipboard text. Return UTF-8 bytes as base64 instead.
+  return "$v=Get-Clipboard -Raw;if($null -eq $v){$v=''};[Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($v))";
+}
+
+export function decodeWindowsClipboardRead(stdout = '') {
+  const encoded = String(stdout).trim();
+  if (!encoded) return '';
+  return Buffer.from(encoded, 'base64').toString('utf8').replace(/\r?\n$/, '');
 }
 
 export async function clipboard(args = {}) {
   const action=requireEnum(args.action,'action',['read','write','clear']);
-  if(action==='read')return text((await runPowerShell("$v=Get-Clipboard -Raw;if($null -eq $v){$v=''};$v",{label:'clipboard read'})).stdout.replace(/\r?\n$/,''));
+  if(action==='read'){
+    const {stdout}=await runPowerShell(buildWindowsClipboardReadPowerShell(),{label:'clipboard read'});
+    return text(decodeWindowsClipboardRead(stdout));
+  }
   const value=action==='clear'?'':String(args.text??args.value??'');
-  const encoded=Buffer.from(value,'utf16le').toString('base64');
-  await runPowerShell(`$b=[Convert]::FromBase64String('${encoded}');Set-Clipboard -Value ([Text.Encoding]::Unicode.GetString($b))`,{label:'clipboard write'});
+  await runPowerShell(buildWindowsClipboardPowerShell(action, value),{label: action === 'clear' ? 'clipboard clear' : 'clipboard write'});
   return jsonResult({action,length:value.length});
 }
 
@@ -310,8 +335,10 @@ export async function typeTextKeys(value) {
 }
 
 function mousePrelude() {
+  // dwData is a signed wheel delta. Declaring it as uint made the generated
+  // negative literal cast throw before the wheel event was sent.
   return String.raw`Add-Type @'
-using System;using System.Runtime.InteropServices;public static class RMMouse{[DllImport("user32.dll")]public static extern bool SetCursorPos(int x,int y);[DllImport("user32.dll")]public static extern void mouse_event(uint f,uint x,uint y,uint d,UIntPtr i);}
+using System;using System.Runtime.InteropServices;public static class RMMouse{[DllImport("user32.dll")]public static extern bool SetCursorPos(int x,int y);[DllImport("user32.dll")]public static extern void mouse_event(uint f,uint x,uint y,int d,UIntPtr i);}
 '@`;
 }
 
@@ -337,10 +364,15 @@ export async function dragDrop(args = {}) {
   return jsonResult({from:[args.from_x,args.from_y],to:[args.to_x,args.to_y]});
 }
 
+export function buildWindowsScrollPowerShell(dx, dy) {
+  const wheel = Math.trunc(Number(dy) || 0);
+  const horizontal = Math.trunc(Number(dx) || 0);
+  return `${mousePrelude()}\n[RMMouse]::mouse_event(0x0800,0,0,${-wheel},[UIntPtr]::Zero);[RMMouse]::mouse_event(0x01000,0,0,${horizontal},[UIntPtr]::Zero)`;
+}
+
 export async function scroll(args = {}) {
   const dx=Number(args.delta_x||0),dy=Number(args.delta_y??args.delta??0);
-  const script=`${mousePrelude()}\n[RMMouse]::mouse_event(0x0800,0,0,[uint32]([int]${Math.trunc(-dy)}),[UIntPtr]::Zero);[RMMouse]::mouse_event(0x01000,0,0,[uint32]([int]${Math.trunc(dx)}),[UIntPtr]::Zero)`;
-  await runPowerShell(script,{label:'scroll'});
+  await runPowerShell(buildWindowsScrollPowerShell(dx,dy),{label:'scroll'});
   return jsonResult({delta_x:dx,delta_y:dy});
 }
 

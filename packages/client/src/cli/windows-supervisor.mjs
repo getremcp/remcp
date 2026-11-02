@@ -24,6 +24,12 @@ export function windowsBatchUnsafeProfile(...paths) {
 }
 
 export function windowsServiceLauncherText(cliPath, nodePath, { localAppData = process.env.LOCALAPPDATA } = {}) {
+  // CMD's `call` executes batch shims, not the underlying .mjs source. A saved
+  // package entry is valid for `node.exe remcp.mjs`, but invalid as a Task
+  // Scheduler command and must never be written into a persistent launcher.
+  if (/\.mjs$/i.test(String(cliPath))) {
+    throw new Error('Windows Scheduled Task requires the ReMCP .cmd shim, not a .mjs module');
+  }
   // Tests can simulate win32 from a POSIX runner with injected temporary paths.
   // Native Windows paths always use win32 parsing; POSIX-shaped fixtures keep their roots.
   const dirname = file => /^[A-Za-z]:[\\/]/.test(file) || file.includes('\\')

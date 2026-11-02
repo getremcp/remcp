@@ -19,6 +19,7 @@ import { configDir, home, linuxServiceFile, linuxServiceLauncherFile, macService
 import { run } from './shell.mjs';
 import { windowsServiceLauncherText, windowsTaskReliabilityCommand, windowsTaskAbsenceCommand, windowsBatchUnsafeProfile, windowsStartupScriptText, windowsStartupScriptInstalled } from './windows-supervisor.mjs';
 import { ensureWindowsSupervisorKey, windowsSupervisorCommand } from './windows-user-supervisor.mjs';
+import { scheduleWindowsTaskRestart } from './windows-task-restart.mjs';
 
 export function quoteSystemd(value) {
   return `"${String(value).replaceAll('\\', '\\\\').replaceAll('"', '\\"')}"`;
@@ -144,17 +145,6 @@ export function installWindowsService(cliPath = globalCliPath(), { nodePath = pr
   if (windowsBatchUnsafeProfile(cliPath, nodePath, windowsServiceLauncherFile)) {
     requireWindowsScheduledTaskAbsent();
     console.log('ReMCP: Unicode or shell-sensitive Windows profile; using the per-user Startup supervisor.');
-    installWindowsUserStartup(cliPath, nodePath);
-    return;
-  }
-  // Task Scheduler runs an /IT .cmd inside a *visible* terminal window.
-  // For fresh installations prefer our existing hidden WSH + Node supervisor.
-  // Keep already-registered scheduled tasks intact until an explicit migration;
-  // never start two supervisors for the same machine.
-  const previousTask = spawnSync('schtasks.exe', ['/Query', '/TN', windowsTaskName],
-    { stdio:'ignore', windowsHide:true, timeout:10000 });
-  if (previousTask.status !== 0) {
-    requireWindowsScheduledTaskAbsent();
     installWindowsUserStartup(cliPath, nodePath);
     return;
   }
@@ -347,7 +337,7 @@ export function deferredLinuxAgentRestartArgs(pid) {
     'systemctl', '--user', 'restart', 'remcp-agent.service'];
 }
 
-export function restartPersistentServiceIfInstalled(config, { deferLinux = false } = {}) {
+export function restartPersistentServiceIfInstalled(config, { deferLinux = false, deferWindows = false } = {}) {
   if (!persistentServiceExpected(config)) return null;
   const platform = servicePlatform();
   if (platform === 'linux' && fs.existsSync(linuxServiceFile)) {
@@ -382,6 +372,7 @@ export function restartPersistentServiceIfInstalled(config, { deferLinux = false
     }
     const result = spawnSync('schtasks.exe', ['/Query', '/TN', windowsTaskName], { stdio: 'ignore' });
     if (result.status === 0) {
+      if (deferWindows) return scheduleWindowsTaskRestart(canonicalServiceNodePath(config));
       // /Run does not restart a task that is already running; stop the previous
       // process first so a rotated credential is loaded by the replacement.
       spawnSync('schtasks.exe', ['/End', '/TN', windowsTaskName], { stdio: 'ignore' });

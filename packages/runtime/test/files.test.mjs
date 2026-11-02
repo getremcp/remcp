@@ -85,7 +85,9 @@ test('get_file_info returns metadata and line counts for text files', async () =
   const info = JSON.parse(body(await invokeTool('get_file_info', { path: target })));
   assert.equal(info.type, 'file');
   assert.equal(info.lineCount, 3);
-  assert.equal(info.permissions, '0640');
+  // NTFS permission strings are not POSIX chmod semantics (ACLs are separate).
+  if (process.platform === 'win32') assert.match(info.permissions, /^0[0-7]{3}$/);
+  else assert.equal(info.permissions, '0640');
 });
 
 test('create_directory is idempotent', async () => {

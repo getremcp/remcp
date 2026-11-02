@@ -339,7 +339,10 @@ export async function setPermissionsTool(args) {
       }
     }
   }
-  const summary = `Set mode ${raw}${uid !== null || gid !== null ? ` (uid ${uid ?? '-'} gid ${gid ?? '-'})` : ''} on ${changed} path(s) starting at ${displayPath(absolute)}.`;
+  const windowsNote = process.platform === 'win32'
+    ? '\nWindows applies only the read-only attribute; POSIX group/other bits and ownership are not changed.'
+    : '';
+  const summary = `Set mode ${raw}${uid !== null || gid !== null ? ` (uid ${uid ?? '-'} gid ${gid ?? '-'})` : ''} on ${changed} path(s) starting at ${displayPath(absolute)}.${windowsNote}`;
   if (!failures.length) return text(summary);
   return text(`${summary}\n${failures.length} path(s) could not be changed:\n${failures.slice(0, 20).join('\n')}`, true);
 }

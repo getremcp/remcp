@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { chmodSync, existsSync, mkdirSync, readFileSync, statSync, symlinkSync, truncateSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { body, freshWorkspace, isError } from './helpers.mjs';
+import { body, freshWorkspace, isError, waitFor } from './helpers.mjs';
 import { applyLiveConfig, liveConfig } from '../src/config.mjs';
 import { zipArchiveBackendAvailable } from '../src/tools/files.mjs';
 
@@ -178,7 +178,17 @@ test('an archive created inside the tree it packs excludes itself', async () => 
   const created = await invokeTool('create_archive', { paths: [tree], destination: archive, format: 'tar.gz' });
   assert.equal(isError(created), false, body(created));
   assert.match(body(created), /built outside the tree/);
-  const listing = body(await invokeTool('start_process', { command: `tar -tzf ${archive}`, timeout_ms: 3000 }));
+  const started = await invokeTool('start_process', { command: `tar -tzf ${archive}`, timeout_ms: 3000 });
+  const pid = Number(started.structuredContent?.pid) || Number(body(started).match(/Process (\d+)/)?.[1]);
+  let listing = body(started);
+  if (!/nested\/file\.txt/.test(listing)) {
+    const done = await waitFor(async () => {
+      const page = await invokeTool('read_process_output', { pid, timeout_ms: 100 });
+      listing += `\n${body(page)}`;
+      return page.structuredContent?.exited === true;
+    }, 8000);
+    assert.equal(done, true, 'the archive listing must finish');
+  }
   assert.match(listing, /nested\/file\.txt/);
   assert.doesNotMatch(listing, /bundle\.tar\.gz/);
 });
@@ -266,14 +276,23 @@ test('apply_patch lands a unified diff, with fuzz for small offsets, and can pre
 test('set_permissions makes a written script executable', async () => {
   const script = join(root, 'run.sh');
   writeFileSync(script, '#!/bin/sh\necho ok\n');
-  assert.equal(isError(await invokeTool('set_permissions', { path: script, mode: '755' })), false);
-  assert.equal(statSync(script).mode & 0o777, 0o755);
+  const chmodResult = await invokeTool('set_permissions', { path: script, mode: '755' });
+  assert.equal(isError(chmodResult), false);
+  if (process.platform === 'win32') {
+    // NTFS chmod maps the write bit to the read-only attribute; execute bits
+    // require Windows ACLs and must not be inferred from POSIX mode strings.
+    assert.equal(statSync(script).isFile(), true);
+    assert.equal(statSync(script).mode & 0o200, 0o200);
+    assert.match(body(chmodResult), /read-only attribute/);
+  } else assert.equal(statSync(script).mode & 0o777, 0o755);
   assert.equal(isError(await invokeTool('set_permissions', { path: script, mode: 'nope' })), true);
   const dir = join(root, 'perms-dir');
   mkdirSync(join(dir, 'nested'), { recursive: true });
   writeFileSync(join(dir, 'nested', 'file.txt'), 'x\n');
   assert.equal(isError(await invokeTool('set_permissions', { path: dir, mode: '750', recursive: true })), false);
-  assert.equal(statSync(join(dir, 'nested', 'file.txt')).mode & 0o777, 0o750);
+  if (process.platform === 'win32')
+    assert.equal(statSync(join(dir, 'nested', 'file.txt')).isFile(), true);
+  else assert.equal(statSync(join(dir, 'nested', 'file.txt')).mode & 0o777, 0o750);
 });
 
 test('apply_patch inserts a zero-context hunk at the position the diff names', async () => {

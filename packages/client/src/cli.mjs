@@ -271,11 +271,12 @@ export async function main(argv = process.argv.slice(2)) {
     if (!['on', 'off', 'enable', 'disable'].includes(action)) throw new Error('Usage: remcp godmode [status|on|off]');
     const enabled = action === 'on' || action === 'enable';
     writeJsonFile(runtimeConfigFile, { ...readJsonFile(runtimeConfigFile), unrestricted: enabled });
-    // The authenticated Workspace supplies this explicit flag to allow the
-    // remote command to finish before its agent schedules a Linux restart.
-    // Local CLI and normal update operations retain synchronous semantics.
+    // The authenticated Workspace supplies this explicit flag so the remote
+    // command can acknowledge a policy change before Linux/Windows kills its
+    // own agent session. Local CLI operations retain synchronous semantics.
     const restarted = restartPersistentServiceIfInstalled(loadConfig(false),
-      { deferLinux: flags['defer-restart'] === true });
+      { deferLinux: flags['defer-restart'] === true,
+        deferWindows: flags['defer-restart'] === true });
     if (enabled) {
       console.error('Unrestricted mode is ON for this computer: every path and every command is allowed, including sudo. Anything the model is asked to do -- and anything a prompt injection asks it to do -- can now change this machine. Turn it off with `remcp godmode off` when you are done.');
     } else {

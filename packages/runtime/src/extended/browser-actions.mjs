@@ -51,8 +51,10 @@ export const PAGE_SCROLL_ACTION = `function(selector, needle, deltaX, deltaY) {
 
   const beforeX = Number(scroller.scrollLeft || 0);
   const beforeY = Number(scroller.scrollTop || 0);
-  scroller.scrollLeft = beforeX + Number(deltaX || 0);
-  scroller.scrollTop = beforeY + Number(deltaY || 0);
+  // CSS scroll-behavior:smooth can defer these changes indefinitely in a
+  // background target. Apply the requested move before reading its result.
+  scroller.scrollTo({left:beforeX + Number(deltaX || 0),
+    top:beforeY + Number(deltaY || 0), behavior:'instant'});
   return {
     target: target ? target.tagName.toLowerCase() : 'page',
     scroller: scroller === document.scrollingElement || scroller === document.documentElement ? 'page' : scroller.tagName.toLowerCase(),

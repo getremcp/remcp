@@ -210,9 +210,19 @@ async function copyPortalFile(source, destination) {
   try {
     sourceParent = await openDirectoryNoFollow(path.dirname(source));
     destinationParent = await openDirectoryNoFollow(path.dirname(destination));
-    input = await open(path.join(sourceParent.anchor, path.basename(source)), constants.O_RDONLY | constants.O_NOFOLLOW);
-    const info = await input.stat();
-    if (!info.isFile()) throw new Error('desktop portal returned a non-regular screenshot file');
+    const sourcePath = path.join(sourceParent.anchor, path.basename(source));
+    // On Windows O_NOFOLLOW is not available: inspect the leaf explicitly.
+    // BigInt identifiers avoid rounding NTFS file IDs above 2^53.
+    const before = await lstat(sourcePath, { bigint: true });
+    if (!before.isFile() || before.isSymbolicLink())
+      throw new Error('desktop portal screenshot source cannot be a symbolic link');
+    input = await open(sourcePath, constants.O_RDONLY | (constants.O_NOFOLLOW || 0));
+    const info = await input.stat({ bigint: true });
+    const current = await lstat(sourcePath, { bigint: true });
+    if (!info.isFile() || current.isSymbolicLink() || !current.isFile() ||
+        info.dev !== before.dev || info.ino !== before.ino ||
+        current.dev !== before.dev || current.ino !== before.ino)
+      throw new Error('desktop portal screenshot source changed or is not regular');
     const destinationPath = path.join(destinationParent.anchor, path.basename(destination));
     const existing = await lstat(destinationPath).catch(() => null);
     if (existing?.isSymbolicLink()) throw new Error('desktop portal screenshot destination cannot be a symbolic link');

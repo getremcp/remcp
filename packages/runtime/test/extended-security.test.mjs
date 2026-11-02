@@ -64,6 +64,6 @@ test('runWithInput converts an early stdin close into a ToolError instead of an 
       'x'.repeat(8 * 1024 * 1024),
       { label: 'closed stdin fixture', timeout: 2000 },
     ),
-    /closed stdin fixture input failed: write EPIPE/,
+    /closed stdin fixture input failed: write (?:EPIPE|EOF)/,
   );
 });

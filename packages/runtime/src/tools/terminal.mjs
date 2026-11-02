@@ -24,8 +24,16 @@ function shellCommand() {
   return process.env.SHELL || '/bin/bash';
 }
 
-function shellArgs(command) {
-  if (process.platform === 'win32') return ['/d', '/s', '/c', command];
+function usesWindowsCmd(shell) {
+  return process.platform === 'win32' && /(?:^|[\\/])cmd(?:\.exe)?$/i.test(shell);
+}
+
+function shellArgs(command, shell) {
+  // CMD parses its own quoting: wrap the full command and disable CRT escaping below.
+  if (usesWindowsCmd(shell)) return ['/d', '/s', '/c', '"' + command + '"'];
+  if (process.platform === 'win32' && /(?:^|[\\/])(?:powershell|pwsh)(?:\.exe)?$/i.test(shell)) {
+    return ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command', command];
+  }
   return ['-c', command];
 }
 
@@ -90,11 +98,12 @@ export async function startProcessTool(args, extra = {}) {
   const shell = shellCommand();
   // `detached` gives the child its own process group so a session can be stopped as a
   // tree; a pipeline such as `sleep 20 | cat` otherwise survives force_terminate.
-  const child = spawn(shell, shellArgs(command), {
+  const child = spawn(shell, shellArgs(command, shell), {
     cwd: process.cwd(),
     env: process.env,
     stdio: ['pipe', 'pipe', 'pipe'],
     windowsHide: true,
+    windowsVerbatimArguments: usesWindowsCmd(shell),
     detached: process.platform !== 'win32',
   });
   // The error listener has to exist before anything can throw: a bogus REMCP_RUNTIME_SHELL

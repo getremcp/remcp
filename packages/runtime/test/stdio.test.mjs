@@ -11,6 +11,7 @@ import { join } from 'node:path';
 import { Client } from '@modelcontextprotocol/client';
 import { StdioClientTransport } from '@modelcontextprotocol/client/stdio';
 import { body, freshWorkspace } from './helpers.mjs';
+import { portableCommand } from './fixtures/portable-command.mjs';
 
 const run = promisify(execFile);
 const root = freshWorkspace('stdio');
@@ -70,7 +71,7 @@ test('runtime serves MCP over stdio like the ReMCP agent expects', async () => {
     assert.equal(readFileSync(target, 'utf8'), 'over stdio\n');
     const read = await client.callTool({ name: 'read_file', arguments: { path: target } });
     assert.match(body(read), /over stdio/);
-    const process1 = await client.callTool({ name: 'start_process', arguments: { command: 'printf "stdio-process\\n"', timeout_ms: 2000 } });
+    const process1 = await client.callTool({ name: 'start_process', arguments: { command: portableCommand('printf "stdio-process\\n"', "console.log('stdio-process')"), timeout_ms: 2000 } });
     assert.match(body(process1), /stdio-process/);
   } finally {
     await client.close();

@@ -16,15 +16,31 @@ import { findOcrText, ocrImage } from './ocr.mjs';
 import { boundedComputerSnapshot, clipboard, cursorPosition, displayInventory, listWindows, objectRecord, resultValue, screenshotRegion, snapshotError, suggestedUiAction, toolResultMessage, uiSnapshot } from './desktop-core.mjs';
 import { activeWindowCaptureBounds, browserTitleHint, computerScreenshotTask, hasExplicitComputerScreenshotTarget, ocrScreenshotResult } from './desktop-vision.mjs';
 
+// Several simultaneous Windows PowerShell starts can stall until their shared
+// timeout on low-core hosts, which made the whole snapshot report every probe
+// as unavailable. Queue the probes on Windows; other platforms stay parallel.
+export async function settleComputerSnapshotProbes(tasks, { serial = process.platform === 'win32' } = {}) {
+  if (!serial) return Promise.allSettled(tasks.map((task) => task()));
+  const results = [];
+  for (const task of tasks) {
+    try {
+      results.push({ status: 'fulfilled', value: await task() });
+    } catch (reason) {
+      results.push({ status: 'rejected', reason });
+    }
+  }
+  return results;
+}
+
 export async function computerSnapshot(args = {}) {
   const desktopAvailable = desktopSessionAvailable();
   const screenshotRequested = args.include_screenshot !== false || args.include_ocr === true;
   const captureScreenshot = desktopAvailable && screenshotRequested;
   const includeUi = args.include_ui !== false;
-  const [windowsResult, displaysResult, uiResult, clipboardResult, cursorResult, shotResult, readinessResult] = await Promise.allSettled([
-    desktopAvailable ? listWindows() : Promise.resolve(null),
-    desktopAvailable ? displayInventory() : Promise.resolve(null),
-    includeUi && desktopAvailable
+  const [windowsResult, displaysResult, uiResult, clipboardResult, cursorResult, shotResult, readinessResult] = await settleComputerSnapshotProbes([
+    () => desktopAvailable ? listWindows() : Promise.resolve(null),
+    () => desktopAvailable ? displayInventory() : Promise.resolve(null),
+    () => includeUi && desktopAvailable
       ? uiSnapshot({
           max_nodes:args.max_ui_nodes || 800,
           max_depth:args.max_ui_depth || 12,
@@ -33,10 +49,10 @@ export async function computerSnapshot(args = {}) {
           ...(args.ui_browser_dom === true ? { browser_dom:true } : {}),
         })
       : Promise.resolve(null),
-    desktopAvailable ? clipboard({ action:'read' }) : Promise.resolve(null),
-    desktopAvailable ? cursorPosition() : Promise.resolve(null),
-    captureScreenshot ? computerScreenshotTask(args) : Promise.resolve(null),
-    args.browser_readiness === true ? probeBrowserReadiness() : Promise.resolve(null),
+    () => desktopAvailable ? clipboard({ action:'read' }) : Promise.resolve(null),
+    () => desktopAvailable ? cursorPosition() : Promise.resolve(null),
+    () => captureScreenshot ? computerScreenshotTask(args) : Promise.resolve(null),
+    () => args.browser_readiness === true ? probeBrowserReadiness() : Promise.resolve(null),
   ]);
   const parse = (result, fallback = null) => {
     if (result.status !== 'fulfilled' || !result.value || result.value.isError === true) return fallback;

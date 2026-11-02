@@ -208,7 +208,7 @@ function Initialize-ReMCPStage {
       $npm = Join-Path $Destination 'npm.cmd'
       $clientSpec = [string]$Release.cli
       $runtimeSpec = [string]$Release.runtime
-      & $npm install --global $clientSpec $runtimeSpec --no-audit --no-fund --ignore-scripts --no-update-notifier --loglevel=error
+      & $npm install --global $clientSpec $runtimeSpec --no-audit --no-fund --ignore-scripts --loglevel=error
       if ($LASTEXITCODE -ne 0) {
         throw "ReMCP installation failed with exit code $LASTEXITCODE."
       }

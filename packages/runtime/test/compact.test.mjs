@@ -8,6 +8,7 @@ import { readFileSync } from 'node:fs';
 import { Client } from '@modelcontextprotocol/client';
 import { StdioClientTransport } from '@modelcontextprotocol/client/stdio';
 import { body, freshWorkspace } from './helpers.mjs';
+import { portableCommand } from './fixtures/portable-command.mjs';
 import { compactRuntimeGroups, compactRuntimeToolDefinitions } from '../src/compact-catalog.mjs';
 
 const entry = fileURLToPath(new URL('../src/compact.mjs', import.meta.url));
@@ -133,10 +134,23 @@ test('compact stdio facade executes real file and terminal runtime handlers', as
 
     const terminal = await client.callTool({
       name:'run_terminal',
-      arguments:{ operation:'start_process', parameters:{ command:'printf "compact-terminal\\n"', timeout_ms:2000 } },
+      arguments:{ operation:'start_process', parameters:{ command:portableCommand('printf "compact-terminal\\n"', "console.log('compact-terminal')"), timeout_ms:2000 } },
     });
     assert.equal(terminal.isError, undefined);
-    assert.match(body(terminal), /compact-terminal/);
+    // Starting a process may return before stdout arrives, especially on Windows.
+    // Exercise the facade's async session contract instead of assuming a quick spawn.
+    const pid = terminal.structuredContent.pid;
+    let page = terminal;
+    const deadline = Date.now() + 10000;
+    while (!page.structuredContent.exited && Date.now() < deadline) {
+      page = await client.callTool({ name:'run_terminal', arguments:{
+        operation:'read_process_output', parameters:{ pid, offset:0, length:20, timeout_ms:100 },
+      } });
+      await new Promise(resolve => setTimeout(resolve, 25));
+    }
+    assert.equal(page.structuredContent.exited, true);
+    assert.equal(page.structuredContent.exitCode, 0);
+    assert.match(body(page), /compact-terminal/);
   } finally {
     await client.close();
   }

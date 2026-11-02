@@ -197,11 +197,15 @@ export async function runFileHeadLines(file, args = [], lineLimit = 200, options
   });
 }
 
+// Windows PowerShell writes redirected stdout in the OEM code page by default,
+// which corrupts Unicode names and clipboard text. Emit UTF-8 without a BOM.
+const WINDOWS_UTF8_OUTPUT = '[Console]::OutputEncoding=New-Object System.Text.UTF8Encoding $false;';
+
 export async function runPowerShell(script, options = {}) {
   const executable = process.env.SystemRoot
     ? path.join(process.env.SystemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe')
     : 'powershell.exe';
-  return runFile(executable, ['-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', script], {
+  return runFile(executable, ['-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', WINDOWS_UTF8_OUTPUT + script], {
     ...options,
     label: options.label || 'PowerShell',
   });

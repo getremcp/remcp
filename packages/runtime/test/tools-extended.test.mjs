@@ -7,6 +7,7 @@ import { spawnSync } from 'node:child_process';
 import { body, freshWorkspace, isError } from './helpers.mjs';
 import { applyLiveConfig, liveConfig } from '../src/config.mjs';
 import { zipArchiveBackendAvailable } from '../src/tools/files.mjs';
+import { archiveTarExpandedSize } from '../src/tools/files-archive-safety.mjs';
 
 const root = freshWorkspace('extended');
 const { invokeTool } = await import('../src/invoke.mjs');
@@ -137,8 +138,15 @@ test('archive creation passes option-like member names after the option terminat
   assert.match(listing.stdout, /archive-option-project/);
 });
 
+test('tar preflight rejects oversized members on every OS, including Windows', () => {
+  const row = '-rw-r--r-- 0 0 537919488 2026-10-02 13:53 large.bin';
+  assert.throws(() => archiveTarExpandedSize([row], 'archive', 1), /extraction limit/);
+});
+
 test('archive extraction rejects an expanded-size bomb before writing files', {
-  skip: spawnSync('tar', ['--version'], { stdio: 'ignore' }).status !== 0,
+  // Windows inbox bsdtar has no --sparse flag. The portable preflight test
+  // above still proves the expanded-size guard without a 513 MB QA artifact.
+  skip: process.platform === 'win32' || spawnSync('tar', ['--version'], { stdio: 'ignore' }).status !== 0,
 }, async () => {
   const project = join(root, 'archive-bomb-project');
   mkdirSync(project, { recursive: true });
