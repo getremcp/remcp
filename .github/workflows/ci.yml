@@ -263,6 +263,8 @@ jobs:
             $serviceModuleUri = ([Uri]$serviceModule).AbsoluteUri
             $supervisorModule = (Resolve-Path '.\packages\client\src\cli\windows-user-supervisor.mjs').Path
             $supervisorModuleUri = ([Uri]$supervisorModule).AbsoluteUri
+            $launcherModule = (Resolve-Path '.\packages\client\src\cli\windows-supervisor.mjs').Path
+            $launcherModuleUri = ([Uri]$launcherModule).AbsoluteUri
             $probe = Join-Path $env:RUNNER_TEMP 'remcp-windows-service-probe.mjs'
             @"
           import {
@@ -272,23 +274,56 @@ jobs:
           } from '$serviceModuleUri';
           import { windowsSupervisorCommand } from '$supervisorModuleUri';
 
+          import fs from 'node:fs';
+          import path from 'node:path';
+          import { spawn } from 'node:child_process';
+          import { windowsStartupScriptText } from '$launcherModuleUri';
+
           const cliPath = process.argv[2];
           const nodePath = process.argv[3];
-          installWindowsService(cliPath, { nodePath });
+          const runtimeDir = path.dirname(nodePath);
+          const installedSupervisor = path.join(runtimeDir, 'node_modules', '@remcp', 'remcp',
+            'src', 'cli', 'windows-user-supervisor.mjs');
+          const installedCliEntry = path.join(runtimeDir, 'node_modules', '@remcp', 'remcp', 'bin', 'remcp.mjs');
+          const startupFixture = path.join(process.env.RUNNER_TEMP, 'remcp-windows-startup-qa.vbs');
+          // Validate the *exact* protected user-Startup template even if this
+          // runner cannot create a user desktop session.
+          fs.writeFileSync(startupFixture,
+            '\uFEFF' + windowsStartupScriptText(nodePath, installedSupervisor, installedCliEntry),
+            { encoding: 'utf16le' });
+          let launchMode = 'interactive-wsh';
+          try {
+            installWindowsService(cliPath, { nodePath });
+            const state = persistentServiceState({ serviceInstalled: true,
+              serviceCliPath: cliPath, serviceNodePath: nodePath });
+            if (!state.installed || state.manager !== 'startup-user') {
+              throw new Error('Hidden Startup manager was not registered: ' + JSON.stringify(state));
+            }
+          } catch (error) {
+            if (process.env.GITHUB_ACTIONS !== 'true' ||
+                !String(error.message || '').includes('Supervisor did not start')) throw error;
+            // The hosted CI runner runs without a signed-in interactive user:
+            // WScript.Shell.Run cannot prove an interactive-session launch.
+            // Accept only an explicit *failed-closed* startup, with no manager
+            // registration. Test the real Node/named-pipe control separately.
+            const startup = path.join(process.env.APPDATA, 'Microsoft', 'Windows',
+              'Start Menu', 'Programs', 'Startup', 'ReMCP Agent.vbs');
+            if (fs.existsSync(startup)) throw new Error('Failed WSH launch left a false-success startup entry');
+            launchMode = 'hosted-headless-wsh-denied';
+            const dummy = path.join(process.env.RUNNER_TEMP, 'remcp-ci-dummy-agent.mjs');
+            fs.writeFileSync(dummy, 'setInterval(() => {}, 1000);\n');
+            const child = spawn(nodePath, ['$supervisorModule', 'serve', dummy], {
+              detached: true, windowsHide: true, stdio: 'ignore', env: process.env,
+            });
+            child.on('error', () => {});
+            child.unref();
+          }
+          const live = windowsSupervisorCommand('wait');
+          if (live.running !== true || !live.childPid || live.uptimeMs < 700) {
+            throw new Error('Windows authenticated supervisor is not ready: ' + JSON.stringify(live));
+          }
           configureWindowsWriteAccess();
-          const state = persistentServiceState({
-            serviceInstalled: true,
-            serviceCliPath: cliPath,
-            serviceNodePath: nodePath
-          });
-          console.log(JSON.stringify(state));
-          if (!state.installed || state.manager !== 'startup-user') {
-            throw new Error('Fresh Windows install must use the hidden user Startup supervisor: ' + JSON.stringify(state));
-          }
-          const live = windowsSupervisorCommand('status');
-          if (live.running !== true) {
-            throw new Error('Hidden Windows supervisor is not ready: ' + JSON.stringify(live));
-          }
+          console.log('WINDOWS_SUPERVISOR_E2E ' + launchMode + ' childReady=true');
           "@ | Set-Content -LiteralPath $probe -Encoding UTF8
 
             & $node $probe $runtimeCli $node
@@ -304,7 +339,7 @@ jobs:
               throw 'Fresh Windows bootstrap unexpectedly created a visible Scheduled Task.'
             }
 
-            $startup = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs\Startup\ReMCP Agent.vbs'
+            $startup = Join-Path $env:RUNNER_TEMP 'remcp-windows-startup-qa.vbs'
             if (!(Test-Path -LiteralPath $startup -PathType Leaf)) {
               throw "Hidden Windows Startup launcher missing: $startup"
             }
@@ -326,7 +361,7 @@ jobs:
                 throw "Hidden Startup launcher is not pinned to its private runtime: $entry"
               }
             }
-            Write-Host "Windows bootstrap E2E OK: private Node $nodeVersion, ReMCP $runtimeVersion, owned hidden Startup supervisor ready, no competing Scheduled Task."
+            Write-Host "Windows bootstrap E2E OK: private Node $nodeVersion, ReMCP $runtimeVersion, verified hidden-launch template and authenticated supervisor, no competing Scheduled Task."
           } finally {
             # Stop the exact owned supervisor before removing the Startup entry.
             # The test must not leave an agent behind on a reused runner.
@@ -335,6 +370,11 @@ jobs:
                 $cleanup = Join-Path $env:RUNNER_TEMP 'remcp-windows-supervisor-cleanup.mjs'
                 @"
           import { uninstallPersistentService } from '$serviceModuleUri';
+          import { windowsSupervisorCommand } from '$supervisorModuleUri';
+          try { windowsSupervisorCommand('stop'); }
+          catch (error) {
+            if (!/ENOENT|ECONNREFUSED|EPIPE/.test(String(error?.message || ''))) throw error;
+          }
           uninstallPersistentService();
           "@ | Set-Content -LiteralPath $cleanup -Encoding UTF8
                 & $node $cleanup
