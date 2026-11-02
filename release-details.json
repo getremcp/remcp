@@ -1,12 +1,12 @@
 {
-  "version": "0.2.214",
-  "title": "Synchronize published ReMCP 0.2.213 Windows improvements and accelerate Windows service status.",
+  "version": "0.2.215",
+  "title": "Improve ReMCP device monitoring, verified telemetry controls and private diagnostic captures.",
   "changes": [
-    "Preserve the full published 0.2.213 runtime and Windows client fixes, including Unicode clipboard reading, signed scroll deltas, startup recovery and terminal quoting; retain their regression tests.",
-    "Query Windows SCM through native sc.exe for read-only service status, avoiding PowerShell startup delays on heavily loaded virtual machines while preserving JSON status fields.",
-    "Fall back to the previous PowerShell service reader for unexpected or localized SCM output; keep all service mutation permissions unchanged.",
-    "Add a native Windows CI check for the service status fast path and diagnostics module API contract.",
-    "Start the managed Windows logon task through a hidden Windows Script Host wrapper, so the persistent ReMCP agent no longer leaves a visible terminal window; retain interactive, least-privilege startup, crash recovery and safe uninstall.",
-    "Preserve public-first source parity, authentication constraints, path restrictions and normal release checks; do not replace production agents before package release."
+    "Display online device CPU, RAM and disk measurements progressively from authorized saved and live samples, without waiting for a slow device to complete other batches.",
+    "Keep loading skeletons for unmeasured indicators and distinguish telemetry disabled, unavailable and pending states; retry rate-limited scans automatically.",
+    "Verify owner-requested telemetry changes across both agent and runtime on reconnect, while preserving explicitly disabled preferences.",
+    "Associate newly saved screenshots with nearby real diagnostic measurements and blur screenshot previews until the owner deliberately reveals them.",
+    "Make remote device management safer with owner-confirmed agent repair, explicit local-only stop and uninstall instructions, and bounded process inventory.",
+    "Preserve independent read-only diagnostics, account scope, screenshot headless detection and existing server-side authorization boundaries."
   ]
 }

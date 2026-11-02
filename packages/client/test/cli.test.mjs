@@ -54,12 +54,12 @@ test('telemetry is opt-out through one switch that covers the client and the run
     assert.equal(initial.endpoint, null);
     assert.equal(initial.transport, 'paired-agent-only');
 
-    await captureLog(() => main(['telemetry', 'off']));
+    await captureLog(() => main(['telemetry', 'off', '--defer-restart']));
     assert.equal(JSON.parse(readFileSync(clientFile, 'utf8')).telemetryEnabled, false);
     assert.equal(JSON.parse(readFileSync(runtimeFile, 'utf8')).telemetryEnabled, false, 'the runtime switch must follow the client switch');
     assert.equal(JSON.parse(await captureLog(() => main(['telemetry', 'status']))).enabled, false);
 
-    await captureLog(() => main(['telemetry', 'on']));
+    await captureLog(() => main(['telemetry', 'on', '--defer-restart']));
     assert.equal(JSON.parse(readFileSync(clientFile, 'utf8')).telemetryEnabled, true);
     assert.equal(JSON.parse(readFileSync(runtimeFile, 'utf8')).telemetryEnabled, true);
     assert.equal(JSON.parse(await captureLog(() => main(['telemetry', 'status']))).enabled, true);

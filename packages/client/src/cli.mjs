@@ -236,14 +236,16 @@ export async function main(argv = process.argv.slice(2)) {
     }
     if (action === 'on' || action === 'enable') {
       console.log(JSON.stringify(setTelemetry(true), null, 2));
-      restartPersistentServiceIfInstalled(loadConfig(false));
-      console.log('Usage metrics enabled and the agent restarted to apply it.');
+      const restarted = restartPersistentServiceIfInstalled(loadConfig(false),
+        { deferLinux: flags['defer-restart'] === true, deferWindows: flags['defer-restart'] === true });
+      console.log(restarted ? 'Usage telemetry enabled; agent reload requested.' : 'Usage telemetry enabled for the next agent start.');
       return;
     }
     if (action === 'off' || action === 'disable') {
       console.log(JSON.stringify(setTelemetry(false), null, 2));
-      restartPersistentServiceIfInstalled(loadConfig(false));
-      console.log('Usage metrics disabled and the agent restarted to apply it.');
+      const restarted = restartPersistentServiceIfInstalled(loadConfig(false),
+        { deferLinux: flags['defer-restart'] === true, deferWindows: flags['defer-restart'] === true });
+      console.log(restarted ? 'Usage telemetry disabled; agent reload requested.' : 'Usage telemetry disabled for the next agent start.');
       return;
     }
     throw new Error('Usage: remcp telemetry [status|on|off]');
