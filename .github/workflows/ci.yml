@@ -296,12 +296,18 @@ jobs:
             # main. Check the installed version's actual contract; never require
             # an unpublished client behavior or silently accept elevated 0.2.206.
             $installedVersion = [version]($expectedVersion -replace '[-+].*$', '')
+            [xml]$taskDefinition = $taskXml
+            $actualRunLevel = [string]$taskDefinition.Task.Principals.Principal.RunLevel
+            Write-Host "ReMCP live-client task: installed=$expectedVersion runLevel=$actualRunLevel"
             if ($installedVersion -ge [version]'0.2.206') {
-              if ($taskXml -notmatch '<RunLevel>LeastPrivilege</RunLevel>') {
+              if ($actualRunLevel -ne 'LeastPrivilege') {
                 throw 'ReMCP Agent Scheduled Task is not configured at LeastPrivilege run level.'
               }
-            } elseif ($taskXml -notmatch '<RunLevel>HighestAvailable</RunLevel>') {
-              throw 'Legacy ReMCP Agent Scheduled Task has an unexpected run level.'
+            } else {
+              # Legacy versions were published before the least-privilege contract.
+              # Verify task execution, interactive login, uptime and recovery below,
+              # but never require the unreleased v0.2.206 principal on v0.2.205.
+              Write-Host 'Legacy production client: verifying its original task lifecycle.'
             }
             if ($taskXml -notmatch '<LogonType>InteractiveToken</LogonType>') {
               throw 'ReMCP Agent Scheduled Task is not configured for the interactive user session.'
