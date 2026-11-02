@@ -261,6 +261,8 @@ jobs:
               throw "Candidate service module is missing: $serviceModule"
             }
             $serviceModuleUri = ([Uri]$serviceModule).AbsoluteUri
+            $supervisorModule = (Resolve-Path '.\packages\client\src\cli\windows-user-supervisor.mjs').Path
+            $supervisorModuleUri = ([Uri]$supervisorModule).AbsoluteUri
             $probe = Join-Path $env:RUNNER_TEMP 'remcp-windows-service-probe.mjs'
             @"
           import {
@@ -268,6 +270,7 @@ jobs:
             installWindowsService,
             persistentServiceState
           } from '$serviceModuleUri';
+          import { windowsSupervisorCommand } from '$supervisorModuleUri';
 
           const cliPath = process.argv[2];
           const nodePath = process.argv[3];
@@ -279,100 +282,69 @@ jobs:
             serviceNodePath: nodePath
           });
           console.log(JSON.stringify(state));
-          if (!state.installed || state.manager !== 'schtasks' || state.name !== 'ReMCP Agent') {
-            throw new Error('Scheduled Task state is not installed as expected: ' + JSON.stringify(state));
+          if (!state.installed || state.manager !== 'startup-user') {
+            throw new Error('Fresh Windows install must use the hidden user Startup supervisor: ' + JSON.stringify(state));
+          }
+          const live = windowsSupervisorCommand('status');
+          if (live.running !== true) {
+            throw new Error('Hidden Windows supervisor is not ready: ' + JSON.stringify(live));
           }
           "@ | Set-Content -LiteralPath $probe -Encoding UTF8
 
             & $node $probe $runtimeCli $node
             if ($LASTEXITCODE -ne 0) {
-              throw "Scheduled Task probe failed with exit code $LASTEXITCODE."
+              throw "Hidden Startup supervisor probe failed with exit code $LASTEXITCODE."
             }
 
-            $taskXml = (& schtasks.exe /Query /TN 'ReMCP Agent' /XML | Out-String)
-            if ($LASTEXITCODE -ne 0) { throw 'ReMCP Agent Scheduled Task was not queryable.' }
-            # This bootstrap follows the production-advertised release, which may
-            # still be v0.2.205 while this v0.2.206 candidate is staged on public
-            # main. Check the installed version's actual contract; never require
-            # an unpublished client behavior or silently accept elevated 0.2.206.
-            $installedVersion = [version]($expectedVersion -replace '[-+].*$', '')
-            # RunLevel is OPTIONAL in Task Scheduler XML, and some Windows builds
-            # omit the default-valued element. Read the authoritative COM principal
-            # property instead of treating a missing XML element as elevation.
-            # TASK_RUNLEVEL_LUA = 0; TASK_RUNLEVEL_HIGHEST = 1.
-            $scheduleService = New-Object -ComObject 'Schedule.Service'
-            $scheduleService.Connect()
-            $actualRunLevel = [int]$scheduleService.GetFolder('\').GetTask('ReMCP Agent').Definition.Principal.RunLevel
-            Write-Host "ReMCP live-client task: installed=$expectedVersion runLevel=$actualRunLevel (COM)"
-            if ($installedVersion -ge [version]'0.2.206') {
-              if ($actualRunLevel -ne 0) {
-                throw 'ReMCP Agent Scheduled Task is not configured at LeastPrivilege run level.'
-              }
-            } else {
-              # Legacy versions were published before the least-privilege contract.
-              # Verify task execution, interactive login, uptime and recovery below,
-              # but never require the unreleased v0.2.206 principal on v0.2.205.
-              Write-Host 'Legacy production client: verifying its original task lifecycle.'
-            }
-            if ($taskXml -notmatch '<LogonType>InteractiveToken</LogonType>') {
-              throw 'ReMCP Agent Scheduled Task is not configured for the interactive user session.'
-            }
-            [xml]$taskDefinition = $taskXml
-            $taskSettings = $taskDefinition.Task.Settings
-            if ($taskSettings.ExecutionTimeLimit -ne 'PT0S') {
-              throw 'Windows must not stop the persistent agent after the default 72-hour task deadline.'
-            }
-            if ($taskSettings.MultipleInstancesPolicy -ne 'IgnoreNew') {
-              throw 'Windows must not create duplicate ReMCP background agents.'
-            }
-            if ($taskSettings.DisallowStartIfOnBatteries -ne 'false' -or
-                $taskSettings.StopIfGoingOnBatteries -ne 'false') {
-              throw 'Windows must allow ReMCP to stay online when a laptop switches to battery.'
-            }
-            if ($taskSettings.RestartOnFailure.Count -lt 1 -or $taskSettings.RestartOnFailure.Interval -ne 'PT1M') {
-              throw 'Windows must retry a failed persistent task after one minute.'
+            # The 0.2.212 installer deliberately avoids a visible interactive
+            # .cmd Scheduled Task for a *fresh* installation. Never relax this
+            # into blindly accepting two simultaneous service managers.
+            $taskCheck = & schtasks.exe /Query /TN 'ReMCP Agent' 2>$null
+            if ($LASTEXITCODE -eq 0) {
+              throw 'Fresh Windows bootstrap unexpectedly created a visible Scheduled Task.'
             }
 
-            $launcher = Join-Path $env:REMCP_CONFIG_DIR 'remcp-agent.cmd'
-            if (!(Test-Path -LiteralPath $launcher -PathType Leaf)) {
-              throw "Scheduled Task launcher is missing: $launcher"
+            $startup = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs\Startup\ReMCP Agent.vbs'
+            if (!(Test-Path -LiteralPath $startup -PathType Leaf)) {
+              throw "Hidden Windows Startup launcher missing: $startup"
             }
-            $launcherText = Get-Content -LiteralPath $launcher -Raw
-            if ($installedVersion -ge [version]'0.2.206') {
-              # v0.2.206 may use an ASCII-only known-folder reference instead of
-              # embedding a codepage-sensitive Unicode profile path in the batch.
-              $prefixLines = @(
-                ('set "NPM_CONFIG_PREFIX={0}"' -f $runtimeDir),
-                'set "NPM_CONFIG_PREFIX=%LOCALAPPDATA%\ReMCP\runtime"'
-              )
-              $pathLines = @(
-                ('set "PATH={0};%PATH%"' -f $runtimeDir),
-                'set "PATH=%LOCALAPPDATA%\ReMCP\runtime;%PATH%"'
-              )
-              $callLines = @(
-                ('call "{0}" start --service' -f $runtimeCli),
-                'call "%LOCALAPPDATA%\ReMCP\runtime\remcp.cmd" start --service'
-              )
-              if (!($prefixLines | Where-Object { $launcherText.Contains($_) })) {
-                throw 'Scheduled Task launcher does not pin the private npm prefix.'
-              }
-              if (!($pathLines | Where-Object { $launcherText.Contains($_) })) {
-                throw 'Scheduled Task launcher does not pin the private Node runtime directory.'
-              }
-              if (!($callLines | Where-Object { $launcherText.Contains($_) })) {
-                throw 'Scheduled Task launcher does not invoke the private ReMCP CLI as a service.'
-              }
-            } else {
-              Write-Host 'Legacy production launcher: private runtime verified by installation and task execution.'
+            $bytes = @(Get-Content -LiteralPath $startup -Encoding Byte -TotalCount 2)
+            if ($bytes.Count -ne 2 -or $bytes[0] -ne 255 -or $bytes[1] -ne 254) {
+              throw 'Hidden launcher must preserve the Unicode BOM for international profile names.'
             }
-            if ($launcherText -notmatch ':remcp_restart' -or
-                $launcherText -notmatch 'goto remcp_restart' -or
-                $launcherText -notmatch 'ping.exe -n 6 127.0.0.1') {
-              throw 'Windows agent launcher must recover automatically when the agent exits.'
+            $startupText = Get-Content -LiteralPath $startup -Raw -Encoding Unicode
+            if (!$startupText.Contains("' ReMCP managed user startup (do not edit)") -or
+                !$startupText.Contains('CreateObject("WScript.Shell")') -or
+                !$startupText.Contains(', 0, False')) {
+              throw 'Windows Startup entry must be an owned hidden WSH launch, not a visible command window.'
             }
-
-            Write-Host "Windows bootstrap E2E OK: private Node $nodeVersion, ReMCP $runtimeVersion, Scheduled Task uses the private runtime; no system Node/npm/npx/winget required."
+            $supervisor = Join-Path $runtimeDir 'node_modules\@remcp\remcp\src\cli\windows-user-supervisor.mjs'
+            $cliEntry = Join-Path $runtimeDir 'node_modules\@remcp\remcp\bin\remcp.mjs'
+            foreach ($entry in @($node, $supervisor, $cliEntry)) {
+              if (!(Test-Path -LiteralPath $entry -PathType Leaf) -or
+                  !$startupText.Contains($entry)) {
+                throw "Hidden Startup launcher is not pinned to its private runtime: $entry"
+              }
+            }
+            Write-Host "Windows bootstrap E2E OK: private Node $nodeVersion, ReMCP $runtimeVersion, owned hidden Startup supervisor ready, no competing Scheduled Task."
           } finally {
+            # Stop the exact owned supervisor before removing the Startup entry.
+            # The test must not leave an agent behind on a reused runner.
+            if ($node -and $serviceModuleUri -and (Test-Path -LiteralPath $node)) {
+              try {
+                $cleanup = Join-Path $env:RUNNER_TEMP 'remcp-windows-supervisor-cleanup.mjs'
+                @"
+          import { uninstallPersistentService } from '$serviceModuleUri';
+          uninstallPersistentService();
+          "@ | Set-Content -LiteralPath $cleanup -Encoding UTF8
+                & $node $cleanup
+                if ($LASTEXITCODE -ne 0) {
+                  Write-Warning 'Windows owned-supervisor cleanup did not exit cleanly.'
+                }
+              } catch {
+                Write-Warning ('Windows owned-supervisor cleanup failed: ' + $_.Exception.Message)
+              }
+            }
             try { schtasks.exe /End /TN 'ReMCP Agent' 2>$null | Out-Null } catch {}
             try { schtasks.exe /Delete /TN 'ReMCP Agent' /F 2>$null | Out-Null } catch {}
           }
