@@ -399,14 +399,15 @@ jobs:
           "@ | Set-Content -LiteralPath $cleanup -Encoding UTF8
                 & $node $cleanup
                 if ($LASTEXITCODE -ne 0) {
-                  Write-Warning 'Windows owned-supervisor cleanup did not exit cleanly.'
+                  throw 'Windows owned-supervisor cleanup did not exit cleanly.'
                 }
               } catch {
-                Write-Warning ('Windows owned-supervisor cleanup failed: ' + $_.Exception.Message)
+                throw ('Windows owned-supervisor cleanup failed: ' + $_.Exception.Message)
               }
             }
-            try { schtasks.exe /End /TN 'ReMCP Agent' 2>$null | Out-Null } catch {}
-            try { schtasks.exe /Delete /TN 'ReMCP Agent' /F 2>$null | Out-Null } catch {}
+            # No Scheduled Task was created. Running /End or /Delete on an
+            # absent task sets LASTEXITCODE=1 and falsely fails PowerShell
+            # Actions even after the E2E validation succeeded.
           }
 
   publish:
