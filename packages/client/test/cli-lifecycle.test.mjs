@@ -58,16 +58,26 @@ test('install uses a stable global CLI path and update refreshes/restarts it', (
   const unit = readFileSync(serviceFile, 'utf8');
   const escapedLauncher = launcherFile.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   assert.match(unit, new RegExp(`ExecStart="${escapedLauncher}" start --service`));
+  assert.doesNotMatch(unit, /^NoNewPrivileges=/m, 'owner-managed Linux agent must not force no-new-privileges');
   assert.match(readFileSync(launcherFile, 'utf8'), new RegExp(`${prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/bin/remcp`));
   let calls = readFileSync(log, 'utf8');
   assert.match(calls, new RegExp(`npm install --global @remcp/remcp@${VERSION.replaceAll('.', '\\.')}`));
   assert.match(calls, /@example\/local-runtime@1\.2\.3/);
   assert.match(calls, /systemctl --user enable --now remcp-agent\.service/);
 
+  // A legacy NNP-only unit must be migrated even when ExecStart is already correct.
+  writeFileSync(serviceFile, unit.replace('RestartSec=3\n',
+    'RestartSec=3\nNoNewPrivileges=true\n'));
+  const nnpUpdate = spawnSync(process.execPath, [bin, 'update'], { env, encoding: 'utf8' });
+  assert.equal(nnpUpdate.status, 0, nnpUpdate.stderr || nnpUpdate.stdout);
+  assert.doesNotMatch(readFileSync(serviceFile, 'utf8'), /^NoNewPrivileges=/m);
+
   // Reproduce a real upgrade from one Node manager to another: an old unit points directly at the
   // previous manager and the stable launcher is stale too. Update must migrate the unit to the fixed
   // launcher path and refresh only the launcher target for the current Node/npm installation.
-  writeFileSync(serviceFile, readFileSync(serviceFile, 'utf8').replace(launcherFile, '/old/nvm/bin/remcp'));
+  writeFileSync(serviceFile, readFileSync(serviceFile, 'utf8')
+    .replace(launcherFile, '/old/nvm/bin/remcp')
+    .replace('RestartSec=3\n', 'RestartSec=3\nNoNewPrivileges=true\n'));
   writeFileSync(launcherFile, '#!/bin/sh\nexec "/old/node" "/old/nvm/bin/remcp" "$@"\n');
 
   const update = spawnSync(process.execPath, [bin, 'update'], { env, encoding: 'utf8' });
@@ -76,6 +86,7 @@ test('install uses a stable global CLI path and update refreshes/restarts it', (
   const repairedLauncher = readFileSync(launcherFile, 'utf8');
   assert.match(repairedUnit, new RegExp(`ExecStart="${escapedLauncher}" start --service`));
   assert.doesNotMatch(repairedUnit, /old\/nvm/);
+  assert.doesNotMatch(repairedUnit, /^NoNewPrivileges=/m, 'upgrade must migrate older systemd units');
   assert.match(repairedLauncher, new RegExp(`${prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/bin/remcp`));
   assert.doesNotMatch(repairedLauncher, /old\/nvm/);
   calls = readFileSync(log, 'utf8');

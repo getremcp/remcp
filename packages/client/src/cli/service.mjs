@@ -62,7 +62,7 @@ function writeLinuxServiceLauncher(cliPath = globalCliPath(), nodePath = process
 
 export function installLinuxService(cliPath = globalCliPath(), nodePath = process.execPath) {
   const launcherFile = writeLinuxServiceLauncher(cliPath, nodePath);
-  const unit = `[Unit]\nDescription=ReMCP device agent\nAfter=network-online.target\nWants=network-online.target\n\n[Service]\nType=simple\nExecStart=${quoteSystemd(launcherFile)} start --service\nRestart=always\nRestartSec=3\nNoNewPrivileges=true\n\n[Install]\nWantedBy=default.target\n`;
+  const unit = `[Unit]\nDescription=ReMCP device agent\nAfter=network-online.target\nWants=network-online.target\n\n[Service]\nType=simple\nExecStart=${quoteSystemd(launcherFile)} start --service\nRestart=always\nRestartSec=3\n\n[Install]\nWantedBy=default.target\n`;
   fs.mkdirSync(path.dirname(linuxServiceFile), { recursive: true });
   fs.writeFileSync(linuxServiceFile, unit);
   run('systemctl', ['--user', 'daemon-reload']);
@@ -279,23 +279,29 @@ export function ensureServiceIfRecorded(config) {
           const launcherFile = writeLinuxServiceLauncher(cliPath, nodePath);
           const unit = fs.readFileSync(fd, 'utf8');
           const expected = `ExecStart=${quoteSystemd(launcherFile)} start --service`;
-          if (!unit.includes(expected)) {
-            const repaired = /^ExecStart=/m.test(unit) ? unit.replace(/^ExecStart=.*$/m, expected) : '';
-            if (!repaired) {
-              reinstall = true;
-            } else {
-              const data = Buffer.from(repaired, 'utf8');
-              fs.ftruncateSync(fd, 0);
-              let offset = 0;
-              while (offset < data.length) {
-                const written = fs.writeSync(fd, data, offset, data.length - offset, offset);
-                if (!written) throw new Error('Could not finish rewriting the systemd unit');
-                offset += written;
-              }
-              fs.ftruncateSync(fd, data.length);
-              fs.fsyncSync(fd);
-              run('systemctl', ['--user', 'daemon-reload']);
+          // Legacy versions added NoNewPrivileges=true to the user agent unit.
+          // Drop that line when repairing so ordinary OS-authenticated sudo/polkit
+          // can work for the owner's session. ReMCP never becomes root by itself.
+          // Do not modify unrelated systemd services or owner-managed drop-ins.
+          let repaired = unit.replace(/^NoNewPrivileges=true\r?\n/gm, '');
+          if (!repaired.includes(expected)) {
+            repaired = /^ExecStart=/m.test(repaired)
+              ? repaired.replace(/^ExecStart=.*$/m, expected) : '';
+          }
+          if (!repaired) {
+            reinstall = true;
+          } else if (repaired !== unit) {
+            const data = Buffer.from(repaired, 'utf8');
+            fs.ftruncateSync(fd, 0);
+            let offset = 0;
+            while (offset < data.length) {
+              const written = fs.writeSync(fd, data, offset, data.length - offset, offset);
+              if (!written) throw new Error('Could not finish rewriting the systemd unit');
+              offset += written;
             }
+            fs.ftruncateSync(fd, data.length);
+            fs.fsyncSync(fd);
+            run('systemctl', ['--user', 'daemon-reload']);
           }
         } finally {
           fs.closeSync(fd);

@@ -1,9 +1,10 @@
 {
-  "version": "0.2.207",
-  "title": "Recover macOS temperature sensors automatically after ReMCP updates.",
+  "version": "0.2.208",
+  "title": "Allow OS-authorized administrative operations for the owner-managed Linux agent.",
   "changes": [
-    "Repair missing Apple Silicon native thermal sensor binaries after starting the updated agent, even when the previous CLI installer lacked the launchd PATH fix.",
-    "Keep the agent connection responsive while a separate vetted, version-pinned macos-temperature-sensor@2.1.1 worker builds the native addon, with no privileged operation or unrelated npm scripts.",
-    "Skip the repair worker for non-macOS devices and custom runtimes; preserve truthful unavailable readings if native compilation cannot run."
+    "Stop installing NoNewPrivileges=true in the per-user Linux systemd service, and migrate legacy agent units during the normal CLI update lifecycle.",
+    "Report the actual Linux process NoNewPrivs status and effective UID, distinguish macOS authorization and privacy permissions, and inspect Windows token integrity rather than assuming a scheduled task is elevated.",
+    "Add regression coverage for legacy systemd migration, Windows medium/high-integrity tokens and transient named-pipe fixture cleanup on Windows.",
+    "God Mode does not grant root or bypass operating-system permissions. Existing Linux service processes require a controlled restart before the changed systemd policy takes effect."
   ]
 }

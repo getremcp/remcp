@@ -4,6 +4,7 @@ import { dangerousPatternIds } from '../policy.mjs';
 import { listProcessSessions, listSearchSessions } from '../sessions.mjs';
 import { telemetryStatus } from '../telemetry.mjs';
 import { VERSION } from '../version.mjs';
+import { privilegeBoundary } from '../privilege-boundary.mjs';
 import { text } from '../util.mjs';
 
 // Read-only introspection. Mutating configuration is a separate, deliberately narrow tool:
@@ -14,6 +15,7 @@ export async function getRuntimeInfoTool() {
   return text(JSON.stringify({
     version: VERSION,
     runtime: describeConfig(),
+    osPrivilegeBoundary: privilegeBoundary(),
     policy: {
       // Reported first because it changes how everything below should be read.
       unrestricted: runtimeConfig.unrestricted,

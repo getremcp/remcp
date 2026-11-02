@@ -63,7 +63,20 @@ Two things it deliberately does not do:
   a non-interactive command cannot type one. Nothing in this mode grants root by itself.
 
 While it is on, `get_runtime_info` reports `policy.unrestricted: true`, so the model can see it and
-say so instead of assuming the guardrails are still there.
+say so instead of assuming the guardrails are still there. The same response includes
+`osPrivilegeBoundary`, reporting effective user and `NoNewPrivs` on Linux, the user boundary on
+macOS, and the actual Windows process integrity level detected via `whoami.exe /groups`.
+If that command is unavailable, Windows elevation remains `unknown`; process integrity
+is not equivalent to blanket administrator access.
+
+The owner-managed Linux `remcp-agent.service` does not set `NoNewPrivileges=true`: sudo/polkit
+may request normal OS approval instead of being blocked by systemd. `remcp update` also removes
+this legacy line from older user units. A systemd `daemon-reload` does not change an already
+running process; activating the new privilege boundary requires an agent restart, which can stop
+running terminal sessions and child processes. This does **not** enable passwordless root.
+On macOS, launchd runs as the signed-in user, and TCC controls Full Disk Access and Accessibility.
+On Windows, the interactive scheduled task requests the highest privileges available to its
+principal; UAC and the actual process token remain authoritative.
 
 ## macOS folder permissions
 
