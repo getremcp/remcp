@@ -5,8 +5,8 @@ import { browserLaunchCommand } from '../src/cli/connect.mjs';
 test('Windows opens approval URLs without routing server-controlled text through cmd.exe', () => {
   const hostile = 'https://example.test/approve?next=x&calc.exe';
   const launch = browserLaunchCommand(hostile, 'win32');
-  assert.equal(launch.command, 'explorer.exe');
-  assert.deepEqual(launch.args, [hostile]);
+  assert.equal(launch.command, 'rundll32.exe');
+  assert.deepEqual(launch.args, ['url.dll,FileProtocolHandler', hostile]);
 });
 
 test('macOS and Linux openers keep the URL as one argument', () => {

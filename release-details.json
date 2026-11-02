@@ -1,12 +1,12 @@
 {
-  "version": "0.2.211",
-  "title": "Improve Windows filesystem reliability, safe error reporting and native NTFS verification.",
+  "version": "0.2.212",
+  "title": "Make Windows device pairing reliable and show a clear mobile connection success.",
   "changes": [
-    "Permit get_file_info to read metadata for ordinary Windows files held open without read sharing by another process; still refuse a symbolic-link leaf.",
-    "Reject Windows copy_file operations that target the same file through differently cased path strings, preserving source contents.",
-    "Explain missing paths, invalid parent-directory paths and exhausted disk quotas; distinguish safe not_found, busy and resource_exhausted telemetry classes without storing file paths.",
-    "Add native Windows CI coverage for Unicode and spaced paths, listing, metadata, reading, hashing, copying, missing targets and exclusive file locks.",
-    "Make macOS privacy-path helpers and permission-fixture tests portable across the Windows test runner; retain normal file-access and OS permission guards.",
-    "Carry forward the published v0.2.210 package-copy audit and Smithery documentation cleanup, preserving the verified client/runtime release-pair invariant."
+    "Open the Windows approval link through the default URL handler rather than Explorer, avoiding an unexpected Documents folder window.",
+    "For new Windows installations, use the hidden per-user WSH/Node supervisor instead of spawning a second visible Task Scheduler terminal; keep existing scheduled tasks unchanged until a separately verified migration.",
+    "Keep the pinned private Node/npm toolchain reproducible and hide irrelevant npm major-version upgrade notices during Windows installation.",
+    "Show a green animated confirmation only after the newly paired agent is Online; surface the new computer first without refreshing the pairing page.",
+    "Keep the successful pairing card compact on mobile, avoid nested device-list scrolling and provide a link to the complete computer list.",
+    "Add regression and browser-geometry tests for pairing, private startup, existing-credential repair and mobile confirmation."
   ]
 }

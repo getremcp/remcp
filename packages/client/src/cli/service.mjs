@@ -147,6 +147,17 @@ export function installWindowsService(cliPath = globalCliPath(), { nodePath = pr
     installWindowsUserStartup(cliPath, nodePath);
     return;
   }
+  // Task Scheduler runs an /IT .cmd inside a *visible* terminal window.
+  // For fresh installations prefer our existing hidden WSH + Node supervisor.
+  // Keep already-registered scheduled tasks intact until an explicit migration;
+  // never start two supervisors for the same machine.
+  const previousTask = spawnSync('schtasks.exe', ['/Query', '/TN', windowsTaskName],
+    { stdio:'ignore', windowsHide:true, timeout:10000 });
+  if (previousTask.status !== 0) {
+    requireWindowsScheduledTaskAbsent();
+    installWindowsUserStartup(cliPath, nodePath);
+    return;
+  }
   const launcherFile = writeWindowsServiceLauncher(cliPath, nodePath);
   const command = `"${launcherFile}"`;
   // Current-user interactive tasks need /IT. /RL LIMITED avoids requiring elevation.
