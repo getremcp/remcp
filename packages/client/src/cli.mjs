@@ -58,6 +58,14 @@ export async function main(argv = process.argv.slice(2)) {
     // the workspace-generated command and for CI, and `--server` for self-hosted deployments.
     const previous = loadConfig(false);
     const alreadyPaired = Boolean(previous?.deviceId && previous?.deviceToken);
+    // The official Windows bootstrap may be rerun after approval succeeded but OS service
+    // registration failed. Repair the existing credential in place, never initiate another
+    // device-authorization flow or replace an already owned computer.
+    if (alreadyPaired && flags['repair-if-paired'] === true &&
+        flags['re-pair'] !== true && !flags.code && flags.install !== false) {
+      installPersistentAgent(previous);
+      return;
+    }
     if (alreadyPaired && flags['re-pair'] !== true) {
       throw new Error('This computer is already paired. Use `remcp doctor` or `remcp install` to repair it without changing credentials. To intentionally replace the pairing (possibly moving it to another account), add --re-pair.');
     }
@@ -149,7 +157,7 @@ export async function main(argv = process.argv.slice(2)) {
       return;
     }
     const telemetry = telemetryState();
-    await runAgent({
+    const agent = await runAgent({
       ...cfg,
       autoUpdate: autoUpdateEnabled(cfg),
       trustRuntime: cfg.trustRuntime === true
@@ -160,6 +168,14 @@ export async function main(argv = process.argv.slice(2)) {
       installSpec: `${PACKAGE_NAME}@${VERSION}`,
       persistState: patch => saveConfig({ ...cfg, ...patch }),
     });
+    // The per-user Windows supervisor owns this child through a private Node IPC
+    // handle. If the supervisor dies, the agent must close its runtime rather than
+    // remain orphaned and create duplicates at the next interactive logon.
+    if (supervised && process.env.REMCP_USER_STARTUP_SUPERVISOR === '1') {
+      const closeOrphan = () => void agent.stop().finally(() => process.exit(0));
+      process.once('disconnect', closeOrphan);
+      if (!process.connected) closeOrphan();
+    }
     return;
   }
 

@@ -17,6 +17,12 @@ export const macServiceFile = path.join(home, 'Library', 'LaunchAgents', `${macS
 export const macLogFile = path.join(home, 'Library', 'Logs', 'remcp-agent.log');
 export const windowsTaskName = 'ReMCP Agent';
 export const windowsServiceLauncherFile = path.join(configDir, 'remcp-agent.cmd');
+// Task Scheduler may refuse to create a task for a standard Windows account.
+// This per-user Startup folder runs without administrator privileges.
+export const windowsStartupScriptFile = path.join(
+  process.env.APPDATA || path.join(home, 'AppData', 'Roaming'),
+  'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Startup', 'ReMCP Agent.vbs'
+);
 // How npm is invoked is resolved from the running node when possible: a background service has a
 // minimal PATH, which is why auto-update used to find no npm on macOS. See src/npm.mjs.
 export const npm = resolveNpm();

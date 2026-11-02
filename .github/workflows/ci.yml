@@ -291,8 +291,8 @@ jobs:
 
             $taskXml = (& schtasks.exe /Query /TN 'ReMCP Agent' /XML | Out-String)
             if ($LASTEXITCODE -ne 0) { throw 'ReMCP Agent Scheduled Task was not queryable.' }
-            if ($taskXml -notmatch '<RunLevel>HighestAvailable</RunLevel>') {
-              throw 'ReMCP Agent Scheduled Task is not configured at HighestAvailable run level.'
+            if ($taskXml -notmatch '<RunLevel>LeastPrivilege</RunLevel>') {
+              throw 'ReMCP Agent Scheduled Task is not configured at LeastPrivilege run level.'
             }
             if ($taskXml -notmatch '<LogonType>InteractiveToken</LogonType>') {
               throw 'ReMCP Agent Scheduled Task is not configured for the interactive user session.'

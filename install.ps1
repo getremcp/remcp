@@ -32,6 +32,10 @@ if ([string]::IsNullOrWhiteSpace($localAppData)) {
   throw 'Could not resolve LOCALAPPDATA for this Windows account.'
 }
 
+# The batch launchers below intentionally use %LOCALAPPDATA% (ASCII-only script text).
+# Normalize this process environment to the OS known-folder path for the initial launch.
+# A future shell gets its own Windows LOCALAPPDATA, independent of display language.
+$env:LOCALAPPDATA = $localAppData
 $root = Join-Path $localAppData 'ReMCP'
 $runtimeDir = Join-Path $root 'runtime'
 $binDir = Join-Path $root 'bin'
@@ -226,8 +230,10 @@ function Initialize-ReMCPStage {
 
 function Write-ReMCPWrapper {
   New-Item -ItemType Directory -Force -Path $binDir | Out-Null
-  $escapedRuntime = $runtimeDir.Replace('%', '%%')
-  $escapedCli = (Join-Path $runtimeDir 'remcp.cmd').Replace('%', '%%')
+  # cmd.exe does not reliably decode Unicode absolute paths from UTF-8 .cmd files.
+  # Expand Windows' own per-user known folder at runtime, using ASCII-only script bytes.
+  $escapedRuntime = '%LOCALAPPDATA%\ReMCP\runtime'
+  $escapedCli = '%LOCALAPPDATA%\ReMCP\runtime\remcp.cmd'
   $content = @(
     '@echo off',
     'setlocal DisableDelayedExpansion',
@@ -239,10 +245,16 @@ function Write-ReMCPWrapper {
   ) -join "`r`n"
   [IO.File]::WriteAllText($wrapper, $content, (New-Object Text.UTF8Encoding($false)))
 
-  $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
-  $entries = @($userPath -split ';' | Where-Object { ![string]::IsNullOrWhiteSpace($_) })
-  if (!($entries | Where-Object { $_.TrimEnd('\') -ieq $binDir.TrimEnd('\') })) {
-    [Environment]::SetEnvironmentVariable('Path', (($entries + $binDir) -join ';'), 'User')
+  # Persisting PATH is convenient, not required for pairing or for the service.
+  # Managed user/enterprise profiles can deny this registry write to standard users.
+  try {
+    $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
+    $entries = @($userPath -split ';' | Where-Object { ![string]::IsNullOrWhiteSpace($_) })
+    if (!($entries | Where-Object { $_.TrimEnd('\') -ieq $binDir.TrimEnd('\') })) {
+      [Environment]::SetEnvironmentVariable('Path', (($entries + $binDir) -join ';'), 'User')
+    }
+  } catch {
+    Write-Warning 'ReMCP installed, but this account cannot change its user PATH. Use the ReMCP shortcut in LocalAppData.'
   }
 }
 
@@ -303,6 +315,9 @@ $node = Join-Path $runtimeDir 'node.exe'
 $cliEntry = Join-Path $runtimeDir 'node_modules\@remcp\remcp\bin\remcp.mjs'
 
 $arguments = @('connect')
+# A previous run may have completed browser pairing before Task Scheduler denied startup.
+# Repair that existing device without requesting another approval or rotating its token.
+if ([string]::IsNullOrWhiteSpace($Code)) { $arguments += '--repair-if-paired' }
 if (![string]::IsNullOrWhiteSpace($Server) -and $Server.TrimEnd('/') -ne $officialOrigin) {
   $arguments += @('--server', $Server.TrimEnd('/'))
 }

@@ -15,9 +15,10 @@ export { macLaunchDomain, ensureMacCliCommand, installMacService } from './servi
 import { PACKAGE_NAME, VERSION } from '../version.mjs';
 
 import { saveConfig } from './config.mjs';
-import { configDir, home, linuxServiceFile, linuxServiceLauncherFile, macServiceFile, macServiceLabel, windowsServiceLauncherFile, windowsTaskName } from './env.mjs';
+import { configDir, home, linuxServiceFile, linuxServiceLauncherFile, macServiceFile, macServiceLabel, windowsServiceLauncherFile, windowsStartupScriptFile, windowsTaskName } from './env.mjs';
 import { run } from './shell.mjs';
-import { windowsServiceLauncherText, windowsTaskReliabilityCommand } from './windows-supervisor.mjs';
+import { windowsServiceLauncherText, windowsTaskReliabilityCommand, windowsTaskAbsenceCommand, windowsBatchUnsafeProfile, windowsStartupScriptText, windowsStartupScriptInstalled } from './windows-supervisor.mjs';
+import { ensureWindowsSupervisorKey, windowsSupervisorCommand } from './windows-user-supervisor.mjs';
 
 export function quoteSystemd(value) {
   return `"${String(value).replaceAll('\\', '\\\\').replaceAll('"', '\\"')}"`;
@@ -77,17 +78,106 @@ export function writeWindowsServiceLauncher(cliPath = globalCliPath(), nodePath 
   return windowsServiceLauncherFile;
 }
 
+function installWindowsUserStartup(cliPath, nodePath) {
+  const existed = fs.existsSync(windowsStartupScriptFile);
+  if (existed && !windowsStartupScriptInstalled(windowsStartupScriptFile)) {
+    throw new Error('The ReMCP Startup entry is not owned by ReMCP; refusing to overwrite it');
+  }
+  // Windows npm exposes a .cmd shim; the child must execute the actual Node ESM entry.
+  const cliEntry = path.join(path.dirname(cliPath), 'node_modules', '@remcp', 'remcp', 'bin', 'remcp.mjs');
+  const supervisorEntry = path.resolve(path.dirname(cliEntry), '../src/cli/windows-user-supervisor.mjs');
+  if (!fs.existsSync(cliEntry)) throw new Error('Windows ReMCP Node entry is missing');
+  if (!fs.existsSync(supervisorEntry)) throw new Error('Windows supervisor entry is missing from the installed ReMCP package');
+  ensureWindowsSupervisorKey();
+  const script = windowsStartupScriptText(nodePath, supervisorEntry, cliEntry);
+  fs.mkdirSync(path.dirname(windowsStartupScriptFile), { recursive:true });
+  const temporary = `${windowsStartupScriptFile}.${process.pid}.tmp`;
+  try {
+    // WSH requires a Unicode BOM to preserve non-ASCII Windows account names.
+    fs.writeFileSync(temporary, '\uFEFF' + script, { flag:'wx', mode:0o600, encoding:'utf16le' });
+    fs.renameSync(temporary, windowsStartupScriptFile);
+  } finally { try { fs.unlinkSync(temporary); } catch {} }
+  const startAndVerify = () => {
+    run('wscript.exe', ['//B', '//Nologo', windowsStartupScriptFile]);
+    const state = windowsSupervisorCommand('wait');
+    if (!state.running) throw new Error('Windows Startup agent did not launch');
+  };
+  // Reuse a running singleton. A missing OS-held pipe means the old supervisor
+  // exited: relaunch the same verified entry without touching device credentials.
+  if (existed) {
+    try {
+      const state = windowsSupervisorCommand('status');
+      if (!state.running) throw new Error('The existing Windows Startup agent is not running');
+    } catch (error) {
+      const reason = String(error.message || '');
+      if (!reason.includes('ENOENT') && !reason.includes('ECONNREFUSED')) throw error;
+      startAndVerify();
+    }
+  } else {
+    try { startAndVerify(); }
+    catch (error) {
+      // A launched supervisor can be alive when readiness fails. Stop it before cleanup.
+      try { windowsSupervisorCommand('stop'); } catch {}
+      try { fs.unlinkSync(windowsStartupScriptFile); } catch {}
+      throw error;
+    }
+  }
+  console.log('ReMCP uses this Windows account\'s Startup folder (no administrator rights required).');
+}
+
+function requireWindowsScheduledTaskAbsent() {
+  // A failed schtasks /Query is ambiguous across Windows languages and ACLs.
+  // Fail closed if COM cannot prove absence before choosing another startup route.
+  const existing = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive',
+    '-Command', windowsTaskAbsenceCommand(windowsTaskName)],
+    { encoding:'utf8', windowsHide:true, timeout:10000, maxBuffer:4096, input:'' });
+  if (existing.error || existing.status !== 0 || String(existing.stdout || '').trim() !== 'ABSENT') {
+    throw new Error('Could not prove that the ReMCP scheduled task is absent; refusing to start a competing agent');
+  }
+}
+
 export function installWindowsService(cliPath = globalCliPath(), { nodePath = process.execPath } = {}) {
+  if (windowsStartupScriptInstalled(windowsStartupScriptFile)) {
+    installWindowsUserStartup(cliPath, nodePath);
+    return;
+  }
+  if (windowsBatchUnsafeProfile(cliPath, nodePath, windowsServiceLauncherFile)) {
+    requireWindowsScheduledTaskAbsent();
+    console.log('ReMCP: Unicode or shell-sensitive Windows profile; using the per-user Startup supervisor.');
+    installWindowsUserStartup(cliPath, nodePath);
+    return;
+  }
   const launcherFile = writeWindowsServiceLauncher(cliPath, nodePath);
   const command = `"${launcherFile}"`;
-  // Computer-use needs the signed-in interactive desktop. Create the task with /IT from the start
-  // instead of changing it afterwards: schtasks /Change can request the account password even when
-  // the task already belongs to the current user, which turns a one-command install into a prompt.
-  run('schtasks.exe', ['/Create', '/TN', windowsTaskName, '/TR', command, '/SC', 'ONLOGON', '/RL', 'HIGHEST', '/IT', '/F']);
-  // The default Windows task policy expires long-running tasks and stops them on battery.
-  // Apply guarded failure recovery without changing the interactive-user principal/session.
-  run('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', windowsTaskReliabilityCommand(windowsTaskName)]);
-  run('schtasks.exe', ['/Run', '/TN', windowsTaskName]);
+  // Current-user interactive tasks need /IT. /RL LIMITED avoids requiring elevation.
+  // An organization may still disable creation of all tasks by standard users.
+  const created = spawnSync('schtasks.exe',
+    ['/Create', '/TN', windowsTaskName, '/TR', command, '/SC', 'ONLOGON', '/RL', 'LIMITED', '/IT', '/F'],
+    { encoding:'utf8', timeout:15000, maxBuffer:64 * 1024, windowsHide:true, input:'' });
+  if (created.error || created.status !== 0) {
+    requireWindowsScheduledTaskAbsent();
+    console.warn('Windows Task Scheduler rejected task creation; switching to per-user Startup.');
+    installWindowsUserStartup(cliPath, nodePath);
+    return;
+  }
+  // Recovery tuning is optional; a policy denying Set-ScheduledTask must not invalidate
+  // a successfully created and runnable interactive task.
+  try {
+    run('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', windowsTaskReliabilityCommand(windowsTaskName)]);
+  } catch (error) {
+    console.warn(`ReMCP task recovery settings were not applied: ${error.message}`);
+  }
+  try {
+    run('schtasks.exe', ['/Run', '/TN', windowsTaskName], { timeout:15000 });
+  } catch (error) {
+    // We just created this task. Remove it before registering another launcher, so
+    // a delayed logon cannot start competing agents under two supervisors.
+    const removed = spawnSync('schtasks.exe', ['/Delete', '/TN', windowsTaskName, '/F'],
+      { stdio:'ignore', timeout:10000 });
+    if (removed.status !== 0) throw error;
+    console.warn('Windows Task Scheduler could not start ReMCP; using per-user Startup.');
+    installWindowsUserStartup(cliPath, nodePath);
+  }
 }
 
 // `serviceInstalled` was added after background services already existed in the wild. Treat an
@@ -119,13 +209,13 @@ export function configureMacWriteAccess() {
 }
 
 export function configureWindowsWriteAccess() {
-  // installWindowsService already creates the task as HighestAvailable + InteractiveToken. Keep
-  // post-install access setup non-interactive so a fresh install never asks for the Windows password.
+  // The interactive task runs at LIMITED privilege, or the current-user Startup folder
+  // provides a non-elevated fallback. Neither installation requires a Windows password.
   try {
     const workspaceDir = path.join(process.env.LOCALAPPDATA || path.join(home, 'AppData', 'Local'), 'ReMCP');
     fs.mkdirSync(workspaceDir, { recursive: true });
   } catch {}
-  console.log('ReMCP configured with the highest available user privileges for interactive desktop access.');
+  console.log('ReMCP uses this account\'s interactive desktop privileges.');
 }
 
 export function configureLinuxWriteAccess() {
@@ -268,6 +358,11 @@ export function restartPersistentServiceIfInstalled(config, { deferLinux = false
     return macServiceLabel;
   }
   if (platform === 'win32') {
+    if (windowsStartupScriptInstalled(windowsStartupScriptFile)) {
+      const state = windowsSupervisorCommand('restart');
+      if (state.restartScheduled !== true) throw new Error('Windows user supervisor did not schedule a restart');
+      return 'ReMCP user startup supervisor (restart scheduled)';
+    }
     const result = spawnSync('schtasks.exe', ['/Query', '/TN', windowsTaskName], { stdio: 'ignore' });
     if (result.status === 0) {
       // /Run does not restart a task that is already running; stop the previous
@@ -292,6 +387,20 @@ export function uninstallPersistentService() {
     try { fs.unlinkSync(macServiceFile); } catch {}
     removeMacCliCommand();
   } else if (platform === 'win32') {
+    if (windowsStartupScriptInstalled(windowsStartupScriptFile)) {
+      // Removing Startup alone leaves the already spawned agent alive. Stop the
+      // exact child owned by the authenticated singleton, then remove registration.
+      try {
+        const result = windowsSupervisorCommand('stop');
+        if (!result.stopped) throw new Error('Windows user agent could not be stopped');
+      } catch (error) {
+        // An already-exited supervisor has no listening pipe. That is the one safe
+        // case where removal may proceed without an acknowledged stop. Never ignore
+        // a bad MAC, access denied, timeout, or a failed owned-child termination.
+        if (!/\bconnect (?:ENOENT|ECONNREFUSED)\b/.test(String(error?.message || ''))) throw error;
+      }
+      fs.unlinkSync(windowsStartupScriptFile);
+    }
     spawnSync('schtasks.exe', ['/End', '/TN', windowsTaskName], { stdio: 'ignore' });
     spawnSync('schtasks.exe', ['/Delete', '/TN', windowsTaskName, '/F'], { stdio: 'ignore' });
     try { fs.unlinkSync(windowsServiceLauncherFile); } catch {}

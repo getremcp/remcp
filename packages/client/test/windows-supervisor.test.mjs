@@ -41,3 +41,23 @@ test('Scheduled Task recovery retains a single instance, battery operation, and 
   assert.match(command, /did not persist the ReMCP recovery policy/);
   assert.throws(() => windowsTaskReliabilityCommand("evil'; Stop-Computer"), /Invalid Windows task name/);
 });
+
+
+test('managed Windows launchers contain only ASCII batch text for multilingual accounts', () => {
+  for (const user of ['Иван', 'Łukasz', 'محمد', '山田太郎', 'שלום', 'François', 'José', 'name%20! &']) {
+    const localAppData = 'C:\\Users\\' + user + '\\AppData\\Local';
+    const prefix = localAppData + '\\ReMCP\\runtime';
+    const launcher = windowsServiceLauncherText(prefix + '\\remcp.cmd', prefix + '\\node.exe',
+      { localAppData });
+    assert.ok([...launcher].every(ch => ch.codePointAt(0) < 128), user);
+    assert.match(launcher, /set "NPM_CONFIG_PREFIX=%LOCALAPPDATA%\\ReMCP\\runtime"/);
+    assert.match(launcher, /set "PATH=%LOCALAPPDATA%\\ReMCP\\runtime;%PATH%"/);
+    assert.match(launcher, /call "%LOCALAPPDATA%\\ReMCP\\runtime\\remcp.cmd" start --service/);
+    assert.doesNotMatch(launcher, /%%LOCALAPPDATA%%|C:\\Users\\/);
+  }
+});
+test('Windows launcher refuses writing unrepresentable user-controlled paths into a .cmd file', () => {
+  assert.throws(() => windowsServiceLauncherText('C:\\Users\\山田\\other\\remcp.cmd',
+    'C:\\Program Files\\nodejs\\node.exe', { localAppData:'C:\\Users\\山田\\AppData\\Local' }),
+  /cannot safely encode this Unicode path/);
+});

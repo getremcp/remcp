@@ -1,10 +1,12 @@
 {
-  "version": "0.2.205",
-  "title": "Restore real Apple Silicon temperature readings when ReMCP starts under launchd's minimal PATH.",
+  "version": "0.2.206",
+  "title": "Make the one-command Windows ReMCP installation resilient to non-admin permissions and multilingual user profiles.",
   "changes": [
-    "Build only the pinned, vetted macos-temperature-sensor@2.1.1 native addon with the active Node.js executable's directory prepended to the build subprocess's PATH.",
-    "Prevent node-gyp rebuild from failing with node: command not found under macOS launchd and fnm-managed Node installations; retain global npm --ignore-scripts protection for all other dependencies.",
-    "Preserve truthful unknown temperature when native sensors are unavailable; verify CPU, SoC and GPU measurements on Apple M1, restricted-PATH compilation and failure-mode regression tests without sudo.",
-    "Keep the generated public npm lockfile in npm's canonical package order so the reproducible release projection does not drift after npm install --package-lock-only."
+    "Keep irm https://remcp.site/i | iex as the sole Windows onboarding command. Retry an interrupted, already-approved pairing without rotating its device credentials.",
+    "Create an interactive least-privilege Windows Task Scheduler entry when permitted. When task registration is denied, verify nonexistence using locale-independent COM status and use per-user Startup without elevation.",
+    "Route localized, Unicode or shell-sensitive Windows account paths through Windows Script Host and a managed Node supervisor instead of codepage-dependent CMD scripts; preserve safe ASCII profiles with ordinary Task Scheduler.",
+    "Authenticate local control commands and responses, prevent duplicate agents, stop or restart only owned child processes and clean stale per-user Startup registrations safely.",
+    "Keep denied writes to the user PATH nonfatal, report policy restrictions honestly and never bypass enterprise application-control policies.",
+    "Validate the Windows lifecycle on native hosted Windows with CMD, WScript, Unicode and six UI language cultures, plus ASUS regressions and release checks."
   ]
 }

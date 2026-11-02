@@ -4,8 +4,9 @@ import process from 'node:process';
 import { spawnSync } from 'node:child_process';
 import { PACKAGE_NAME, VERSION } from '../version.mjs';
 import { saveConfig } from './config.mjs';
-import { linuxServiceFile, linuxServiceLauncherFile, macServiceFile, macServiceLabel, windowsTaskName } from './env.mjs';
+import { linuxServiceFile, linuxServiceLauncherFile, macServiceFile, macServiceLabel, windowsStartupScriptFile, windowsTaskName } from './env.mjs';
 import { servicePlatform, globalCliPath, npmGlobalUpdateForNode } from './npm-global.mjs';
+import { windowsStartupScriptInstalled } from './windows-supervisor.mjs';
 
 export function persistentServiceExpected(config) {
   if (config?.serviceInstalled === false) return false;
@@ -14,7 +15,8 @@ export function persistentServiceExpected(config) {
   if (platform === 'linux') return fs.existsSync(linuxServiceFile);
   if (platform === 'darwin') return fs.existsSync(macServiceFile);
   if (platform === 'win32') {
-    return spawnSync('schtasks.exe', ['/Query', '/TN', windowsTaskName], { stdio: 'ignore' }).status === 0;
+    return windowsStartupScriptInstalled(windowsStartupScriptFile) ||
+      spawnSync('schtasks.exe', ['/Query', '/TN', windowsTaskName], { stdio: 'ignore' }).status === 0;
   }
   return false;
 }
@@ -38,6 +40,11 @@ export function persistentServiceState(config) {
     const installed = query.status === 0;
     const outputText = String(query.stdout || '');
     const active = installed && /(?:Status|Состояние):\s*Running/i.test(outputText);
+    if (!installed && windowsStartupScriptInstalled(windowsStartupScriptFile)) {
+      // Startup has no OS status query comparable to Task Scheduler; do not report a
+      // running process without evidence. Device presence is tracked separately.
+      return { expected, installed:true, active:null, manager:'startup-user', name:windowsTaskName };
+    }
     return { expected, installed, active, manager:'schtasks', name:windowsTaskName };
   }
   return { expected:false, installed:false, active:false, manager:null, name:null };
