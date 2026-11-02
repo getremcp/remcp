@@ -296,11 +296,16 @@ jobs:
             # main. Check the installed version's actual contract; never require
             # an unpublished client behavior or silently accept elevated 0.2.206.
             $installedVersion = [version]($expectedVersion -replace '[-+].*$', '')
-            [xml]$taskDefinition = $taskXml
-            $actualRunLevel = [string]$taskDefinition.Task.Principals.Principal.RunLevel
-            Write-Host "ReMCP live-client task: installed=$expectedVersion runLevel=$actualRunLevel"
+            # RunLevel is OPTIONAL in Task Scheduler XML, and some Windows builds
+            # omit the default-valued element. Read the authoritative COM principal
+            # property instead of treating a missing XML element as elevation.
+            # TASK_RUNLEVEL_LUA = 0; TASK_RUNLEVEL_HIGHEST = 1.
+            $scheduleService = New-Object -ComObject 'Schedule.Service'
+            $scheduleService.Connect()
+            $actualRunLevel = [int]$scheduleService.GetFolder('\').GetTask('ReMCP Agent').Definition.Principal.RunLevel
+            Write-Host "ReMCP live-client task: installed=$expectedVersion runLevel=$actualRunLevel (COM)"
             if ($installedVersion -ge [version]'0.2.206') {
-              if ($actualRunLevel -ne 'LeastPrivilege') {
+              if ($actualRunLevel -ne 0) {
                 throw 'ReMCP Agent Scheduled Task is not configured at LeastPrivilege run level.'
               }
             } else {
