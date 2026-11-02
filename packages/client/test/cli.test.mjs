@@ -12,7 +12,7 @@ process.env.REMCP_CONFIG_DIR = configDir;
 process.env.NODE_ENV = 'test';
 process.env.REMCP_TEST_PLATFORM = 'aix';
 
-const { main } = await import('../src/cli.mjs');
+const { main, applyAutoUpdatePreference } = await import('../src/cli.mjs');
 const { PACKAGE_NAME, VERSION } = await import('../src/version.mjs');
 
 const packageVersion = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version;
@@ -35,6 +35,7 @@ test('CLI help keeps pairing in the workspace and documents update lifecycle', a
   const help = await captureLog(() => main(['help']));
   assert.match(help, /Pairing commands are generated in the ReMCP workspace/);
   assert.match(help, /remcp update/);
+  assert.match(help, /remcp auto-update \[status\|on\|off\]/);
   assert.match(help, /remcp uninstall --purge/);
   assert.match(help, /remcp telemetry \[status\|on\|off\]/);
   assert.match(help, /opt-out/i);
@@ -134,4 +135,29 @@ test('a newer config schema is never downgraded and unknown fields survive local
   } finally {
     rmSync(clientFile, { force: true });
   }
+});
+
+
+test('changing auto-update policy persists the preference before reloading the managed agent', () => {
+  const actions = [];
+  const hooks = {
+    persist: config => actions.push({ type:'save', enabled:config.autoUpdate }),
+    restart: (config, flags) => {
+      actions.push({ type:'restart', enabled:config.autoUpdate, flags });
+      return 'remcp-agent.service (restart scheduled)';
+    },
+  };
+  assert.equal(applyAutoUpdatePreference({ autoUpdate:false, serviceInstalled:true }, true, hooks),
+    'remcp-agent.service (restart scheduled)');
+  assert.deepEqual(actions, [
+    { type:'save', enabled:true },
+    { type:'restart', enabled:true, flags:{ deferLinux:true } },
+  ]);
+  actions.length = 0;
+  assert.equal(applyAutoUpdatePreference({ autoUpdate:true, serviceInstalled:true }, true, hooks), null);
+  assert.deepEqual(actions, [{ type:'save', enabled:true }], 'unchanged policy must not bounce the agent');
+  actions.length = 0;
+  assert.equal(applyAutoUpdatePreference({ autoUpdate:true, serviceInstalled:true }, false, hooks),
+    'remcp-agent.service (restart scheduled)');
+  assert.deepEqual(actions.map(item => item.type), ['save', 'restart']);
 });

@@ -10,7 +10,7 @@ import { VERSION } from '../src/version.mjs';
 const root = fileURLToPath(new URL('..', import.meta.url));
 const source = pathToFileURL(path.join(root, 'src', 'cli.mjs')).href;
 
-function statusWithMismatchedNpmPrefix({ runtimePresent }) {
+function statusWithMismatchedNpmPrefix({ runtimePresent, historicalMissingCli = false }) {
   const dir = mkdtempSync(path.join(tmpdir(), 'remcp-status-npm-prefix-'));
   try {
     const home = path.join(dir, 'home');
@@ -30,6 +30,7 @@ function statusWithMismatchedNpmPrefix({ runtimePresent }) {
       deviceId:'fixture-device',
       deviceName:'isolated fixture',
       serviceInstalled:false,
+      ...(historicalMissingCli ? { installations:[{ cliPath:path.join(dir, 'removed-node', 'remcp.mjs') }] } : {}),
       runtime:{ kind:'npm', packageName:'@remcp/runtime', packageSpec:`@remcp/runtime@${VERSION}`, entry:'src/index.mjs' },
     }));
     const result = spawnSync(process.execPath, [cliPath, 'status'], {
@@ -57,4 +58,9 @@ test('status locates real runtime beside its CLI when npm uses another global pr
 test('status never invents a runtime when both CLI-adjacent and npm prefixes lack it', () => {
   const status = statusWithMismatchedNpmPrefix({ runtimePresent:false });
   assert.equal(status.runtime.installed, null);
+});
+
+test('status does not mistake historical CLI paths removed during a Node.js upgrade for extra installations', () => {
+  const status = statusWithMismatchedNpmPrefix({ runtimePresent:true, historicalMissingCli:true });
+  assert.equal(status.update.multipleInstallations, false);
 });

@@ -1,10 +1,11 @@
 {
-  "version": "0.2.208",
-  "title": "Allow OS-authorized administrative operations for the owner-managed Linux agent.",
+  "version": "0.2.209",
+  "title": "Restore automatic ReMCP package updates independently of the installed Node.js environment.",
   "changes": [
-    "Stop installing NoNewPrivileges=true in the per-user Linux systemd service, and migrate legacy agent units during the normal CLI update lifecycle.",
-    "Report the actual Linux process NoNewPrivs status and effective UID, distinguish macOS authorization and privacy permissions, and inspect Windows token integrity rather than assuming a scheduled task is elevated.",
-    "Add regression coverage for legacy systemd migration, Windows medium/high-integrity tokens and transient named-pipe fixture cleanup on Windows.",
-    "God Mode does not grant root or bypass operating-system permissions. Existing Linux service processes require a controlled restart before the changed systemd policy takes effect."
+    "Enable automatic updates of the first-party @remcp/remcp and @remcp/runtime npm packages by default on Linux, macOS and Windows, while preserving an explicit owner opt-out.",
+    "Reload the managed agent after an effective remcp auto-update on/off change, deferring Linux restarts so remote commands complete.",
+    "Keep existing exact server-advertised client/runtime release-pair and isolated npm-prefix safeguards; never update Node.js, npm or unrelated global packages.",
+    "Do not label historical CLI paths that disappeared after a Node.js change as multiple live installations.",
+    "Expand regression coverage and clarify in public documentation how ReMCP package updates differ from Node.js upgrades."
   ]
 }

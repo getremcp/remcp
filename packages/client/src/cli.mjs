@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import process from 'node:process';
@@ -36,7 +37,20 @@ function parse(argv) {
 }
 
 function printHelp() {
-  console.log(`ReMCP ${VERSION}\n\nCommands:\n  remcp connect [--no-qr]\n  remcp start\n  remcp status\n  remcp doctor\n  remcp update\n  remcp install\n  remcp uninstall\n  remcp uninstall --purge\n  remcp telemetry [status|on|off]\n  remcp godmode [status|on|off]\n  remcp --version\n\nPairing commands are generated in the ReMCP workspace.\n\nUsage metrics are opt-out (tool names, timings, outcomes only, sent to your own ReMCP\naccount through the paired agent). Disable them at any time with: remcp telemetry off\n\nUnrestricted mode (remcp godmode on) lifts the access roots and the command guardrails for this\ncomputer only. The MCP configuration tool cannot enable it; protect remote terminal access.`);
+  console.log(`ReMCP ${VERSION}\n\nCommands:\n  remcp connect [--no-qr]\n  remcp start\n  remcp status\n  remcp doctor\n  remcp update\n  remcp auto-update [status|on|off]\n  remcp install\n  remcp uninstall\n  remcp uninstall --purge\n  remcp telemetry [status|on|off]\n  remcp godmode [status|on|off]\n  remcp --version\n\nPairing commands are generated in the ReMCP workspace.\n\nUsage metrics are opt-out (tool names, timings, outcomes only, sent to your own ReMCP\naccount through the paired agent). Disable them at any time with: remcp telemetry off\n\nUnrestricted mode (remcp godmode on) lifts the access roots and the command guardrails for this\ncomputer only. The MCP configuration tool cannot enable it; protect remote terminal access.`);
+}
+
+// The running agent snapshots update policy at startup. A saved toggle alone does not
+// change its six-hour polling loop, so reload a managed service after a policy change.
+// Defer Linux handoff to avoid terminating a remote command before it returns.
+export function applyAutoUpdatePreference(cfg, enabled, {
+  persist = saveConfig,
+  restart = restartPersistentServiceIfInstalled,
+} = {}) {
+  const changed = autoUpdateEnabled(cfg) !== enabled;
+  const updated = { ...cfg, autoUpdate: enabled };
+  persist(updated);
+  return changed ? restart(updated, { deferLinux:true }) : null;
 }
 
 export async function main(argv = process.argv.slice(2)) {
@@ -201,8 +215,15 @@ export async function main(argv = process.argv.slice(2)) {
       console.log(JSON.stringify({ autoUpdate: autoUpdateEnabled(cfg), checkIntervalHours: 6 }, null, 2));
       return;
     }
-    if (action === 'on' || action === 'enable') { saveConfig({ ...cfg, autoUpdate: true }); console.log('Auto-update enabled.'); return; }
-    if (action === 'off' || action === 'disable') { saveConfig({ ...cfg, autoUpdate: false }); console.log('Auto-update disabled. Run `remcp update` yourself when you want a new version.'); return; }
+    if (['on', 'enable', 'off', 'disable'].includes(action)) {
+      const enabled = action === 'on' || action === 'enable';
+      const changed = autoUpdateEnabled(cfg) !== enabled;
+      const restarted = applyAutoUpdatePreference(cfg, enabled);
+      console.log(enabled ? 'Auto-update enabled.' : 'Auto-update disabled. Run `remcp update` yourself when you want a new version.');
+      if (restarted) console.log(`ReMCP agent ${restarted} to apply the update policy.`);
+      else if (changed) console.log('Restart any manually managed ReMCP agent to apply the update policy.');
+      return;
+    }
     throw new Error('Usage: remcp auto-update [status|on|off]');
   }
 
@@ -284,11 +305,15 @@ export async function main(argv = process.argv.slice(2)) {
     const targetClient = String(advertised?.cliVersion || '').trim() || null;
     const targetRuntime = String(advertised?.runtime || '').trim() || null;
     const configuredRuntime = String(cfg.runtime.packageSpec || '');
+    // The history also records CLI paths from old Node.js environments. An entry for
+    // a no-longer-existing path is not an additional installed package or agent.
     const installationPaths = new Set([
       currentInstall.cliPath,
       serviceInstall.cliPath,
       ...(Array.isArray(cfg.installations) ? cfg.installations.map(item => item?.cliPath) : []),
-    ].filter(Boolean));
+    ].filter(file => typeof file === 'string' && fs.existsSync(file)).map(file => {
+      try { return fs.realpathSync(file); } catch { return file; }
+    }));
     const multipleInstallations = installationPaths.size > 1;
     const knownCliVersions = [VERSION, serviceInstall.cliVersion].filter(Boolean);
     const knownRuntimeVersions = [installedRuntime, serviceInstall.runtimeVersion].filter(Boolean);

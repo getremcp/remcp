@@ -2,7 +2,6 @@
 // the server uses to recognise this computer across pairings.
 import fs from 'node:fs';
 import path from 'node:path';
-import process from 'node:process';
 import { randomUUID } from 'node:crypto';
 import { normalizeRuntime } from '../runtime.mjs';
 
@@ -79,13 +78,12 @@ export function writeJsonFile(file, value) {
   fs.chmodSync(file, 0o600);
 }
 
-export function autoUpdateEnabled(config, platform = process.platform) {
-  // Linux often runs unrelated applications through the same global npm prefix. Never
-  // mutate that prefix implicitly: require `remcp auto-update on` for Linux agents.
-  // Keep the historical preference for existing explicit opt-ins and other platforms.
-  if (config?.autoUpdate === true) return true;
-  if (config?.autoUpdate === false) return false;
-  return platform !== 'linux';
+export function autoUpdateEnabled(config) {
+  // This preference controls the two first-party ReMCP npm packages only. It never
+  // upgrades the Node.js interpreter or npm itself. All supported OSes keep the
+  // historical default of automatic ReMCP releases unless the owner opts out.
+  // Updates use the verified managed service prefix, not a shared global prefix.
+  return config?.autoUpdate !== false;
 }
 
 export function flagEnabled(value) {

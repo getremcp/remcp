@@ -82,10 +82,10 @@ test('a successful npm install cannot trigger a service restart while the instal
   assert.doesNotThrow(() => verifyManagedServiceReleasePair({ cliVersion:'0.2.201', runtimeVersion:'0.2.201' }, clientSpec, '@remcp/runtime', runtimeSpec));
 });
 
-test('Linux auto-update is opt-in; explicit preferences remain authoritative', () => {
-  assert.equal(autoUpdateEnabled({}, 'linux'), false);
-  assert.equal(autoUpdateEnabled({ autoUpdate:false }, 'linux'), false);
-  assert.equal(autoUpdateEnabled({ autoUpdate:true }, 'linux'), true);
-  assert.equal(autoUpdateEnabled({}, 'darwin'), true);
-  assert.equal(autoUpdateEnabled({}, 'win32'), true);
+test('ReMCP npm package auto-updates default on for all OSes and respect explicit opt-out', () => {
+  for (const platform of ['linux', 'darwin', 'win32']) {
+    assert.equal(autoUpdateEnabled({}, platform), true, `${platform}: no change to Node.js policy may disable ReMCP updates`);
+    assert.equal(autoUpdateEnabled({ autoUpdate:false }, platform), false, `${platform}: explicit off stays off`);
+    assert.equal(autoUpdateEnabled({ autoUpdate:true }, platform), true);
+  }
 });
