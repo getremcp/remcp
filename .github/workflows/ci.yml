@@ -291,8 +291,17 @@ jobs:
 
             $taskXml = (& schtasks.exe /Query /TN 'ReMCP Agent' /XML | Out-String)
             if ($LASTEXITCODE -ne 0) { throw 'ReMCP Agent Scheduled Task was not queryable.' }
-            if ($taskXml -notmatch '<RunLevel>LeastPrivilege</RunLevel>') {
-              throw 'ReMCP Agent Scheduled Task is not configured at LeastPrivilege run level.'
+            # This bootstrap follows the production-advertised release, which may
+            # still be v0.2.205 while this v0.2.206 candidate is staged on public
+            # main. Check the installed version's actual contract; never require
+            # an unpublished client behavior or silently accept elevated 0.2.206.
+            $installedVersion = [version]($expectedVersion -replace '[-+].*$', '')
+            if ($installedVersion -ge [version]'0.2.206') {
+              if ($taskXml -notmatch '<RunLevel>LeastPrivilege</RunLevel>') {
+                throw 'ReMCP Agent Scheduled Task is not configured at LeastPrivilege run level.'
+              }
+            } elseif ($taskXml -notmatch '<RunLevel>HighestAvailable</RunLevel>') {
+              throw 'Legacy ReMCP Agent Scheduled Task has an unexpected run level.'
             }
             if ($taskXml -notmatch '<LogonType>InteractiveToken</LogonType>') {
               throw 'ReMCP Agent Scheduled Task is not configured for the interactive user session.'
