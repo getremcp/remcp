@@ -336,9 +336,27 @@ jobs:
             # The 0.2.212 installer deliberately avoids a visible interactive
             # .cmd Scheduled Task for a *fresh* installation. Never relax this
             # into blindly accepting two simultaneous service managers.
-            $taskCheck = & schtasks.exe /Query /TN 'ReMCP Agent' 2>$null
-            if ($LASTEXITCODE -eq 0) {
+            # The PowerShell 5.1 host treats stderr from a missing schtasks
+            # entry as a terminating NativeCommandError under Stop. Query the
+            # scheduler directly and only accept known task-not-found HRESULTs;
+            # an ACL denial or COM failure is never evidence of absence.
+            $scheduleService = New-Object -ComObject 'Schedule.Service'
+            $scheduleService.Connect()
+            try {
+              $null = $scheduleService.GetFolder('\').GetTask('ReMCP Agent')
               throw 'Fresh Windows bootstrap unexpectedly created a visible Scheduled Task.'
+            } catch {
+              $exception = $_.Exception
+              $missing = $false
+              while ($null -ne $exception) {
+                if ($exception.HResult -eq -2147024894 -or
+                    $exception.HResult -eq -2147216625) {
+                  $missing = $true
+                  break
+                }
+                $exception = $exception.InnerException
+              }
+              if (!$missing) { throw }
             }
 
             $startup = Join-Path $env:RUNNER_TEMP 'remcp-windows-startup-qa.vbs'
