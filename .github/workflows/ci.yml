@@ -141,7 +141,7 @@ jobs:
         shell: powershell
         working-directory: packages/client
         run: |
-          node --test test/windows-user-supervisor-control.test.mjs test/windows-owned-job-native.test.mjs test/windows-owned-tree-native.test.mjs
+          node --test --test-concurrency=1 test/windows-user-supervisor-control.test.mjs test/windows-owned-job-native.test.mjs test/windows-owned-tree-native.test.mjs
           if ($LASTEXITCODE -ne 0) { throw 'Windows owned process lifecycle failed' }
       - name: Probe actual Windows temperature APIs without requiring physical sensors on CI
         shell: powershell

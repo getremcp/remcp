@@ -6,7 +6,9 @@ import path from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
 import { once } from 'node:events';
 
-async function until(check, milliseconds = 12000) {
+const arm64Vm = process.platform === 'win32' && process.arch === 'arm64';
+
+async function until(check, milliseconds = arm64Vm ? 65000 : 20000) {
   const deadline = performance.now() + milliseconds;
   while (performance.now() < deadline) {
     if (check()) return;
@@ -16,7 +18,7 @@ async function until(check, milliseconds = 12000) {
 }
 
 test('Windows supervisor death also terminates an agent ignoring IPC and its detached descendant', {
-  skip: process.platform !== 'win32', timeout: 30000,
+  skip: process.platform !== 'win32', timeout: arm64Vm ? 120000 : 65000,
 }, async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'remcp-owned-tree-'));
   const cli = path.join(root, 'agent.mjs');
@@ -52,7 +54,7 @@ test('Windows supervisor death also terminates an agent ignoring IPC and its det
       try { process.kill(pid, 0); return false; }
       catch (e) { if (e.code === 'ESRCH') return true; throw e; }
     };
-    await until(gone, 7000);
+    await until(gone, arm64Vm ? 18000 : 7000);
     const value = fs.readFileSync(heartbeat, 'utf8');
     await new Promise(resolve => setTimeout(resolve, 200));
     assert.equal(fs.readFileSync(heartbeat, 'utf8'), value, errors);
@@ -66,7 +68,7 @@ test('Windows supervisor death also terminates an agent ignoring IPC and its det
 });
 
 test('Windows supervisor refuses stop and restart after losing an unacknowledged job', {
-  skip:process.platform !== 'win32',timeout:30000,
+  skip:process.platform !== 'win32',timeout:arm64Vm ? 160000 : 65000,
 }, async () => {
   const root=fs.mkdtempSync(path.join(os.tmpdir(),'remcp-job-failure-'));
   const cli=path.join(root,'agent.mjs'), marker=path.join(root,'ready'), launches=path.join(root,'launches');
@@ -89,7 +91,9 @@ test('Windows supervisor refuses stop and restart after losing an unacknowledged
   assert.ok(source.includes('const ownChild = child;'));
   fs.writeFileSync(supervisor,source.replace('const ownChild = child;',injection));
   const owner=spawn(process.execPath,[supervisor,'serve',cli],{env,stdio:'ignore'});
-  const control=action=>spawnSync(process.execPath,[supervisor,'control',action],{env,encoding:'utf8',timeout:16000});
+  const control=action=>spawnSync(process.execPath,[supervisor,'control',action],{
+    env,encoding:'utf8',timeout:arm64Vm ? 30000 : 16000,
+  });
   try {
     // This disposable supervisor copy crashes its retained ChildProcess helper.
     await until(()=>fs.existsSync(marker));

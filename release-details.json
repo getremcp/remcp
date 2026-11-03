@@ -1,11 +1,10 @@
 {
-  "version": "0.2.223",
-  "title": "Contain Windows Startup agent process trees and handle verified installer deployment pauses.",
+  "version": "0.2.224",
+  "title": "Keep Windows ARM64 Startup process containment reliable when PowerShell initialization is slow.",
   "changes": [
-    "Contain agent trees when a new Windows per-user Startup supervisor launches; existing running supervisors require a fresh launch to use the new implementation.",
-    "Confirm an empty process group before acknowledging shutdown and preserve failure state when the helper cannot provide that confirmation.",
-    "Retry only verified installer deployment pauses within a monotonic budget, account for HTTP setup time and cancel stalled requests.",
-    "Verify Windows x64 and ARM64 lifecycle and installer regressions, including Unicode paths and clean bootstrap through the pairing boundary.",
-    "Preserve the published 0.2.222 CPU sampling and asynchronous update lock fixes. Legacy Scheduled Task migration remains separate work."
+    "Extend the bounded Windows PowerShell 5.1 Job Object helper startup handshake to 45 seconds, distinguishing initialization delays from child-creation delays.",
+    "Preserve atomic child assignment, fail-closed ownership and the requirement to confirm an empty process group before acknowledging shutdown.",
+    "Cover a deterministic helper start delayed beyond the previous 15-second limit, align native test budgets with constrained ARM64 machines and serialize lifecycle checks in Windows CI.",
+    "Retain the 0.2.223 Windows installer rollout-pause protection; migration of existing legacy Scheduled Tasks remains separate work."
   ]
 }

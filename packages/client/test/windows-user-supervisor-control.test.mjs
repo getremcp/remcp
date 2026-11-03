@@ -9,14 +9,15 @@ import { once } from 'node:events';
 import { windowsSupervisorPath } from '../src/cli/windows-user-supervisor.mjs';
 
 const supervisorScript = path.resolve('src/cli/windows-user-supervisor.mjs');
+const arm64Vm = process.platform === 'win32' && process.arch === 'arm64';
 
 function control(env, action) {
   return spawnSync(process.execPath, [supervisorScript, 'control', action], {
-    env, encoding:'utf8', timeout:16000,
+    env, encoding:'utf8', timeout:arm64Vm ? 30000 : 16000,
   });
 }
 
-async function waitUntil(predicate, deadlineMs = 9000) {
+async function waitUntil(predicate, deadlineMs = arm64Vm ? 65000 : 20000) {
   const deadline = Date.now() + deadlineMs;
   while (Date.now() < deadline) {
     const result = predicate();
@@ -57,7 +58,7 @@ test('user supervisor has one owner, authenticated control, deferred restart, an
 
     // The OS-held pipe prevents a second supervisor from launching an extra agent.
     const duplicate = spawnSync(process.execPath, [supervisorScript, 'serve', cli],
-      { env, encoding:'utf8', timeout:5000 });
+      { env, encoding:'utf8', timeout:arm64Vm ? 18000 : 5000 });
     assert.equal(duplicate.status, 0, duplicate.stderr);
     assert.equal(fs.readFileSync(launches, 'utf8').trim().split('\n').length, 1);
 
@@ -86,7 +87,7 @@ test('user supervisor has one owner, authenticated control, deferred restart, an
       if (status.status !== 0) return false;
       const state = JSON.parse(status.stdout);
       return state.running && state.childPid !== first.childPid ? state : false;
-    }, 9000);
+    }, arm64Vm ? 65000 : 25000);
     assert.ok(second.childPid > 0);
     await waitUntil(() => fs.readFileSync(launches, 'utf8').trim().split('\n').length === 2);
 
@@ -95,7 +96,7 @@ test('user supervisor has one owner, authenticated control, deferred restart, an
     assert.equal(JSON.parse(stopped.stdout).stopped, true);
     await Promise.race([
       once(processA, 'exit'),
-      new Promise((_, reject) => setTimeout(() => reject(new Error('Supervisor failed to exit')), 3000)),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('Supervisor failed to exit')), arm64Vm ? 12000 : 3000)),
     ]);
     assert.equal(control(env, 'status').status, 1,
       'stopped supervisor cannot report the child as running');
@@ -147,12 +148,12 @@ test('an unexpected supervisor death disconnects its owned agent IPC instead of 
     owner.kill('SIGKILL');
     await Promise.race([
       once(owner, 'exit'),
-      new Promise((_, reject) => setTimeout(() => reject(new Error('Supervisor did not die')), 3000)),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('Supervisor did not die')), arm64Vm ? 12000 : 3000)),
     ]);
     // Windows may tear down a job process before its Node IPC disconnect handler
     // can write the optional marker. Process liveness is the actual safety invariant:
     // no orphaned agent may remain after the supervisor exits unexpectedly.
-    try { await waitUntil(() => !alive(), 7500); }
+    try { await waitUntil(() => !alive(), arm64Vm ? 18000 : 7500); }
     catch { throw new Error(`Orphan agent still running after owner death: pid=${ready.childPid}, disconnectMarker=${fs.existsSync(marker)}`); }
     // The marker is diagnostic only: the child can exit before its buffered
     // Windows file write has become visible. The OS PID liveness check above

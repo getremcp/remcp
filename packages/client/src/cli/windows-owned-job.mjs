@@ -21,14 +21,21 @@ export function spawnWindowsOwnedJob(application, args, { cwd, log, env = proces
     Buffer.from(windowsOwnedJobScript, 'utf16le').toString('base64')], {
     cwd:path.dirname(powershell), env, windowsHide:true, stdio:['pipe','pipe','pipe'],
   });
-  let output = '', stderr = '', started = false, empty = false, settled = false;
+  let output = '', stderr = '', started = false, empty = false, settled = false, sawReady = false;
   let resolveReady, rejectReady, resolveDone, rejectDone;
   const ready = new Promise((resolve, reject) => { resolveReady=resolve; rejectReady=reject; });
   const done = new Promise((resolve, reject) => { resolveDone=resolve; rejectDone=reject; });
   // Callers may observe readiness and completion separately; suppress unhandled rejection noise.
   ready.catch(() => {}); done.catch(() => {});
   const fail = error => { rejectReady(error); rejectDone(error); };
-  const timer = setTimeout(() => { fail(new Error('Windows job startup timed out')); helper.kill(); }, 15000);
+  // Windows PowerShell 5.1 compiles this P/Invoke helper via Add-Type on every launch.
+  // Resource-constrained ARM64 VMs can need more than 15 seconds. Keep one bounded
+  // deadline for the complete handshake, without weakening job ownership checks.
+  const timer = setTimeout(() => {
+    fail(new Error('Windows job startup timed out during ' +
+      (sawReady ? 'process creation' : 'PowerShell initialization')));
+    helper.kill();
+  }, 45000);
   helper.stdin.on('error', () => {});
   helper.stderr.on('data', chunk => { stderr = (stderr + chunk).slice(-2048); });
   helper.stdout.on('data', chunk => {
@@ -39,6 +46,7 @@ export function spawnWindowsOwnedJob(application, args, { cwd, log, env = proces
       try {
         const message = JSON.parse(line);
         if (message.ready === true && !started) {
+          sawReady = true;
           // ASCII envelope survives Windows PowerShell 5.1's OEM console codepage.
           helper.stdin.write(Buffer.from(JSON.stringify({application,command,cwd,log}),'utf8').toString('base64') + '\n');
         } else if (message.started === true && Number.isSafeInteger(message.pid) && message.pid > 0 && !started) {

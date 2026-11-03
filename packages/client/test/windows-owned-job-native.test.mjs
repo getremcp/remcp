@@ -3,9 +3,12 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { spawnWindowsOwnedJob } from '../src/cli/windows-owned-job.mjs';
 
-async function until(check, ms = 10000) {
+const arm64Vm = process.platform === 'win32' && process.arch === 'arm64';
+
+async function until(check, ms = arm64Vm ? 30000 : 10000) {
   const deadline=performance.now()+ms;
   while (performance.now()<deadline) {
     if (check()) return;
@@ -15,7 +18,7 @@ async function until(check, ms = 10000) {
 }
 
 for (const action of ['stop','helper-crash','root-exit']) test(`Windows job contains detached descendants on ${action}`, {
-  skip:process.platform !== 'win32', timeout:30000,
+  skip:process.platform !== 'win32', timeout:arm64Vm ? 110000 : 65000,
 }, async () => {
   const root=fs.mkdtempSync(path.join(os.tmpdir(),'remcp job %!& Unicode-Ж-'));
   const stop=path.join(root,'stop'), pidFile=path.join(root,'descendant-pid');
@@ -55,7 +58,7 @@ for (const action of ['stop','helper-crash','root-exit']) test(`Windows job cont
 });
 
 test('Windows job fails closed when the executable cannot be created', {
-  skip:process.platform !== 'win32', timeout:25000,
+  skip:process.platform !== 'win32', timeout:arm64Vm ? 90000 : 65000,
 }, async () => {
   const root=fs.mkdtempSync(path.join(os.tmpdir(),'remcp-job-denied-'));
   const helper=spawnWindowsOwnedJob(path.join(root,'missing.exe'),[],{cwd:root,log:path.join(root,'log')});
@@ -64,4 +67,37 @@ test('Windows job fails closed when the executable cannot be created', {
     await assert.rejects(helper.ownedJob.stop(),/Windows owned job failed/);
     assert.equal(helper.ownedJob.confirmedEmpty,false);
   } finally { fs.rmSync(root,{recursive:true,force:true,maxRetries:20,retryDelay:100}); }
+});
+
+test('Windows job tolerates slow PowerShell initialization before its bounded handshake', {
+  skip:process.platform !== 'win32', timeout:arm64Vm ? 105000 : 70000,
+}, async () => {
+  // A disposable helper copy delays readiness beyond the previous 15-second
+  // watchdog. The test uses the real Windows Job Object implementation.
+  const root=fs.mkdtempSync(path.join(os.tmpdir(),'remcp-slow-owned-job-'));
+  const sourceFile=path.resolve('src/cli/windows-owned-job-source.mjs');
+  const source=fs.readFileSync(sourceFile,'utf8');
+  const marker="Add-Type -TypeDefinition @'";
+  assert.equal(source.split(marker).length,2,'expected one compilation boundary');
+  fs.writeFileSync(path.join(root,'windows-owned-job-source.mjs'),
+    source.replace(marker,'Start-Sleep -Milliseconds 17000\n'+marker));
+  fs.copyFileSync(path.resolve('src/cli/windows-owned-job.mjs'),
+    path.join(root,'windows-owned-job.mjs'));
+  const child=path.join(root,'child.mjs');
+  fs.writeFileSync(child,'setTimeout(()=>process.exit(0),100);');
+  let owner;
+  try {
+    const {spawnWindowsOwnedJob:spawnSlow}=await import(
+      pathToFileURL(path.join(root,'windows-owned-job.mjs')).href);
+    const began=performance.now();
+    owner=spawnSlow(process.execPath,[child],{cwd:root,log:path.join(root,'agent.log')});
+    await owner.ownedJob.ready;
+    assert.ok(performance.now()-began>=16000,'helper unexpectedly skipped delayed readiness');
+    await owner.ownedJob.done;
+    assert.equal(owner.ownedJob.confirmedEmpty,true);
+  } finally {
+    if(owner?.exitCode===null && owner?.signalCode===null) owner.kill('SIGKILL');
+    await new Promise(resolve=>setTimeout(resolve,200));
+    fs.rmSync(root,{recursive:true,force:true,maxRetries:20,retryDelay:100});
+  }
 });
