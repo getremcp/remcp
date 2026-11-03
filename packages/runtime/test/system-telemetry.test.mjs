@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { cpuPerCoreUtilizationRatios } from '../src/tools/cpu-telemetry.mjs';
 import {
-  parseNetworkCounters, parseDarwinNetworkCounters, parseWindowsNetworkCounters, calculateNetworkRates, parseDiskVolumes, thermalReadings,
+  parseNetworkCounters, parseDarwinNetworkCounters, parseWindowsNetworkCounters, parseWindowsNetshCounters, calculateNetworkRates, parseDiskVolumes, thermalReadings,
   diskVolumes, networkRates,
 } from '../src/tools/system-telemetry.mjs';
 
@@ -115,4 +115,43 @@ test('invalid or unsafe disk counters are omitted, not represented as full or em
     '/dev/sda2 100 50 50 50% /safe',
     '/dev/sda3 100 10 90 10% /etc/weird\\path'].join('\n');
   assert.deepEqual(parseDiskVolumes(df).map(volume => volume.mount), ['/safe']);
+});
+
+test('Windows netsh counters support real active Ethernet bytes when PowerShell has no data', () => {
+  const payload = [
+    '       MTU  MediaSenseState      Bytes In     Bytes Out  Interface',
+    '----------  ---------------  ------------  ------------  -------------',
+    '4294967295                1             0         12290  Loopback Pseudo-Interface 1',
+    '      1500                1     566548022      38142055  Ethernet',
+    '      1500                5         10000         17000  Wi-Fi',
+  ].join('\n');
+  const active = new Set(['Ethernet', 'Wi-Fi']);
+  // MediaSenseState=5 means the Wi-Fi link is disconnected.
+  assert.deepEqual(parseWindowsNetshCounters(payload, active), [
+    { name:'Ethernet', rx:566548022, tx:38142055 },
+  ]);
+  assert.deepEqual(parseWindowsNetshCounters(payload, new Set(['Ethernet'])),
+    [{ name:'Ethernet', rx:566548022, tx:38142055 }]);
+  assert.deepEqual(parseWindowsNetshCounters(payload, new Set()), []);
+  const later = [{name:'Ethernet',rx:566552022,tx:38143055}];
+  assert.deepEqual(calculateNetworkRates(later, parseWindowsNetshCounters(payload, new Set(['Ethernet'])), 2),
+    { rxBytesPerSecond:2000, txBytesPerSecond:500,
+      interfaces:[{name:'Ethernet',rxBytesPerSecond:2000,txBytesPerSecond:500}] });
+});
+
+test('Windows netsh rejects malformed, unsafe and nonnumeric data without inventing counters', () => {
+  const payload = [
+    ' MTU State Bytes In Bytes Out Interface',
+    ' 1500 1 unknown 1000 Ethernet',
+    ' 1500 1 -1 1000 Ethernet',
+    ' 1500 1 100000 9999 bad/name',
+    ' 1500 1 100000 9999 unsafe;name',
+    ' 1500 1 9007199254740992 10 Ethernet',
+    ' 1500 1 4000 1500 Ethernet',
+    ' 1500 1 3000 900 Ethernet',
+  ].join('\n');
+  assert.deepEqual(parseWindowsNetshCounters(payload, new Set(['Ethernet'])),
+    [{name:'Ethernet',rx:3000,tx:900}]);
+  assert.deepEqual(parseWindowsNetshCounters(''), []);
+  assert.deepEqual(parseWindowsNetshCounters('Get-NetAdapterStatistics failed'), []);
 });

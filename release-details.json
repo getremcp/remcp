@@ -1,10 +1,10 @@
 {
-  "version": "0.2.220",
-  "title": "Report Windows disks, make PDF page operations work without external tools, and stabilize Windows captures.",
+  "version": "0.2.221",
+  "title": "Recover measured Windows network throughput when adapter statistics are unavailable.",
   "changes": [
-    "Report Windows disk and volumes in get_system_info using native filesystem statistics instead of returning null/empty.",
-    "Merge, split and extract PDF pages with the built-in PDF engine when qpdf, pdftk or poppler are not installed; report the page count on info.",
-    "Serialize Windows full-screen captures and clean up GDI failures so screenshot calls do not block the relay.",
-    "Allow five seconds for the Windows integrity probe on heavily loaded hosts; preserve the 0.2.218 clipboard and replacement fixes."
+    "Read cumulative RX/TX bytes from active Windows interfaces through bounded native netsh output when PowerShell adapter counters are absent.",
+    "Derive bytes per second from two real monotonically increasing samples, never from reported link speed, fabricated zero samples or packet counts.",
+    "Exclude disconnected interfaces and reject malformed, oversized or unsafe counters; retain fallback to the previous adapter statistics source.",
+    "Preserve ReMCP 0.2.220 disk, PDF and Windows screenshot reliability fixes."
   ]
 }

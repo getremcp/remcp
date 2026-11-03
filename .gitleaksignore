@@ -6,3 +6,8 @@ bd8597c6f8a07c6742a3e86a9d54f1c350215006:test/drain.test.mjs:generic-api-key:33
 # Historical documentation-only dummy curl auth uses an anonymous identity at example.invalid; no valid credentials.
 # Suppress this exact historical fingerprint only; keep all other curl auth findings active.
 5504dc86abd26d7f41fb0219d4fa6958c04f625f:docs/security/storagebox-public-access.md:curl-auth-user:100
+
+# Historical generic-api-key false positive: synthetic BYOK test literal in PR #1766, never an actual credential.
+b7867aa62cd9d01d3806a69afce1ffae23aeb72c:test/byok-providers.test.mjs:generic-api-key:14
+# Worktree-only fingerprint for the same unchanged deterministic drain-test placeholder (history fingerprints above).
+test/drain.test.mjs:generic-api-key:33

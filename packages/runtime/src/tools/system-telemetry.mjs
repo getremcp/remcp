@@ -75,6 +75,25 @@ export function parseWindowsNetworkCounters(input, activeNames = null) {
   return [...found.values()];
 }
 
+// netsh exposes cumulative interface bytes even on Windows hosts where the
+// NetAdapterStatistics PowerShell provider returns no entries. Match columns
+// rather than localized header words; reject unsafe aliases and fake rates.
+export function parseWindowsNetshCounters(input, activeNames = null) {
+  const found = new Map();
+  for (const line of String(input).split(/\r?\n/).slice(0, 130)) {
+    const match = line.match(/^\s*\d{1,10}\s+1\s+(\d{1,16})\s+(\d{1,16})\s+(.+?)\s*$/u);
+    if (!match) continue;
+    const name = match[3];
+    if (!/^[\p{L}\p{N} _().:#-]{1,64}$/u.test(name) ||
+        (activeNames && !activeNames.has(name))) continue;
+    const rx = Number(match[1]), tx = Number(match[2]);
+    if (!numeric(rx) || !numeric(tx)) continue;
+    found.set(name, { name, rx, tx });
+    if (found.size >= 24) break;
+  }
+  return [...found.values()];
+}
+
 export function calculateNetworkRates(current, previous, elapsedSeconds) {
   if (!Array.isArray(current) || !Array.isArray(previous) || !Number.isFinite(elapsedSeconds) ||
       elapsedSeconds < 1 || elapsedSeconds > 300) return null;
@@ -114,13 +133,21 @@ async function readNetworkCounters() {
     return parseDarwinNetworkCounters(stdout, active);
   }
   if (process.platform === 'win32') {
-    const script = 'Get-NetAdapterStatistics | Select-Object Name,ReceivedBytes,SentBytes | ConvertTo-Json -Compress';
-    const { stdout } = await run('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script],
-      { windowsHide: true, timeout: 5000, maxBuffer: 128 * 1024 });
     const active = new Set(Object.entries(os.networkInterfaces())
       .filter(([, addresses]) => addresses?.some(address => !address.internal))
       .map(([name]) => name));
-    return parseWindowsNetworkCounters(stdout, active);
+    try {
+      const { stdout } = await run('netsh', ['interface', 'ipv4', 'show', 'subinterfaces'],
+        { windowsHide: true, timeout: 2500, maxBuffer: 128 * 1024 });
+      const counters = parseWindowsNetshCounters(stdout, active);
+      if (counters.length) return counters;
+    } catch { /* Fall through to the existing adapter provider. */ }
+    try {
+      const script = 'Get-NetAdapterStatistics | Select-Object Name,ReceivedBytes,SentBytes | ConvertTo-Json -Compress';
+      const { stdout } = await run('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script],
+        { windowsHide: true, timeout: 5000, maxBuffer: 128 * 1024 });
+      return parseWindowsNetworkCounters(stdout, active);
+    } catch { return []; }
   }
   return [];
 }
