@@ -1,10 +1,10 @@
 {
-  "version": "0.2.216",
-  "title": "Bound Windows snapshot concurrency, label process columns correctly and resolve trusted macOS symlinks.",
+  "version": "0.2.217",
+  "title": "Serialize concurrent Windows updates and preserve every published v0.2.216 safety fix.",
   "changes": [
-    "Keep Windows computer_snapshot probes at two concurrent PowerShell processes so the snapshot completes within the relay timeout on loaded hosts.",
-    "Report Windows list_processes rows under the matching name,pid,session,mem header.",
-    "Keep the managed Windows startup and update handoff hidden, and repair a stale launcher even when the canonical packages are already current.",
-    "Resolve trusted parent symlinks in unrestricted mode so macOS /tmp and /var paths work with delete, move and copy, while symbolic-link leaves remain rejected."
+    "Prevent simultaneous managed Windows npm install/update processes from replacing the same executable and package tree using a safe per-prefix lock, preserving existing owners and failing closed on incomplete or unknown locks.",
+    "Ship the exact Windows cross-process update-lock regression in the public client release source and native Windows CI.",
+    "Preserve the v0.2.216 independent Windows Scheduled Task update handoff, bounded desktop snapshot probes, correct process listing headers and published macOS trusted-parent-symlink behavior.",
+    "Retain the v0.2.215 deferred telemetry restart command behavior and the established first-party pinned client/runtime release pair."
   ]
 }

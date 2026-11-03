@@ -6,6 +6,7 @@ import { PACKAGE_NAME } from '../version.mjs';
 import { home, npm } from './env.mjs';
 import { buildVettedMacTemperatureAddon } from './mac-native-temperature.mjs';
 import { output, run } from './shell.mjs';
+import { withWindowsUpdateLock } from './windows-update-lock.mjs';
 
 export function servicePlatform() {
   return process.env.NODE_ENV === 'test' && process.env.REMCP_TEST_PLATFORM ? process.env.REMCP_TEST_PLATFORM : process.platform;
@@ -53,8 +54,10 @@ function npmGlobalInstallArgs(specs, { preferOnline = false } = {}) {
 }
 
 export function npmGlobalInstall(...specs) {
-  assertSafeReMcpNpmPrefix(globalPrefix()); // Reject an unsafe prefix before npm writes anything.
-  run(npm.command, [...npm.args, ...npmGlobalInstallArgs(specs)]);
+  const prefix = assertSafeReMcpNpmPrefix(globalPrefix()); // Reject an unsafe prefix before npm writes anything.
+  const install = () => run(npm.command, [...npm.args, ...npmGlobalInstallArgs(specs)]);
+  if (servicePlatform() === 'win32') withWindowsUpdateLock(prefix, install);
+  else install();
   if (servicePlatform() === 'darwin' && specs.some(spec => /^@remcp\/runtime@[0-9]/.test(spec))) {
     try {
       buildVettedMacTemperatureAddon({
@@ -241,7 +244,7 @@ export function npmGlobalUpdate(packageNames, ...specs) {
     return;
   }
   if (platform === 'win32') {
-    transactionalWindowsGlobalInstall({ resolved:npm, prefix, packageNames, specs, preferOnline:true });
+    withWindowsUpdateLock(prefix, () => transactionalWindowsGlobalInstall({ resolved:npm, prefix, packageNames, specs, preferOnline:true }));
     return;
   }
   run(npm.command, [...npm.args, ...npmGlobalInstallArgs(specs, { preferOnline:true })]);
@@ -256,7 +259,7 @@ export function npmGlobalUpdateForNode(nodePath, packageNames, ...specs) {
     return;
   }
   if (platform === 'win32') {
-    transactionalWindowsGlobalInstall({ resolved, prefix, packageNames, specs, preferOnline:true });
+    withWindowsUpdateLock(prefix, () => transactionalWindowsGlobalInstall({ resolved, prefix, packageNames, specs, preferOnline:true }));
     return;
   }
   run(resolved.command, [...resolved.args, ...npmGlobalInstallArgs(specs, { preferOnline:true })]);
