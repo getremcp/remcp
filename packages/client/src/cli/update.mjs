@@ -266,7 +266,9 @@ export async function updateCommand(flags) {
 
   // Legacy Scheduled Task /End can orphan an already running agent. Refuse the
   // update before touching npm or package state until ownership is verifiable.
-  if (serviceExpected) assertWindowsUpdateLifecycleSafe();
+  // An old task may survive an explicit service opt-out. Its ownership must be
+  // checked independently of that preference before replacing either package.
+  assertWindowsUpdateLifecycleSafe();
   const before = { cli: VERSION, runtime: installedVersion(cfg.runtime.packageName) };
   console.log(`Updating ReMCP to ${targets.clientSpec} with ${targets.runtimeSpec}…`);
   npmGlobalUpdate([PACKAGE_NAME, cfg.runtime.packageName], targets.clientSpec, targets.runtimeSpec);

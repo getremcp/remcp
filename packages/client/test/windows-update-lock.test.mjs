@@ -125,3 +125,108 @@ npmGlobalInstall('@remcp/remcp@9.9.9', '@remcp/runtime@9.9.9');`;
     }
   });
 });
+
+function runManualUpdate(t, { task = 'PRESENT', status = 0, check = false, current = false } = {}) {
+  const root = fixture(t);
+  const prefix = path.join(root, 'prefix');
+  const config = path.join(root, 'config');
+  const version = JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url))).version;
+  const target = current ? version : '9.9.9';
+  fs.mkdirSync(config, { recursive:true });
+  for (const layout of ['node_modules', path.join('lib', 'node_modules')]) {
+    for (const name of ['remcp', 'runtime']) {
+      const dir = path.join(prefix, layout, '@remcp', name);
+      fs.mkdirSync(dir, { recursive:true });
+      fs.writeFileSync(path.join(dir, 'package.json'), JSON.stringify({ version }));
+    }
+  }
+  fs.writeFileSync(path.join(prefix, 'remcp.cmd'), 'original fixture shim');
+  fs.writeFileSync(path.join(config, 'config.json'), JSON.stringify({
+    configSchemaVersion:1, serverUrl:'https://remcp.site', deviceId:'fixture-device',
+    deviceToken:'fixture-only-token', serviceInstalled:false, trustRuntime:true,
+    runtime:{kind:'npm',packageName:'@remcp/runtime',packageSpec:`@remcp/runtime@${version}`,entry:'src/index.mjs'},
+  }));
+  const script = `import fs from 'node:fs';
+import path from 'node:path';
+import cp from 'node:child_process';
+import { syncBuiltinESMExports } from 'node:module';
+const prefix = ${JSON.stringify(prefix)};
+const result = { npmMutations:0, packageWrites:0, taskQueries:0, taskChanges:0, error:null };
+// Intercept every child command: the fixture must never invoke real npm or OS services,
+// including on a native Windows/macOS host. Package writes are observed separately.
+cp.spawnSync = (command, args=[]) => {
+  if (command === 'qa-npm' && args[0] === 'prefix') return {status:0,stdout:prefix};
+  if (command === 'qa-npm' && args[0] === 'install') {
+    result.npmMutations++;
+    return {status:1,error:new Error('QA_NPM_MUTATION_BOUNDARY')};
+  }
+  if (command === 'powershell.exe') {
+    result.taskQueries++;
+    return {status:${status},stdout:${JSON.stringify(task)},stderr:''};
+  }
+  if (command === 'schtasks.exe') result.taskChanges++;
+  throw new Error('Unexpected fixture command: '+command);
+};
+for (const name of ['writeFileSync','renameSync','mkdirSync','rmSync','unlinkSync']) {
+  const original=fs[name];
+  fs[name]=(...args)=>{
+    if (args.slice(0,name==='renameSync'?2:1).some(value=>typeof value==='string' &&
+        (value===prefix || value.startsWith(prefix+path.sep)))) result.packageWrites++;
+    return original(...args);
+  };
+}
+syncBuiltinESMExports();
+const { updateCommand } = await import(${JSON.stringify(new URL('../src/cli/update.mjs', import.meta.url).href)});
+try { await updateCommand({client:'@remcp/remcp@${target}',runtime:'@remcp/runtime@${target}',check:${check}}); }
+catch(error) { result.error=error.message; }
+process.stdout.write('QA_RESULT:'+JSON.stringify(result)+'\\n');`;
+  const child = spawnSync(process.execPath, ['--input-type=module', '-e', script], {
+    encoding:'utf8', timeout:15000,
+    env:{...process.env, NODE_ENV:'test', REMCP_TEST_PLATFORM:'win32', REMCP_NPM:'qa-npm',
+      HOME:root, USERPROFILE:root, APPDATA:path.join(root,'Roaming'), LOCALAPPDATA:path.join(root,'Local'),
+      REMCP_CONFIG_DIR:config, NPM_CONFIG_PREFIX:prefix},
+  });
+  assert.equal(child.status, 0, child.stderr || child.stdout);
+  const line=child.stdout.split(/\r?\n/).find(value=>value.startsWith('QA_RESULT:'));
+  assert.ok(line, child.stdout);
+  assert.equal(fs.readFileSync(path.join(prefix,'remcp.cmd'),'utf8'), 'original fixture shim');
+  return JSON.parse(line.slice('QA_RESULT:'.length));
+}
+
+test('Windows manual update checks legacy task ownership despite serviceInstalled:false', t => {
+  const result=runManualUpdate(t);
+  assert.match(result.error, /legacy ReMCP Scheduled Task exists/);
+  assert.equal(result.taskQueries, 1);
+  assert.equal(result.npmMutations, 0);
+  assert.equal(result.packageWrites, 0);
+  assert.equal(result.taskChanges, 0);
+});
+
+for (const scenario of [{task:'',status:5}, {task:'UNKNOWN',status:0}]) {
+  test(`Windows manual update refuses uncertain task state (${scenario.status}/${scenario.task})`, t => {
+    const result=runManualUpdate(t,scenario);
+    assert.match(result.error, /Could not verify the legacy ReMCP Scheduled Task/);
+    assert.equal(result.npmMutations, 0);
+    assert.equal(result.packageWrites, 0);
+    assert.equal(result.taskChanges, 0);
+  });
+}
+
+test('Windows manual update without a legacy task reaches the isolated npm boundary', t => {
+  const result=runManualUpdate(t,{task:'ABSENT'});
+  assert.equal(result.taskQueries, 1);
+  assert.equal(result.npmMutations, 1);
+  assert.equal(result.error, 'QA_NPM_MUTATION_BOUNDARY');
+  assert.equal(result.taskChanges, 0);
+});
+
+for (const scenario of [{check:true},{current:true}]) {
+  test(`Windows ${scenario.check?'update --check':'already-current update'} remains read-only`, t => {
+    const result=runManualUpdate(t,scenario);
+    assert.equal(result.error, null);
+    assert.equal(result.taskQueries, 0);
+    assert.equal(result.npmMutations, 0);
+    assert.equal(result.packageWrites, 0);
+    assert.equal(result.taskChanges, 0);
+  });
+}

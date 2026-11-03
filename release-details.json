@@ -1,11 +1,10 @@
 {
-  "version": "0.2.225",
-  "title": "Prevent unsafe Windows legacy Scheduled Task handovers before process ownership can be verified.",
+  "version": "0.2.226",
+  "title": "Check legacy Windows task ownership before updates even after a saved service opt-out.",
   "changes": [
-    "Use the authenticated per-user Startup/Job Object supervisor for all new Windows installations instead of creating a WScript → CMD Scheduled Task.",
-    "Query legacy Task Scheduler registration using locale-independent COM; refuse ambiguous, access-denied and existing-task results rather than starting a duplicate agent.",
-    "Refuse legacy uninstall and credential restart without a proven empty descendant group. Preserve existing tasks, launcher files and pairing instead of falsely claiming that descendants stopped.",
-    "Preflight legacy task ownership before npm updates so a failed handover cannot partially replace the installed release.",
-    "Add real isolated Windows Startup install/stop/uninstall QA and negative permission/ownership regressions. Automatic migration of an already-running legacy task remains intentionally blocked pending ownership-verified handover."
+    "Check for a surviving legacy Scheduled Task independently of serviceInstalled:false before changing npm packages or executable shims.",
+    "Refuse updates when Task Scheduler reports an existing task, access denial or ambiguous output; preserve package state instead of attempting an unowned handover.",
+    "Keep check-only and already-current Windows updates before the package-mutation preflight, and permit manual updates after verified task absence.",
+    "Cover the opt-out path with isolated package-write and command instrumentation on Windows x64, Windows ARM64 and Linux. Legacy task migration remains separate work."
   ]
 }
