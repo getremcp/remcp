@@ -34,6 +34,17 @@ export function cpuPerCoreUtilizationRatios(before, after) {
   return ratios.every(value => value !== null) ? ratios : null;
 }
 
+// Windows diagnostics spawn PowerShell probes. Measure host CPU first, or the
+// diagnostics themselves can appear as a false 100% CPU spike on small VMs.
+export async function scheduleCpuSampleAndProbes(platform, sampleCpu, startProbes) {
+  if (platform === 'win32') {
+    const cpus = await sampleCpu();
+    return { cpus, probes: startProbes() };
+  }
+  const probes = startProbes();
+  return { cpus: await sampleCpu(), probes };
+}
+
 export function cpuFrequencyMHz(cores) {
   if (!Array.isArray(cores) || !cores.length) return null;
   const speeds = cores.map(core => core?.speed).filter(speed => Number.isFinite(speed) && speed > 0 && speed <= 100000);

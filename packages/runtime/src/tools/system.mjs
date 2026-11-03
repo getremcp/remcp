@@ -4,7 +4,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { runtimeConfig } from '../config.mjs';
 import { clampInteger, fail, requireInteger, text } from '../util.mjs';
-import { cpuUtilizationRatio, cpuFrequencyMHz, cpuPerCoreUtilizationRatios } from './cpu-telemetry.mjs';
+import { cpuUtilizationRatio, cpuFrequencyMHz, cpuPerCoreUtilizationRatios, scheduleCpuSampleAndProbes } from './cpu-telemetry.mjs';
 import { diskVolumes, networkRates, thermalReadings } from './system-telemetry.mjs';
 import { readDarwinMemoryPressure } from './darwin-memory-pressure.mjs';
 
@@ -45,14 +45,21 @@ export async function getSystemInfoTool() {
   const totalMem = os.totalmem();
   const freeMem = os.freemem();
   const load = os.loadavg();
-  // Sample for 140 ms while retrieving disk facts, so CPU % is actual host activity.
-  // Load average is a queue-length metric and must never be displayed as a percentage.
-  const diskPromise = diskUsage();
-  const volumesPromise = diskVolumes();
-  const thermalPromise = thermalReadings();
-  const networkPromise = networkRates();
-  const memoryPressurePromise = process.platform === 'darwin' ? readDarwinMemoryPressure() : Promise.resolve(null);
-  const sampledCpus = await new Promise(resolve => setTimeout(() => resolve(os.cpus()), 140));
+  // On Windows, the PowerShell sensor probes can saturate short CPU samples.
+  // Measure CPU before launching them; keep other platforms' parallel probes.
+  // Load average is queue length, never a percentage.
+  const { cpus: sampledCpus, probes } = await scheduleCpuSampleAndProbes(
+    process.platform,
+    () => new Promise(resolve => setTimeout(() => resolve(os.cpus()), 140)),
+    () => ({
+      diskPromise: diskUsage(),
+      volumesPromise: diskVolumes(),
+      thermalPromise: thermalReadings(),
+      networkPromise: networkRates(),
+      memoryPressurePromise: process.platform === 'darwin'
+        ? readDarwinMemoryPressure() : Promise.resolve(null),
+    }),
+  );
   const utilizationRatio = cpuUtilizationRatio(cpus, sampledCpus);
   const frequencyMHz = cpuFrequencyMHz(sampledCpus);
   return text(JSON.stringify({
@@ -77,12 +84,12 @@ export async function getSystemInfoTool() {
       freeBytes: freeMem,
       usedRatio: totalMem ? Number(((totalMem - freeMem) / totalMem).toFixed(3)) : 0,
       usedMethod: 'os.freemem-physical-occupancy',
-      ...(await memoryPressurePromise),
+      ...(await probes.memoryPressurePromise),
     },
-    disk: await diskPromise,
-    volumes: await volumesPromise,
-    temperatures: await thermalPromise,
-    network: await networkPromise,
+    disk: await probes.diskPromise,
+    volumes: await probes.volumesPromise,
+    temperatures: await probes.thermalPromise,
+    network: await probes.networkPromise,
     home: os.homedir(),
     tempDir: os.tmpdir(),
     runtimeName: runtimeConfig.name,

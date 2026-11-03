@@ -75,9 +75,36 @@ export function parseWindowsNetworkCounters(input, activeNames = null) {
   return [...found.values()];
 }
 
+// `netstat -e` reports cumulative unicast + non-unicast packets even on some
+// Windows NIC drivers whose byte counters are missing. The numeric rows are
+// bytes, unicast and non-unicast in that order (labels can be localized).
+// Packet rates are NOT byte throughput and must never be presented as B/s.
+export function parseWindowsNetstatPackets(input) {
+  const rows = String(input).split(/\r?\n/).slice(0,24)
+    .map(line => line.match(/^\s*([^\d\r\n]+?)\s+(\d{1,18})\s+(\d{1,18})\s*$/))
+    .filter(Boolean).map(row => [Number(row[2]), Number(row[3])]);
+  if (rows.length < 3 || rows.slice(0,3).some(row => !numeric(row[0]) || !numeric(row[1]))) return [];
+  const rx = rows[1][0] + rows[2][0];
+  const tx = rows[1][1] + rows[2][1];
+  return numeric(rx) && numeric(tx)
+    ? [{ name: 'windows-all-adapters', rx, tx, unit: 'packets' }] : [];
+}
+
 export function calculateNetworkRates(current, previous, elapsedSeconds) {
   if (!Array.isArray(current) || !Array.isArray(previous) || !Number.isFinite(elapsedSeconds) ||
       elapsedSeconds < 1 || elapsedSeconds > 300) return null;
+  if (current.length === 1 && current[0]?.unit === 'packets') {
+    const row = current[0];
+    const prior = previous.find(item => item.name === row.name && item.unit === 'packets');
+    if (!prior || !numeric(row.rx) || !numeric(row.tx) ||
+        row.rx < prior.rx || row.tx < prior.tx) return null;
+    return {
+      rxBytesPerSecond: null, txBytesPerSecond: null,
+      rxPacketsPerSecond: Math.round((row.rx - prior.rx) / elapsedSeconds),
+      txPacketsPerSecond: Math.round((row.tx - prior.tx) / elapsedSeconds),
+      interfaces: [],
+    };
+  }
   const old = new Map(previous.map(row => [row.name, row]));
   const interfaces = current.flatMap(row => {
     const prior = old.get(row.name);
@@ -96,6 +123,7 @@ export function calculateNetworkRates(current, previous, elapsedSeconds) {
 
 let lastNetwork = null;
 let pendingNetwork = null;
+let windowsByteRetryAt = 0;
 
 async function readNetworkCounters() {
   if (process.platform === 'linux') {
@@ -114,20 +142,33 @@ async function readNetworkCounters() {
     return parseDarwinNetworkCounters(stdout, active);
   }
   if (process.platform === 'win32') {
-    const script = 'Get-NetAdapterStatistics | Select-Object Name,ReceivedBytes,SentBytes | ConvertTo-Json -Compress';
-    const { stdout } = await run('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script],
-      { windowsHide: true, timeout: 5000, maxBuffer: 128 * 1024 });
-    const active = new Set(Object.entries(os.networkInterfaces())
-      .filter(([, addresses]) => addresses?.some(address => !address.internal))
-      .map(([name]) => name));
-    return parseWindowsNetworkCounters(stdout, active);
+    if (Date.now() >= windowsByteRetryAt) {
+      const script = 'Get-NetAdapterStatistics | Select-Object Name,ReceivedBytes,SentBytes | ConvertTo-Json -Compress';
+      try {
+        const { stdout } = await run('powershell.exe',
+          ['-NoProfile', '-NonInteractive', '-Command', script],
+          { windowsHide: true, timeout: 3500, maxBuffer: 128 * 1024 });
+        const active = new Set(Object.entries(os.networkInterfaces())
+          .filter(([, addresses]) => addresses?.some(address => !address.internal))
+          .map(([name]) => name));
+        const bytes = parseWindowsNetworkCounters(stdout, active);
+        if (bytes.length) { windowsByteRetryAt = 0; return bytes; }
+      } catch { /* Some virtual NICs have no adapter byte counters. */ }
+      windowsByteRetryAt = Date.now() + 60_000;
+    }
+    const { stdout } = await run('netstat', ['-e'],
+      { windowsHide: true, timeout: 2500, maxBuffer: 64 * 1024 });
+    return parseWindowsNetstatPackets(stdout);
   }
   return [];
 }
 
-async function sampleNetworkRates() {
+export async function sampleNetworkRates(readCounters = readNetworkCounters, wait = delay) {
   try {
-    let current = await readNetworkCounters();
+    let current = await readCounters();
+    // Some Windows NIC drivers report no byte counters at all. Do not run a
+    // second expensive PowerShell probe or invent 0 B/s from missing data.
+    if (!current.length) { lastNetwork = null; return null; }
     let now = performance.now();
     let previous = lastNetwork;
     const elapsed = previous ? (now - previous.at) / 1000 : 0;
@@ -135,8 +176,9 @@ async function sampleNetworkRates() {
     // Bootstrap from two real counters; never manufacture a zero-rate sample.
     if (elapsed < 1 || elapsed > 300) {
       previous = { at: now, interfaces: current };
-      await delay(1100);
-      current = await readNetworkCounters();
+      await wait(1100);
+      current = await readCounters();
+      if (!current.length) { lastNetwork = null; return null; }
       now = performance.now();
     }
     lastNetwork = { at: now, interfaces: current };
