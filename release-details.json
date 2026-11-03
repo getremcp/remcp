@@ -1,10 +1,10 @@
 {
-  "version": "0.2.221",
-  "title": "Recover measured Windows network throughput when adapter statistics are unavailable.",
+  "version": "0.2.222",
+  "title": "Make Windows CPU monitoring less intrusive and preserve exclusive update locks until installation finishes.",
   "changes": [
-    "Read cumulative RX/TX bytes from active Windows interfaces through bounded native netsh output when PowerShell adapter counters are absent.",
-    "Derive bytes per second from two real monotonically increasing samples, never from reported link speed, fabricated zero samples or packet counts.",
-    "Exclude disconnected interfaces and reject malformed, oversized or unsafe counters; retain fallback to the previous adapter statistics source.",
-    "Preserve ReMCP 0.2.220 disk, PDF and Windows screenshot reliability fixes."
+    "Measure Windows CPU utilization before starting network, disk and thermal subprocesses, reducing self-induced load in short samples on low-core-count computers.",
+    "Retain the exclusive Windows npm update-prefix lock until an asynchronous installation resolves or rejects, preventing overlapping updates from moving the same package tree.",
+    "Keep the existing Linux/macOS CPU probe order and synchronous update behavior; cover both changes with runtime and client regressions.",
+    "Preserve ReMCP 0.2.221 measured Windows network throughput and previously published safety fixes."
   ]
 }

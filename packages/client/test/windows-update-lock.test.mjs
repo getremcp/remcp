@@ -60,6 +60,26 @@ test('failed Windows transaction releases its update lock for retry', async t =>
   assert.equal(fs.existsSync(path.join(prefix, '.remcp-update-lock')), false);
 });
 
+test('an asynchronous update holds its exclusive lock until resolution or rejection', async t => {
+  const prefix = fixture(t);
+  const lockPath = path.join(prefix, '.remcp-update-lock');
+  const { withWindowsUpdateLock } = await import(moduleUrl.href);
+  let finish;
+  const pending = withWindowsUpdateLock(prefix, () => new Promise(resolve => { finish = resolve; }));
+  assert.equal(fs.existsSync(lockPath), true, 'lock must outlive an unresolved install');
+  assert.throws(() => withWindowsUpdateLock(prefix, () => 'unsafe'), /update already in progress/i);
+  finish('installed');
+  assert.equal(await pending, 'installed');
+  assert.equal(fs.existsSync(lockPath), false);
+
+  let fail;
+  const rejected = withWindowsUpdateLock(prefix, () => new Promise((_, reject) => { fail = reject; }));
+  assert.equal(fs.existsSync(lockPath), true);
+  fail(new Error('failed install'));
+  await assert.rejects(rejected, /failed install/);
+  assert.equal(fs.existsSync(lockPath), false, 'a failed async install must release its lock');
+});
+
 test('unknown or still-live lock owner blocks rather than deleting someone else\'s lock', async t => {
   const prefix = fixture(t);
   const lockPath = path.join(prefix, '.remcp-update-lock');

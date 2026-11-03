@@ -67,11 +67,25 @@ export function withWindowsUpdateLock(prefix, operation) {
   }
 
   const onExit = () => removeOwnedLock(directory, token);
-  process.once('exit', onExit);
-  try {
-    return operation();
-  } finally {
+  let released = false;
+  const release = () => {
+    if (released) return;
+    released = true;
     process.removeListener('exit', onExit);
     removeOwnedLock(directory, token);
+  };
+  process.once('exit', onExit);
+  try {
+    const result = operation();
+    // A future async installer must retain the prefix lock until it settles.
+    // Releasing here would let another updater move the same package/shims.
+    if (result && typeof result.then === 'function') {
+      return Promise.resolve(result).finally(release);
+    }
+    release();
+    return result;
+  } catch (error) {
+    release();
+    throw error;
   }
 }
