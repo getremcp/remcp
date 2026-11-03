@@ -15,6 +15,11 @@ const root = process.env.REMCP_CONFIG_DIR || path.join(os.homedir(), '.config', 
 const keyFile = path.join(root, 'windows-startup-control.key');
 const actions = new Set(['status', 'stop', 'restart']);
 
+// Startup readiness must cover the owned Job Object helper's 45-second PowerShell
+// initialization budget plus process startup. The synchronous CLI needs extra
+// time to collect the result from the independent control process.
+export const WINDOWS_SUPERVISOR_READY_BUDGET_MS = 57000;
+
 export function windowsSupervisorPath(configDir = root, platform = process.platform) {
   const id = crypto.createHash('sha256').update(path.resolve(configDir)).digest('hex').slice(0, 32);
   return platform === 'win32' ? '\\\\.\\pipe\\remcp-user-' + id
@@ -74,7 +79,10 @@ export async function windowsSupervisorRequest(action, { timeoutMs = action === 
 
 // Synchronous callers in the installed CLI use a separate Node client.
 // Never pass device tokens or control keys in command-line arguments.
-export function windowsSupervisorCommand(action, { timeoutMs = action === 'stop' ? 20000 : 15000 } = {}) {
+export function windowsSupervisorCommand(action, {
+  timeoutMs = action === 'stop' ? 20000 :
+    action === 'wait' ? WINDOWS_SUPERVISOR_READY_BUDGET_MS + 8000 : 15000,
+} = {}) {
   if (!actions.has(action) && action !== 'wait') throw new Error('Invalid supervisor action');
   const proc = spawnSync(process.execPath, [currentFile, 'control', action], {
     encoding: 'utf8', windowsHide: true, timeout: timeoutMs, maxBuffer: 8192,
@@ -245,7 +253,7 @@ async function control(action) {
     throw new Error('Windows Startup supervisor has not exited after stop');
   }
   if (action !== 'wait') return windowsSupervisorRequest(action);
-  const deadline = Date.now() + 11000;
+  const deadline = Date.now() + WINDOWS_SUPERVISOR_READY_BUDGET_MS;
   while (Date.now() < deadline) {
     try {
       const current = await windowsSupervisorRequest('status', { timeoutMs: 1000 });

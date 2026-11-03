@@ -12,7 +12,7 @@ import { loadConfig, saveConfig } from './config.mjs';
 import { assertSecureServerUrl } from './connect.mjs';
 import { installedVersion } from './doctor.mjs';
 import { linuxServiceFile, macServiceFile, officialOrigin } from './env.mjs';
-import { currentInstallationInfo, ensureMacCliCommand, ensureServiceIfRecorded, npmGlobalUpdate, persistentServiceExpected, rememberCurrentInstallation, restartPersistentServiceIfInstalled, servicePlatform, serviceInstallationInfo, syncKnownInstallations } from './service.mjs';
+import { assertWindowsUpdateLifecycleSafe, currentInstallationInfo, ensureMacCliCommand, ensureServiceIfRecorded, npmGlobalUpdate, persistentServiceExpected, rememberCurrentInstallation, restartPersistentServiceIfInstalled, servicePlatform, serviceInstallationInfo, syncKnownInstallations } from './service.mjs';
 
 const UPDATE_DISCOVERY_TIMEOUT_MS = 5000;
 
@@ -264,6 +264,9 @@ export async function updateCommand(flags) {
     return;
   }
 
+  // Legacy Scheduled Task /End can orphan an already running agent. Refuse the
+  // update before touching npm or package state until ownership is verifiable.
+  if (serviceExpected) assertWindowsUpdateLifecycleSafe();
   const before = { cli: VERSION, runtime: installedVersion(cfg.runtime.packageName) };
   console.log(`Updating ReMCP to ${targets.clientSpec} with ${targets.runtimeSpec}…`);
   npmGlobalUpdate([PACKAGE_NAME, cfg.runtime.packageName], targets.clientSpec, targets.runtimeSpec);

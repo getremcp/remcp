@@ -6,7 +6,7 @@ import path from 'node:path';
 import net from 'node:net';
 import { spawn, spawnSync } from 'node:child_process';
 import { once } from 'node:events';
-import { windowsSupervisorPath } from '../src/cli/windows-user-supervisor.mjs';
+import { windowsSupervisorPath, WINDOWS_SUPERVISOR_READY_BUDGET_MS } from '../src/cli/windows-user-supervisor.mjs';
 
 const supervisorScript = path.resolve('src/cli/windows-user-supervisor.mjs');
 const arm64Vm = process.platform === 'win32' && process.arch === 'arm64';
@@ -166,4 +166,9 @@ test('an unexpected supervisor death disconnects its owned agent IPC instead of 
     // for an orphaned process; retry only this disposable test directory.
     fs.rmSync(root, { recursive:true, force:true, maxRetries:20, retryDelay:100 });
   }
+});
+
+test('Startup readiness budget exceeds Job Object PowerShell initialization deadline', () => {
+  assert.ok(WINDOWS_SUPERVISOR_READY_BUDGET_MS >= 55000);
+  assert.ok(WINDOWS_SUPERVISOR_READY_BUDGET_MS < 120000);
 });

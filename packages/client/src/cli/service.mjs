@@ -15,11 +15,10 @@ export { macLaunchDomain, ensureMacCliCommand, installMacService } from './servi
 import { PACKAGE_NAME, VERSION } from '../version.mjs';
 
 import { saveConfig } from './config.mjs';
-import { configDir, home, linuxServiceFile, linuxServiceLauncherFile, macServiceFile, macServiceLabel, windowsServiceLauncherFile, windowsTaskScriptFile, windowsStartupScriptFile, windowsTaskName } from './env.mjs';
+import { configDir, home, linuxServiceFile, linuxServiceLauncherFile, macServiceFile, macServiceLabel, windowsServiceLauncherFile, windowsStartupScriptFile, windowsTaskName } from './env.mjs';
 import { run } from './shell.mjs';
-import { windowsServiceLauncherText, windowsTaskReliabilityCommand, windowsTaskAbsenceCommand, windowsBatchUnsafeProfile, windowsTaskScriptText, windowsTaskScriptInstalled, windowsStartupScriptText, windowsStartupScriptInstalled } from './windows-supervisor.mjs';
+import { windowsServiceLauncherText, windowsTaskAbsenceCommand, windowsStartupScriptText, windowsStartupScriptInstalled } from './windows-supervisor.mjs';
 import { ensureWindowsSupervisorKey, windowsSupervisorCommand } from './windows-user-supervisor.mjs';
-import { scheduleWindowsTaskRestart } from './windows-task-restart.mjs';
 
 export function quoteSystemd(value) {
   return `"${String(value).replaceAll('\\', '\\\\').replaceAll('"', '\\"')}"`;
@@ -79,20 +78,6 @@ export function writeWindowsServiceLauncher(cliPath = globalCliPath(), nodePath 
   return windowsServiceLauncherFile;
 }
 
-function writeWindowsTaskScript(launcherFile) {
-  if (fs.existsSync(windowsTaskScriptFile) && !windowsTaskScriptInstalled(windowsTaskScriptFile, windowsServiceLauncherFile)) {
-    throw new Error('The ReMCP scheduled task script is not owned by ReMCP; refusing to overwrite it');
-  }
-  const script = windowsTaskScriptText(launcherFile);
-  fs.mkdirSync(configDir, { recursive:true, mode:0o700 });
-  const temporary = `${windowsTaskScriptFile}.${process.pid}.${Date.now()}.tmp`;
-  try {
-    fs.writeFileSync(temporary, '\uFEFF' + script, { flag:'wx', encoding:'utf16le', mode:0o600 });
-    fs.renameSync(temporary, windowsTaskScriptFile);
-  } finally { try { fs.unlinkSync(temporary); } catch {} }
-  return windowsTaskScriptFile;
-}
-
 function installWindowsUserStartup(cliPath, nodePath) {
   const existed = fs.existsSync(windowsStartupScriptFile);
   if (existed && !windowsStartupScriptInstalled(windowsStartupScriptFile)) {
@@ -140,62 +125,37 @@ function installWindowsUserStartup(cliPath, nodePath) {
   console.log('ReMCP uses this Windows account\'s Startup folder (no administrator rights required).');
 }
 
-function requireWindowsScheduledTaskAbsent() {
-  // A failed schtasks /Query is ambiguous across Windows languages and ACLs.
-  // Fail closed if COM cannot prove absence before choosing another startup route.
-  const existing = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive',
+function windowsScheduledTaskPresence() {
+  // Never interpret schtasks.exe failure as absence: it also reports access-denied.
+  // COM returns locale-independent PRESENT/ABSENT or throws on an uncertain result.
+  const query = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive',
     '-Command', windowsTaskAbsenceCommand(windowsTaskName)],
-    { encoding:'utf8', windowsHide:true, timeout:10000, maxBuffer:4096, input:'' });
-  if (existing.error || existing.status !== 0 || String(existing.stdout || '').trim() !== 'ABSENT') {
-    throw new Error('Could not prove that the ReMCP scheduled task is absent; refusing to start a competing agent');
+    { encoding:'utf8', windowsHide:true, timeout:30000, maxBuffer:4096, input:'' });
+  const state = String(query.stdout || '').trim();
+  if (query.error || query.status !== 0 || !['ABSENT', 'PRESENT'].includes(state)) {
+    throw new Error('Could not verify the legacy ReMCP Scheduled Task; refusing an unsafe lifecycle change');
+  }
+  return state;
+}
+
+function requireWindowsScheduledTaskAbsent() {
+  if (windowsScheduledTaskPresence() !== 'ABSENT') {
+    throw new Error('A legacy ReMCP Scheduled Task exists; its child process tree cannot be safely stopped or migrated automatically');
   }
 }
 
+// Called before any npm install/update so a legacy task cannot be partially
+// replaced while its WScript/CMD/Node descendants are still running.
+export function assertWindowsUpdateLifecycleSafe() {
+  if (servicePlatform() === 'win32') requireWindowsScheduledTaskAbsent();
+}
+
 export function installWindowsService(cliPath = globalCliPath(), { nodePath = process.execPath } = {}) {
-  if (windowsStartupScriptInstalled(windowsStartupScriptFile)) {
-    installWindowsUserStartup(cliPath, nodePath);
-    return;
-  }
-  if (windowsBatchUnsafeProfile(cliPath, nodePath, windowsServiceLauncherFile)) {
-    requireWindowsScheduledTaskAbsent();
-    console.log('ReMCP: Unicode or shell-sensitive Windows profile; using the per-user Startup supervisor.');
-    installWindowsUserStartup(cliPath, nodePath);
-    return;
-  }
-  const launcherFile = writeWindowsServiceLauncher(cliPath, nodePath);
-  const taskScript = writeWindowsTaskScript(launcherFile);
-  // WScript has no console; its hidden CMD child remains attached until it exits.
-  // /IT keeps desktop/UI automation in the signed-in user's session.
-  const command = `wscript.exe //B //Nologo "${taskScript}"`;
-  // Current-user interactive tasks need /IT. /RL LIMITED avoids requiring elevation.
-  // An organization may still disable creation of all tasks by standard users.
-  const created = spawnSync('schtasks.exe',
-    ['/Create', '/TN', windowsTaskName, '/TR', command, '/SC', 'ONLOGON', '/RL', 'LIMITED', '/IT', '/F'],
-    { encoding:'utf8', timeout:15000, maxBuffer:64 * 1024, windowsHide:true, input:'' });
-  if (created.error || created.status !== 0) {
-    requireWindowsScheduledTaskAbsent();
-    console.warn('Windows Task Scheduler rejected task creation; switching to per-user Startup.');
-    installWindowsUserStartup(cliPath, nodePath);
-    return;
-  }
-  // Recovery tuning is optional; a policy denying Set-ScheduledTask must not invalidate
-  // a successfully created and runnable interactive task.
-  try {
-    run('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', windowsTaskReliabilityCommand(windowsTaskName)]);
-  } catch (error) {
-    console.warn(`ReMCP task recovery settings were not applied: ${error.message}`);
-  }
-  try {
-    run('schtasks.exe', ['/Run', '/TN', windowsTaskName], { timeout:15000 });
-  } catch (error) {
-    // We just created this task. Remove it before registering another launcher, so
-    // a delayed logon cannot start competing agents under two supervisors.
-    const removed = spawnSync('schtasks.exe', ['/Delete', '/TN', windowsTaskName, '/F'],
-      { stdio:'ignore', timeout:10000 });
-    if (removed.status !== 0) throw error;
-    console.warn('Windows Task Scheduler could not start ReMCP; using per-user Startup.');
-    installWindowsUserStartup(cliPath, nodePath);
-  }
+  // The old Task Scheduler launcher (WScript -> CMD -> Node) can orphan its
+  // descendants after /End. Do not create or touch it on new installations.
+  // An existing task must be migrated with verified process ownership first.
+  requireWindowsScheduledTaskAbsent();
+  installWindowsUserStartup(cliPath, nodePath);
 }
 
 // `serviceInstalled` was added after background services already existed in the wild. Treat an
@@ -382,19 +342,13 @@ export function restartPersistentServiceIfInstalled(config, { deferLinux = false
     return macServiceLabel;
   }
   if (platform === 'win32') {
+    // /End can leave Node descendants running after a legacy CMD task ends.
+    // Do not report a successful credential restart when ownership is unknown.
+    requireWindowsScheduledTaskAbsent();
     if (windowsStartupScriptInstalled(windowsStartupScriptFile)) {
       const state = windowsSupervisorCommand('restart');
       if (state.restartScheduled !== true) throw new Error('Windows user supervisor did not schedule a restart');
       return 'ReMCP user startup supervisor (restart scheduled)';
-    }
-    const result = spawnSync('schtasks.exe', ['/Query', '/TN', windowsTaskName], { stdio: 'ignore' });
-    if (result.status === 0) {
-      if (deferWindows) return scheduleWindowsTaskRestart(canonicalServiceNodePath(config));
-      // /Run does not restart a task that is already running; stop the previous
-      // process first so a rotated credential is loaded by the replacement.
-      spawnSync('schtasks.exe', ['/End', '/TN', windowsTaskName], { stdio: 'ignore' });
-      run('schtasks.exe', ['/Run', '/TN', windowsTaskName]);
-      return windowsTaskName;
     }
   }
   return null;
@@ -412,6 +366,13 @@ export function uninstallPersistentService() {
     try { fs.unlinkSync(macServiceFile); } catch {}
     removeMacCliCommand();
   } else if (platform === 'win32') {
+    // Refuse before touching any artifact. Scheduler /End and /Delete cannot
+    // prove that its detached CMD/Node descendants exited.
+    requireWindowsScheduledTaskAbsent();
+    if (fs.existsSync(windowsStartupScriptFile) &&
+        !windowsStartupScriptInstalled(windowsStartupScriptFile)) {
+      throw new Error('The ReMCP Startup entry is not owned by ReMCP; refusing to remove it');
+    }
     if (windowsStartupScriptInstalled(windowsStartupScriptFile)) {
       // Removing Startup alone leaves the already spawned agent alive. Stop the
       // exact child owned by the authenticated singleton, then remove registration.
@@ -426,9 +387,7 @@ export function uninstallPersistentService() {
       }
       fs.unlinkSync(windowsStartupScriptFile);
     }
-    spawnSync('schtasks.exe', ['/End', '/TN', windowsTaskName], { stdio: 'ignore' });
-    spawnSync('schtasks.exe', ['/Delete', '/TN', windowsTaskName, '/F'], { stdio: 'ignore' });
-    try { if (windowsTaskScriptInstalled(windowsTaskScriptFile, windowsServiceLauncherFile)) fs.unlinkSync(windowsTaskScriptFile); } catch {}
-    try { fs.unlinkSync(windowsServiceLauncherFile); } catch {}
+    // Retain legacy launch files. Their presence alone is not proof of ownership,
+    // and an absent task provides no safe justification for deleting them.
   }
 }

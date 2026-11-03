@@ -1,10 +1,11 @@
 {
-  "version": "0.2.224",
-  "title": "Keep Windows ARM64 Startup process containment reliable when PowerShell initialization is slow.",
+  "version": "0.2.225",
+  "title": "Prevent unsafe Windows legacy Scheduled Task handovers before process ownership can be verified.",
   "changes": [
-    "Extend the bounded Windows PowerShell 5.1 Job Object helper startup handshake to 45 seconds, distinguishing initialization delays from child-creation delays.",
-    "Preserve atomic child assignment, fail-closed ownership and the requirement to confirm an empty process group before acknowledging shutdown.",
-    "Cover a deterministic helper start delayed beyond the previous 15-second limit, align native test budgets with constrained ARM64 machines and serialize lifecycle checks in Windows CI.",
-    "Retain the 0.2.223 Windows installer rollout-pause protection; migration of existing legacy Scheduled Tasks remains separate work."
+    "Use the authenticated per-user Startup/Job Object supervisor for all new Windows installations instead of creating a WScript → CMD Scheduled Task.",
+    "Query legacy Task Scheduler registration using locale-independent COM; refuse ambiguous, access-denied and existing-task results rather than starting a duplicate agent.",
+    "Refuse legacy uninstall and credential restart without a proven empty descendant group. Preserve existing tasks, launcher files and pairing instead of falsely claiming that descendants stopped.",
+    "Preflight legacy task ownership before npm updates so a failed handover cannot partially replace the installed release.",
+    "Add real isolated Windows Startup install/stop/uninstall QA and negative permission/ownership regressions. Automatic migration of an already-running legacy task remains intentionally blocked pending ownership-verified handover."
   ]
 }
