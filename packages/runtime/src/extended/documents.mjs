@@ -275,6 +275,11 @@ function pdfAnnotations(buffer) {
   return rows;
 }
 
+async function loadPdfLibrary() {
+  const { PDFDocument } = await import('pdf-lib');
+  return PDFDocument;
+}
+
 export async function pdfAction(args) {
   const action = requireEnum(args.action,'action',['merge','split','extract_pages','annotations','info']);
   if (action === 'annotations') {
@@ -289,7 +294,9 @@ export async function pdfAction(args) {
       finally { await removeTemp(snapshot.dir); }
     }
     const data = await readDocumentFile(source);
-    return jsonResult({ path:source, bytes:data.length, annotation_count:pdfAnnotations(data).length });
+    let pageCount = null;
+    try { const PDFDocument = await loadPdfLibrary(); pageCount = (await PDFDocument.load(data, { updateMetadata:false })).getPageCount(); } catch {}
+    return jsonResult({ path:source, bytes:data.length, ...(pageCount === null ? {} : { page_count:pageCount }), annotation_count:pdfAnnotations(data).length });
   }
   if (action === 'merge') {
     const requested = Array.isArray(args.paths) ? args.paths : [];
@@ -310,7 +317,15 @@ export async function pdfAction(args) {
       }
       if(commandExists('pdfunite')) await runFile('pdfunite',[...snapshots,staged],{label:'PDF merge',timeout:60_000});
       else if(commandExists('qpdf')) await runFile('qpdf',['--empty','--pages',...snapshots,'--',staged],{label:'PDF merge',timeout:60_000});
-      else unavailable('PDF merge','install poppler-utils (pdfunite) or qpdf');
+      else {
+        const PDFDocument=await loadPdfLibrary();
+        const merged=await PDFDocument.create();
+        for(const snapshot of snapshots){
+          const sourceDoc=await PDFDocument.load(await readFile(snapshot),{updateMetadata:false});
+          for(const page of await merged.copyPages(sourceDoc,sourceDoc.getPageIndices())) merged.addPage(page);
+        }
+        await writeFile(staged,await merged.save());
+      }
       await commitDocumentOutput(staged,output);
       return jsonResult({action,output,inputs:sources.length,bytes:(await stat(output)).size});
     } finally {
@@ -331,7 +346,20 @@ export async function pdfAction(args) {
     try {
       const pattern=path.join(work,patternName);
       if(commandExists('pdfseparate')) await runFile('pdfseparate',[snapshot.path,pattern],{label:'PDF split',timeout:60_000});
-      else unavailable('PDF split','install poppler-utils (pdfseparate)');
+      else {
+        const PDFDocument=await loadPdfLibrary();
+        const sourceDoc=await PDFDocument.load(await readFile(snapshot.path),{updateMetadata:false});
+        const total=sourceDoc.getPageCount();
+        for(let page=1;page<=total;page+=1){
+          const single=await PDFDocument.create();
+          const [copied]=await single.copyPages(sourceDoc,[page-1]);
+          single.addPage(copied);
+          const name=patternName.includes('%d')
+            ? patternName.replace(/%d/g,String(page))
+            : patternName.toLowerCase().endsWith('.pdf') ? `${patternName.slice(0,-4)}-${page}.pdf` : `${patternName}-${page}.pdf`;
+          await writeFile(path.join(work,name),await single.save());
+        }
+      }
       for(const name of await readdir(work)){
         if(!name.toLowerCase().endsWith('.pdf')) continue;
         const staged=path.join(stageDir,name);
@@ -378,7 +406,14 @@ export async function pdfAction(args) {
         }
       } finally { await removeTemp(work); }
     } else {
-      unavailable('PDF page extraction','install qpdf, pdftk, or poppler-utils (pdfseparate; pdfunite for multiple pages)');
+      const PDFDocument=await loadPdfLibrary();
+      const sourceDoc=await PDFDocument.load(await readFile(snapshot.path),{updateMetadata:false});
+      const total=sourceDoc.getPageCount();
+      const indices=selectedPages.map(page=>page-1);
+      if(indices.some(index=>index>=total)) throw new Error(`Page selection exceeds ${total} pages`);
+      const extracted=await PDFDocument.create();
+      for(const page of await extracted.copyPages(sourceDoc,indices)) extracted.addPage(page);
+      await writeFile(staged,await extracted.save());
     }
     await commitDocumentOutput(staged,output);
     return jsonResult({action,source,pages:normalizedPages,output,bytes:(await stat(output)).size});

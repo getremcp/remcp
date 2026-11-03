@@ -405,6 +405,11 @@ export async function screenshotRegion(args = {}) {
       }
       if (!row) throw new Error('No matching window found for screenshot_region');
       x = Number(row.x); y = Number(row.y); width = Number(row.width); height = Number(row.height);
+    } else if (process.platform === 'win32' && optionalString(args.monitor)?.toLowerCase() === 'primary'
+      && args.monitor_index == null && clamp(args.padding, 0, 0, 200) === 0) {
+      // Windows GDI capture resolves primary geometry in the same PowerShell
+      // invocation. Avoid a second, expensive process on loaded Windows VMs.
+      return adapter.screenshotRegion({ monitor:'primary' });
     } else if (args.monitor != null || args.monitor_index != null) {
       const displays = resultValue(await displayInventory());
       if (!Array.isArray(displays)) throw new Error('This platform does not expose normalized monitor geometry for screenshot_region');

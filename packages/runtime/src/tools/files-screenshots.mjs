@@ -1,6 +1,7 @@
 import path from 'node:path';
 import os from 'node:os';
-import { spawnSync } from 'node:child_process';
+import { execFile, spawnSync } from 'node:child_process';
+import { promisify } from 'node:util';
 import { createHash, randomUUID } from 'node:crypto';
 import { constants, createReadStream } from 'node:fs';
 import { access, chmod, chown, copyFile, cp, lstat, mkdir, mkdtemp, open, readFile, readdir, rename, rm, stat, unlink } from 'node:fs/promises';
@@ -21,6 +22,9 @@ import { diffFilesTool, editBlockTool, moveToTrashTool, readBinaryTool, replaceI
 import { applyPatchTool, copyFileTool, copyPathsTool, createDirectoryTool, deletePathTool, deletePathsTool, moveFileTool, movePathsTool, pathExists, readFilesTool, setPermissionsTool, writeFilesTool } from './files-bulk-operations.mjs';
 import { createArchiveTool, extractArchiveTool } from './files-archive-actions.mjs';
 
+const execFileAsync = promisify(execFile);
+let windowsScreenshotInFlight = false;
+
 export const SCREENSHOT_COMMANDS = [
   { command: 'grim', args: file => [file] },
   { command: 'gnome-screenshot', args: file => ['-f', file] },
@@ -38,6 +42,9 @@ export function screenshotAdvice(attempts, { platform = process.platform, env = 
     return `macOS refused the screen capture (${attempts.join('; ') || 'no capture command ran'}). Grant Screen Recording to the binary that runs the tools — System Settings → Privacy & Security → Screen Recording → + → ${execPath} — then restart the agent with \`remcp start\`. macOS requires it for screencapture even when the file itself is writable.`;
   }
   if (platform === 'win32') {
+    if (attempts.some(attempt => attempt.includes('A Windows screen capture is already in progress'))) {
+      return 'A Windows screen capture is already in progress. Retry after it finishes.';
+    }
     return `Windows refused the screen capture (${attempts.join('; ') || 'no capture command ran'}). Screen capture needs an interactive desktop session: a machine where nobody is signed in, or a locked session, cannot be captured. Sign in on that computer and try again.`;
   }
   const wayland = /wayland/i.test(String(env.XDG_SESSION_TYPE || '')) || Boolean(env.WAYLAND_DISPLAY);
@@ -58,13 +65,36 @@ export function screenshotAdvice(attempts, { platform = process.platform, env = 
 
 export function windowsScreenshotScript(file) {
   return [
+    "$ErrorActionPreference = 'Stop'",
     'Add-Type -AssemblyName System.Windows.Forms,System.Drawing',
     '$b = [System.Windows.Forms.SystemInformation]::VirtualScreen',
-    '$bmp = New-Object System.Drawing.Bitmap $b.Width, $b.Height',
-    '$g = [System.Drawing.Graphics]::FromImage($bmp)',
-    '$g.CopyFromScreen($b.Left, $b.Top, 0, 0, $bmp.Size)',
+    "if ($b.Width -le 0 -or $b.Height -le 0) { throw 'No valid desktop geometry for screenshot' }",
+    '$bmp = $null',
+    '$g = $null',
+    'try {',
+    '  $bmp = New-Object System.Drawing.Bitmap $b.Width, $b.Height',
+    '  $g = [System.Drawing.Graphics]::FromImage($bmp)',
+    '  $g.CopyFromScreen($b.Left, $b.Top, 0, 0, $bmp.Size)',
     `$bmp.Save('${file.replace(/'/g, "''")}', [System.Drawing.Imaging.ImageFormat]::Png)`,
-  ].join('; ');
+    '} finally {',
+    '  if ($null -ne $g) { $g.Dispose() }',
+    '  if ($null -ne $bmp) { $bmp.Dispose() }',
+    '}',
+  ].join('\n');
+}
+
+// Never block the runtime event loop while Windows initializes GDI/PowerShell.
+// A slow or inaccessible interactive desktop must not starve ping or relay RPC.
+export async function runWindowsScreenshot(file, runProcess = execFileAsync) {
+  if (windowsScreenshotInFlight) throw new Error('A Windows screen capture is already in progress; retry after it finishes');
+  windowsScreenshotInFlight = true;
+  try {
+    return await runProcess('powershell.exe', ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command', windowsScreenshotScript(file)], {
+      encoding:'utf8', timeout:30_000, windowsHide:true, maxBuffer:64*1024,
+    });
+  } finally {
+    windowsScreenshotInFlight = false;
+  }
 }
 
 export async function takeScreenshotTool(args) {
@@ -86,8 +116,11 @@ export async function takeScreenshotTool(args) {
   let preserveCapture = false;
   try {
     if (process.platform === 'win32') {
-      const result = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', windowsScreenshotScript(file)], { encoding: 'utf8', timeout: 30000 });
-      attempts.push(`powershell: ${(result.stderr || '').trim() || ('exit ' + result.status)}`);
+      try {
+        await runWindowsScreenshot(file);
+      } catch (error) {
+        attempts.push(`powershell: ${String(error?.stderr || error?.message || error).trim().slice(0, 512)}`);
+      }
     } else {
       if (process.platform === 'linux' && isWaylandSession()) {
         try {

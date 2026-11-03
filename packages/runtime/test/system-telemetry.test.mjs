@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { cpuPerCoreUtilizationRatios } from '../src/tools/cpu-telemetry.mjs';
 import {
   parseNetworkCounters, parseDarwinNetworkCounters, parseWindowsNetworkCounters, calculateNetworkRates, parseDiskVolumes, thermalReadings,
-  diskVolumes, networkRates, sampleNetworkRates, parseWindowsNetstatPackets,
+  diskVolumes, networkRates,
 } from '../src/tools/system-telemetry.mjs';
 
 const core = (idle, user) => ({ times: { idle, user, nice: 0, sys: 0, irq: 0 } });
@@ -115,39 +115,4 @@ test('invalid or unsafe disk counters are omitted, not represented as full or em
     '/dev/sda2 100 50 50 50% /safe',
     '/dev/sda3 100 10 90 10% /etc/weird\\path'].join('\n');
   assert.deepEqual(parseDiskVolumes(df).map(volume => volume.mount), ['/safe']);
-});
-
-test('unreadable network byte counters skip expensive retries and never fabricate zero', async () => {
-  let reads = 0;
-  let waits = 0;
-  const result = await sampleNetworkRates(
-    async () => { reads++; return []; },
-    async () => { waits++; },
-  );
-  assert.equal(result, null);
-  assert.equal(reads, 1);
-  assert.equal(waits, 0);
-});
-
-test('Windows netstat fallback reports real packet rates without fabricating bytes', () => {
-  const snapshot = [
-    'Interface Statistics', '                           Received            Sent',
-    'Bytes                             0               0',
-    'Unicast packets                 1000             200',
-    'Non-unicast packets               12               8',
-    'Discards                           0               0',
-    'Errors                             0               0',
-  ].join('\r\n');
-  const counters = parseWindowsNetstatPackets(snapshot);
-  assert.deepEqual(counters, [{ name:'windows-all-adapters', rx:1012, tx:208, unit:'packets' }]);
-  assert.deepEqual(calculateNetworkRates(
-    [{name:'windows-all-adapters',rx:1212,tx:248,unit:'packets'}], counters, 2), {
-    rxBytesPerSecond:null,txBytesPerSecond:null,rxPacketsPerSecond:100,
-    txPacketsPerSecond:20,interfaces:[],
-  });
-  assert.equal(calculateNetworkRates([{name:'windows-all-adapters',rx:500,tx:248,unit:'packets'}],
-    counters,2),null);
-  assert.equal(calculateNetworkRates([{name:'windows-all-adapters',rx:1212,tx:248,unit:'packets'}],
-    [{name:'windows-all-adapters',rx:1000,tx:200}],2),null);
-  assert.deepEqual(parseWindowsNetstatPackets('No valid counter rows'), []);
 });

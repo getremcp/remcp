@@ -1,11 +1,10 @@
 {
-  "version": "0.2.219",
-  "title": "Measure Windows CPU without self-generated probe load and report actual packet traffic when byte counters are unavailable.",
+  "version": "0.2.220",
+  "title": "Report Windows disks, make PDF page operations work without external tools, and stabilize Windows captures.",
   "changes": [
-    "Sample CPU utilization before starting resource-intensive Windows PowerShell sensors to avoid self-inflicted 100% spikes.",
-    "Retain concurrent CPU and sensor sampling on Linux and macOS.",
-    "Fall back to measured Windows aggregate packet rates when NIC drivers expose no usable byte counters; never infer byte throughput or substitute zero for missing measurements.",
-    "Label packets/s distinctly from B/s in device summaries, network details, charts and recorded live metrics, with bounded normalization and privacy-safe tests.",
-    "Avoid repeated expensive PowerShell byte-counter discovery on NICs that cannot provide those counters."
+    "Report Windows disk and volumes in get_system_info using native filesystem statistics instead of returning null/empty.",
+    "Merge, split and extract PDF pages with the built-in PDF engine when qpdf, pdftk or poppler are not installed; report the page count on info.",
+    "Serialize Windows full-screen captures and clean up GDI failures so screenshot calls do not block the relay.",
+    "Allow five seconds for the Windows integrity probe on heavily loaded hosts; preserve the 0.2.218 clipboard and replacement fixes."
   ]
 }

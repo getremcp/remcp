@@ -15,7 +15,7 @@ export function privilegeBoundary({
     if (output === undefined) {
       try {
         const result = spawnSync('whoami.exe', ['/groups'], {
-          encoding: 'utf8', windowsHide: true, timeout: 3000, maxBuffer: 64 * 1024,
+          encoding: 'utf8', windowsHide: true, timeout: 5000, maxBuffer: 64 * 1024,
         });
         output = result.status === 0 && !result.error ? result.stdout : '';
       } catch { output = ''; }

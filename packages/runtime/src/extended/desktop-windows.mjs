@@ -409,16 +409,30 @@ public static class RMDisplay{
   return jsonResult(Array.isArray(parsed)?parsed:[parsed]);
 }
 
+export function windowsRegionCaptureScript({primary=false,x=0,y=0,width=0,height=0} = {}, target='') {
+  const safe=escapePowerShellSingle(target);
+  const bounds=primary
+    ? 'Add-Type -AssemblyName System.Windows.Forms,System.Drawing;$r=[System.Windows.Forms.Screen]::PrimaryScreen.Bounds;'
+    : `Add-Type -AssemblyName System.Drawing;$r=[pscustomobject]@{X=${x};Y=${y};Width=${width};Height=${height}};`;
+  return `$ErrorActionPreference='Stop';${bounds}if($r.Width -le 0 -or $r.Height -le 0 -or $r.Width -gt 8192 -or $r.Height -gt 8192 -or ($r.Width*$r.Height) -gt 16777216){throw 'Invalid or oversized display bounds'};$b=New-Object System.Drawing.Bitmap $r.Width,$r.Height;$g=$null;try{$g=[System.Drawing.Graphics]::FromImage($b);$g.CopyFromScreen($r.X,$r.Y,0,0,$b.Size);$b.Save('${safe}',[System.Drawing.Imaging.ImageFormat]::Png)}finally{if($g){$g.Dispose()};$b.Dispose()}`;
+}
+
 export async function screenshotRegion(args = {}) {
+  const primary=args.monitor==='primary' && args.x==null && args.y==null
+    && args.width==null && args.height==null;
   const x=Math.trunc(Number(args.x)),y=Math.trunc(Number(args.y)),width=Math.trunc(Number(args.width)),height=Math.trunc(Number(args.height));
-  if(![x,y,width,height].every(Number.isFinite)||width<=0||height<=0)throw new Error('x, y, width and height are required; width/height must be positive');
-  if(width>8192||height>8192||width*height>16_777_216)throw new Error('screenshot region is too large; width/height must be <= 8192 and area <= 16 megapixels');
+  if(!primary && (![x,y,width,height].every(Number.isFinite)||width<=0||height<=0))
+    throw new Error('x, y, width and height are required; width/height must be positive');
+  if(!primary && (width>8192||height>8192||width*height>16_777_216))
+    throw new Error('screenshot region is too large; width/height must be <= 8192 and area <= 16 megapixels');
   const dir=await tempDir('remcp-region-'),target=path.join(dir,'region.png');
   try{
-    const safe=escapePowerShellSingle(target);
-    await runPowerShell(`Add-Type -AssemblyName System.Drawing;$b=New-Object System.Drawing.Bitmap(${width},${height});$g=[System.Drawing.Graphics]::FromImage($b);$g.CopyFromScreen(${x},${y},0,0,$b.Size);$b.Save('${safe}',[System.Drawing.Imaging.ImageFormat]::Png);$g.Dispose();$b.Dispose()`,{label:'screenshot region'});
+    const script=windowsRegionCaptureScript({primary,x,y,width,height},target);
+    await runPowerShell(script,{label:'screenshot region',timeout:30_000});
     const {data}=await readPrivateTempFile(target,4*1024*1024);
-    return multi([{type:'text',text:`Captured ${width}x${height} at ${x},${y}.`},image(data.toString('base64'),'image/png')]);
+    const description=primary ? `Captured primary display ${data.readUInt32BE(16)}x${data.readUInt32BE(20)}.`
+      : `Captured ${width}x${height} at ${x},${y}.`;
+    return multi([{type:'text',text:description},image(data.toString('base64'),'image/png')]);
   }finally{await removeTemp(dir);}
 }
 

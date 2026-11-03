@@ -1,10 +1,12 @@
 import os from 'node:os';
+import path from 'node:path';
 import process from 'node:process';
 import { execFile } from 'node:child_process';
+import { statfs } from 'node:fs/promises';
 import { promisify } from 'node:util';
 import { runtimeConfig } from '../config.mjs';
 import { clampInteger, fail, requireInteger, text } from '../util.mjs';
-import { cpuUtilizationRatio, cpuFrequencyMHz, cpuPerCoreUtilizationRatios, scheduleCpuSampleAndProbes } from './cpu-telemetry.mjs';
+import { cpuUtilizationRatio, cpuFrequencyMHz, cpuPerCoreUtilizationRatios } from './cpu-telemetry.mjs';
 import { diskVolumes, networkRates, thermalReadings } from './system-telemetry.mjs';
 import { readDarwinMemoryPressure } from './darwin-memory-pressure.mjs';
 
@@ -18,7 +20,23 @@ export function redactSecrets(command) {
 }
 
 async function diskUsage() {
-  if (process.platform === 'win32') return null;
+  if (process.platform === 'win32') {
+    const mount = path.parse(process.cwd()).root || 'C:\\';
+    let timer;
+    try {
+      const info = await Promise.race([
+        statfs(mount),
+        new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('disk probe timeout')), 500); }),
+      ]);
+      const totalBytes = Number(info.blocks) * Number(info.bsize);
+      const freeBytes = Number(info.bfree) * Number(info.bsize);
+      const availableBytes = Number(info.bavail) * Number(info.bsize);
+      if (!Number.isFinite(totalBytes) || totalBytes <= 0) return null;
+      const usedBytes = Math.max(0, totalBytes - freeBytes);
+      return { mount, totalBytes, usedBytes, availableBytes, usedRatio: Number((usedBytes / totalBytes).toFixed(3)) };
+    } catch { return null; }
+    finally { clearTimeout(timer); }
+  }
   try {
     const { stdout } = await run('df', ['-kP', process.cwd()], { maxBuffer: 1024 * 1024 });
     const line = stdout.trim().split('\n')[1];
@@ -45,21 +63,14 @@ export async function getSystemInfoTool() {
   const totalMem = os.totalmem();
   const freeMem = os.freemem();
   const load = os.loadavg();
-  // On Windows, the PowerShell sensor probes can saturate short CPU samples.
-  // Measure CPU before launching them; keep other platforms' parallel probes.
-  // Load average is queue length, never a percentage.
-  const { cpus: sampledCpus, probes } = await scheduleCpuSampleAndProbes(
-    process.platform,
-    () => new Promise(resolve => setTimeout(() => resolve(os.cpus()), 140)),
-    () => ({
-      diskPromise: diskUsage(),
-      volumesPromise: diskVolumes(),
-      thermalPromise: thermalReadings(),
-      networkPromise: networkRates(),
-      memoryPressurePromise: process.platform === 'darwin'
-        ? readDarwinMemoryPressure() : Promise.resolve(null),
-    }),
-  );
+  // Sample for 140 ms while retrieving disk facts, so CPU % is actual host activity.
+  // Load average is a queue-length metric and must never be displayed as a percentage.
+  const diskPromise = diskUsage();
+  const volumesPromise = diskVolumes();
+  const thermalPromise = thermalReadings();
+  const networkPromise = networkRates();
+  const memoryPressurePromise = process.platform === 'darwin' ? readDarwinMemoryPressure() : Promise.resolve(null);
+  const sampledCpus = await new Promise(resolve => setTimeout(() => resolve(os.cpus()), 140));
   const utilizationRatio = cpuUtilizationRatio(cpus, sampledCpus);
   const frequencyMHz = cpuFrequencyMHz(sampledCpus);
   return text(JSON.stringify({
@@ -84,12 +95,12 @@ export async function getSystemInfoTool() {
       freeBytes: freeMem,
       usedRatio: totalMem ? Number(((totalMem - freeMem) / totalMem).toFixed(3)) : 0,
       usedMethod: 'os.freemem-physical-occupancy',
-      ...(await probes.memoryPressurePromise),
+      ...(await memoryPressurePromise),
     },
-    disk: await probes.diskPromise,
-    volumes: await probes.volumesPromise,
-    temperatures: await probes.thermalPromise,
-    network: await probes.networkPromise,
+    disk: await diskPromise,
+    volumes: await volumesPromise,
+    temperatures: await thermalPromise,
+    network: await networkPromise,
     home: os.homedir(),
     tempDir: os.tmpdir(),
     runtimeName: runtimeConfig.name,

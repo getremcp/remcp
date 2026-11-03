@@ -19,6 +19,13 @@ test('list_processes reports running processes', async () => {
   assert.match(output, new RegExp(`\\b${process.pid}\\b`));
 });
 
+test('get_system_info reports Windows disk volumes', { skip: process.platform !== 'win32' }, async () => {
+  const info = JSON.parse(body(await invokeTool('get_system_info', {})));
+  assert.ok(info.disk && info.disk.totalBytes > 0);
+  assert.ok(Array.isArray(info.volumes) && info.volumes.length >= 1);
+  assert.ok(info.volumes.every(volume => volume.mount && volume.totalBytes > 0 && volume.usedRatio >= 0 && volume.usedRatio <= 1));
+});
+
 test('list_processes masks secret-looking command arguments', { skip: process.platform === 'win32' }, async () => {
   const child = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 4000)', '--token=supersecret-value'], { stdio: 'ignore' });
   try {
