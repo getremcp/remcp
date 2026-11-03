@@ -234,12 +234,43 @@ export async function replaceInFilesTool(args, extra = {}) {
       fail(`pattern is not a valid regular expression (${error instanceof Error ? error.message : String(error)})`);
     }
   }
-  const info = await getPathInfo(root).catch(() => fail(`Path not found: ${displayPath(root)}`));
-  const walk = info.isFile() ? { files: [root], denied: [] } : await collectTree(root, { maxFiles, skip: ['.git', 'node_modules', '.remcp-trash*'], signal: extra.signal });
-  const files = await confineAll(walk.files);
   const glob = filePattern ? globToRegExp(filePattern) : null;
   const changed = [];
   let scanned = 0;
+  const match = original => {
+    if (isRegex) matcher.lastIndex = 0;
+    const count = isRegex ? (original.match(matcher) || []).length : original.split(pattern).length - 1;
+    if (!count) return null;
+    if (isRegex) matcher.lastIndex = 0;
+    const updated = isRegex ? original.replace(matcher, replacement) : original.split(pattern).join(replacement);
+    return updated === original ? null : { count, updated };
+  };
+  // Select actual candidates before writing, so maxFiles limits changed files
+  // rather than unrelated directory entries, and cancellation during discovery
+  // still cannot leave a partially edited tree.
+  const acceptFile = async (file, info) => {
+    throwIfCancelled(extra.signal);
+    if (info.size > MAX_INLINE_FILE_BYTES || (glob && !glob.test(path.basename(file)))) return false;
+    let opened;
+    try {
+      const safe = await resolveSafePath(file);
+      opened = await openRegularFile(safe, dryRun ? READ_NOFOLLOW : READWRITE_NOFOLLOW);
+      if (opened.info.size > MAX_INLINE_FILE_BYTES) return false;
+      const buffer = await opened.handle.readFile();
+      const decoded = decodeText(buffer);
+      if (decoded.encoding === 'utf8' && looksBinary(buffer)) return false;
+      scanned += 1;
+      return Boolean(match(decoded.text));
+    } catch {
+      throwIfCancelled(extra.signal);
+      return false;
+    } finally {
+      if (opened) await opened.close().catch(() => {});
+    }
+  };
+  const info = await getPathInfo(root).catch(() => fail(`Path not found: ${displayPath(root)}`));
+  const walk = info.isFile() ? { files: [root], denied: [] } : await collectTree(root, { maxFiles, skip: ['.git', 'node_modules', '.remcp-trash*'], signal: extra.signal, acceptFile });
+  const files = await confineAll(walk.files);
   for (const file of files) {
     throwIfCancelled(extra.signal);
     if (changed.length >= maxFiles) break;
@@ -253,13 +284,11 @@ export async function replaceInFilesTool(args, extra = {}) {
       const buffer = await handle.readFile();
       const decoded = decodeText(buffer);
       if (decoded.encoding === 'utf8' && looksBinary(buffer)) continue;
-      scanned += 1;
+      if (info.isFile()) scanned += 1;
       const original = decoded.text;
-      const count = isRegex ? (original.match(matcher) || []).length : original.split(pattern).length - 1;
-      if (!count) continue;
-      if (isRegex) matcher.lastIndex = 0;
-      const updated = isRegex ? original.replace(matcher, replacement) : original.split(pattern).join(replacement);
-      if (updated === original) continue;
+      const result = match(original);
+      if (!result) continue;
+      const { count, updated } = result;
       assertWritableSize(updated);
       if (!dryRun) await overwriteOpenFile(handle, updated);
       const stats = diffStats(original, updated);

@@ -17,7 +17,7 @@ import { clampInteger, decodeText, displayPath, fail, fitsOutput, globToRegExp, 
 
 import { IMAGE_TYPES, MAX_IMAGE_BYTES, MAX_INLINE_FILE_BYTES, READ_NOFOLLOW_NONBLOCK, detectEol, openDirectoryPath, openEntryAtPath, openRegularFile, readRegularBuffer } from './files-secure-paths.mjs';
 
-export async function collectTree(root, { maxFiles = 500, skip = [], signal = null } = {}) {
+export async function collectTree(root, { maxFiles = 500, skip = [], signal = null, acceptFile = null } = {}) {
   const found = [];
   const denied = [];
   const skipName = name => skip.some(entry => (entry.endsWith('*') ? name.startsWith(entry.slice(0, -1)) : name === entry));
@@ -52,7 +52,7 @@ export async function collectTree(root, { maxFiles = 500, skip = [], signal = nu
         try {
           opened = await openEntryAtPath(childAnchor, READ_NOFOLLOW_NONBLOCK);
           const info = await opened.handle.stat();
-          if (info.isFile()) found.push(childLogical);
+          if (info.isFile() && (!acceptFile || await acceptFile(childLogical, info))) found.push(childLogical);
         } catch {
           denied.push(childLogical);
         } finally {

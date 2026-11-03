@@ -302,7 +302,7 @@ export function buildWindowsClipboardReadPowerShell() {
 export function decodeWindowsClipboardRead(stdout = '') {
   const encoded = String(stdout).trim();
   if (!encoded) return '';
-  return Buffer.from(encoded, 'base64').toString('utf8').replace(/\r?\n$/, '');
+  return Buffer.from(encoded, 'base64').toString('utf8');
 }
 
 export async function clipboard(args = {}) {

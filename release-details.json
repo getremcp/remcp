@@ -1,10 +1,8 @@
 {
-  "version": "0.2.217",
-  "title": "Serialize concurrent Windows updates and preserve every published v0.2.216 safety fix.",
+  "version": "0.2.218",
+  "title": "Preserve Windows clipboard text and find matching files under replacement limits.",
   "changes": [
-    "Prevent simultaneous managed Windows npm install/update processes from replacing the same executable and package tree using a safe per-prefix lock, preserving existing owners and failing closed on incomplete or unknown locks.",
-    "Ship the exact Windows cross-process update-lock regression in the public client release source and native Windows CI.",
-    "Preserve the v0.2.216 independent Windows Scheduled Task update handoff, bounded desktop snapshot probes, correct process listing headers and published macOS trusted-parent-symlink behavior.",
-    "Retain the v0.2.215 deferred telemetry restart command behavior and the established first-party pinned client/runtime release pair."
+    "Preserve trailing line endings when reading UTF-8 clipboard text on Windows.",
+    "Count files that actually match replacement criteria toward replace_in_files limits, while preserving cancellation and path confinement."
   ]
 }

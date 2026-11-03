@@ -28,9 +28,11 @@ test('reading the Windows clipboard returns UTF-8 base64 instead of OEM stdout',
   assert.match(script, /ToBase64String\(\[Text\.Encoding\]::UTF8\.GetBytes/);
 });
 
-test('decoding the clipboard read preserves Unicode and drops one trailing newline', () => {
-  const sample = 'ReMCP Привет ✓ 日本語';
-  const encoded = Buffer.from(sample + '\r\n', 'utf8').toString('base64');
-  assert.equal(decodeWindowsClipboardRead(encoded + '\r\n'), sample);
+test('decoding the clipboard read preserves payload newlines and ignores transport whitespace', () => {
+  for (const suffix of ['', '\n', '\r\n', '\n\n', '\r\n\r\n']) {
+    const sample = 'ReMCP Привет ✓ 日本語' + suffix;
+    const encoded = Buffer.from(sample, 'utf8').toString('base64');
+    assert.equal(decodeWindowsClipboardRead(encoded + '\r\n'), sample);
+  }
   assert.equal(decodeWindowsClipboardRead(''), '');
 });
