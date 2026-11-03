@@ -12,7 +12,7 @@ import { loadConfig, saveConfig } from './config.mjs';
 import { assertSecureServerUrl } from './connect.mjs';
 import { installedVersion } from './doctor.mjs';
 import { linuxServiceFile, macServiceFile, officialOrigin } from './env.mjs';
-import { currentInstallationInfo, ensureMacCliCommand, ensureServiceIfRecorded, npmGlobalUpdate, persistentServiceExpected, rememberCurrentInstallation, restartPersistentServiceIfInstalled, serviceInstallationInfo, syncKnownInstallations } from './service.mjs';
+import { currentInstallationInfo, ensureMacCliCommand, ensureServiceIfRecorded, npmGlobalUpdate, persistentServiceExpected, rememberCurrentInstallation, restartPersistentServiceIfInstalled, servicePlatform, serviceInstallationInfo, syncKnownInstallations } from './service.mjs';
 
 const UPDATE_DISCOVERY_TIMEOUT_MS = 5000;
 
@@ -201,6 +201,14 @@ export function verifyManagedServiceReleasePair(serviceInstall, clientSpec, runt
   }
 }
 
+// A pinned automatic update can be a no-op on disk while an older Windows agent
+// still owns the Scheduled Task. Keep manual unpinned no-ops side-effect free.
+export function shouldApplyAlreadyInstalledWindowsRelease({ platform, serviceExpected, flags }) {
+  return platform === 'win32' && serviceExpected === true &&
+    typeof flags?.client === 'string' && Boolean(flags.client.trim()) &&
+    typeof flags?.runtime === 'string' && Boolean(flags.runtime.trim());
+}
+
 export async function updateCommand(flags) {
   let cfg = rememberCurrentInstallation(loadConfig());
   const targets = await resolveUpdateTargets({ cfg, flags });
@@ -246,6 +254,13 @@ export async function updateCommand(flags) {
     }
     const currentRuntimeVersion = String(currentInstall.runtimeVersion || specVersion(cfg.runtime.packageName, targets.runtimeSpec) || '?');
     console.log(`ReMCP is already up to date (client ${currentInstall.cliVersion || VERSION}, runtime ${currentRuntimeVersion}).`);
+    if (shouldApplyAlreadyInstalledWindowsRelease({ platform: servicePlatform(), serviceExpected, flags })) {
+      // This CLI may be newer than its still-running parent agent. The canonical
+      // service files are correct, but the existing Windows task must hand over.
+      const restarted = restartPersistentServiceIfInstalled(cfg, { deferWindows: true });
+      if (!restarted) throw new Error('ReMCP Windows task could not schedule a restart for the installed release');
+      console.log(`ReMCP installed release will be applied: ${restarted}.`);
+    }
     return;
   }
 
@@ -284,7 +299,12 @@ export async function updateCommand(flags) {
   // A changed macOS plist is reloaded by an independent launchd helper. Do not schedule a second
   // helper against the same job: two one-second handoffs can race bootout/bootstrap with kickstart
   // and leave the device offline even though npm installed the new release successfully.
-  const restarted = restartAlreadyScheduled || restartPersistentServiceIfInstalled(cfg);
+  // On Windows the updater may be a descendant of the task being restarted.
+  // An inline /End kills the updater before its /Run can execute, leaving an
+  // older process connected after the new release was installed on disk.
+  // Use the already-tested independent handoff helper for every update.
+  const restarted = restartAlreadyScheduled ||
+    restartPersistentServiceIfInstalled(cfg, { deferWindows: true });
   if (restarted) {
     console.log(`ReMCP updated and ${restarted} restarted (client ${before.cli} → ${after.cli ?? '?'}, runtime ${before.runtime ?? '?'} → ${after.runtime ?? '?'}).`);
     return;

@@ -103,7 +103,15 @@ export async function resolveSafePath(value, field = 'path') {
   const raw = expandHome(requireString(value, field));
   if (raw.includes('\0')) fail(`${field} contains an invalid character`);
   const absolute = path.resolve(raw);
-  if (!runtimeConfig.allowedRoots.length) return absolute;
+  // Unrestricted mode has no confinement boundary to escape, so resolving a
+  // real parent keeps trusted system links (macOS /tmp -> /private/tmp,
+  // /var -> /private/var) usable by delete, move and copy. The leaf itself is
+  // kept lexical so tools can still reject a symbolic-link leaf explicitly.
+  if (!runtimeConfig.allowedRoots.length) {
+    const parent = path.dirname(absolute);
+    if (parent === absolute) return absolute;
+    return path.join(await canonicalizePath(parent), path.basename(absolute));
+  }
 
   const leaf = await lstat(absolute).catch(error => {
     if (error?.code === 'ENOENT' || error?.code === 'ENOTDIR') return null;

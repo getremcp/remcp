@@ -124,3 +124,8 @@ test('a device whose runtime never started can repair itself', () => {
   // A running runtime is never reinstalled just because the agent is unsure.
   assert.equal(decide({ advertised, cliVersion: '0.2.9', runtimeVersion: 'unknown', runtimePackageName: '@remcp/runtime', runtimeDown: false }).needed, false);
 });
+
+test('automatic release checks continue at a bounded 30-minute interval', async () => {
+  const { UPDATE_CHECK_INTERVAL_MS } = await import('../src/agent-update-monitor.mjs');
+  assert.equal(UPDATE_CHECK_INTERVAL_MS, 30 * 60 * 1000);
+});

@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 
-import { resolveUpdateTargets, updateAlreadyCurrent } from '../src/cli/update.mjs';
+import { resolveUpdateTargets, updateAlreadyCurrent, shouldApplyAlreadyInstalledWindowsRelease } from '../src/cli/update.mjs';
 import { VERSION } from '../src/version.mjs';
 
 const currentClient = `@remcp/remcp@${VERSION}`;
@@ -227,4 +228,21 @@ test('explicit update targets remain exact, trusted package versions', async () 
   assert.equal(exact.runtimeSpec, currentRuntime);
   assert.equal(exact.installable, true);
   assert.equal(exact.source, 'explicit-pair');
+});
+
+test('CLI update never terminates its own Windows task inline', () => {
+  const source = readFileSync(new URL('../src/cli/update.mjs', import.meta.url), 'utf8');
+  assert.match(source, /restartPersistentServiceIfInstalled\(cfg, \{ deferWindows: true \}\)/);
+});
+
+test('already-installed pinned Windows release restarts the stale active task, not npm', () => {
+  const verify = (platform, flags, serviceExpected) => shouldApplyAlreadyInstalledWindowsRelease({platform, flags, serviceExpected});
+  const pinned = { client:'@remcp/remcp@0.2.214', runtime:'@remcp/runtime@0.2.214' };
+  assert.equal(verify('win32', pinned, true), true);
+  assert.equal(verify('linux', pinned, true), false);
+  assert.equal(verify('darwin', pinned, true), false);
+  assert.equal(verify('win32', {}, true), false);
+  assert.equal(verify('win32', pinned, false), false);
+  assert.equal(verify('win32', {client:pinned.client}, true), false);
+  assert.equal(verify('win32', {runtime:pinned.runtime}, true), false);
 });

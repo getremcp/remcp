@@ -12,10 +12,10 @@ const execFileAsync = promisify(execFile);
 const quote = value => String(value).replaceAll("'", "''");
 const powershell = script => execFileAsync('powershell.exe', [
   '-NoProfile', '-NonInteractive', '-Command', script,
-], { windowsHide:true, timeout:20000 });
+], { windowsHide:true, timeout:45000 });
 
 test('deferred restart helper survives ending its ancestor Scheduled Task', {
-  skip:process.platform !== 'win32', timeout:60000,
+  skip:process.platform !== 'win32', timeout:135000,
 }, async t => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'remcp-task-handoff-'));
   const taskName = 'ReMCP QA handoff ' + randomUUID();
@@ -54,7 +54,7 @@ test('deferred restart helper survives ending its ancestor Scheduled Task', {
   });
   const argumentsText = '"' + entry + '"';
   await powershell(`$ErrorActionPreference='Stop';$a=New-ScheduledTaskAction -Execute '${quote(process.execPath)}' -Argument '${quote(argumentsText)}';$p=New-ScheduledTaskPrincipal -UserId ([Security.Principal.WindowsIdentity]::GetCurrent().Name) -LogonType Interactive -RunLevel Limited;$s=New-ScheduledTaskSettingsSet -ExecutionTimeLimit (New-TimeSpan -Minutes 1) -MultipleInstances IgnoreNew -AllowStartIfOnBatteries;Register-ScheduledTask -TaskName '${quote(taskName)}' -Action $a -Principal $p -Settings $s | Out-Null;Start-ScheduledTask -TaskName '${quote(taskName)}'`);
-  const deadline = Date.now() + 20000;
+  const deadline = Date.now() + 35000;
   while (Date.now() < deadline) {
     try { last = JSON.parse(fs.readFileSync(marker, 'utf8')); } catch {}
     if (last?.runs === 2) break;

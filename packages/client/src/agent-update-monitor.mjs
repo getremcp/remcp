@@ -5,7 +5,9 @@ import { VERSION } from './version.mjs';
 import { fetchUpdateManifest } from './fetch-update-manifest.mjs';
 import { globalCliEntry, globalInstalledVersion, isNewer, restartToApplyUpdate, updateDecision, updateInvocationArgs } from './agent-update.mjs';
 
-export const UPDATE_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
+// Poll releases while connected too: relying on reconnect alone can leave a
+// healthy long-lived agent stale for six hours after deployment.
+export const UPDATE_CHECK_INTERVAL_MS = 30 * 60 * 1000;
 const UPDATE_CHECK_TIMEOUT_MS = 12000;
 // A flapping relay must not trigger update discovery on every successful reconnect.
 const UPDATE_CHECK_RECONNECT_GAP_MS = 30000;

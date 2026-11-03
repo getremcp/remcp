@@ -15,7 +15,7 @@ test('list_processes reports running processes', async () => {
   const result = await invokeTool('list_processes', { limit: 1000 });
   assert.equal(isError(result), false);
   const output = body(result);
-  assert.match(output, /pid,ppid,cpu%,mem%,elapsed,command/);
+  assert.match(output, process.platform === 'win32' ? /name,pid,session,mem/ : /pid,ppid,cpu%,mem%,elapsed,command/);
   assert.match(output, new RegExp(`\\b${process.pid}\\b`));
 });
 

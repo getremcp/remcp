@@ -111,7 +111,7 @@ export async function listProcessesTool(args) {
     }
     parsed.sort((a, b) => b.cpu - a.cpu || b.mem - a.mem);
   }
-  rows.push('pid,ppid,cpu%,mem%,elapsed,command');
+  rows.push(process.platform === 'win32' ? 'name,pid,session,mem' : 'pid,ppid,cpu%,mem%,elapsed,command');
   rows.push(...parsed.slice(0, limit).map(entry => entry.row));
   if (parsed.length > limit) rows.push(`… ${parsed.length - limit} more processes hidden; call list_processes with a higher limit to see them`);
   return text(rows.join('\n'));

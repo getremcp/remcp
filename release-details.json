@@ -1,12 +1,10 @@
 {
-  "version": "0.2.215",
-  "title": "Improve ReMCP device monitoring, verified telemetry controls and private diagnostic captures.",
+  "version": "0.2.216",
+  "title": "Bound Windows snapshot concurrency, label process columns correctly and resolve trusted macOS symlinks.",
   "changes": [
-    "Display online device CPU, RAM and disk measurements progressively from authorized saved and live samples, without waiting for a slow device to complete other batches.",
-    "Keep loading skeletons for unmeasured indicators and distinguish telemetry disabled, unavailable and pending states; retry rate-limited scans automatically.",
-    "Verify owner-requested telemetry changes across both agent and runtime on reconnect, while preserving explicitly disabled preferences.",
-    "Associate newly saved screenshots with nearby real diagnostic measurements and blur screenshot previews until the owner deliberately reveals them.",
-    "Make remote device management safer with owner-confirmed agent repair, explicit local-only stop and uninstall instructions, and bounded process inventory.",
-    "Preserve independent read-only diagnostics, account scope, screenshot headless detection and existing server-side authorization boundaries."
+    "Keep Windows computer_snapshot probes at two concurrent PowerShell processes so the snapshot completes within the relay timeout on loaded hosts.",
+    "Report Windows list_processes rows under the matching name,pid,session,mem header.",
+    "Keep the managed Windows startup and update handoff hidden, and repair a stale launcher even when the canonical packages are already current.",
+    "Resolve trusted parent symlinks in unrestricted mode so macOS /tmp and /var paths work with delete, move and copy, while symbolic-link leaves remain rejected."
   ]
 }

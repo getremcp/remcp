@@ -16,19 +16,30 @@ import { findOcrText, ocrImage } from './ocr.mjs';
 import { boundedComputerSnapshot, clipboard, cursorPosition, displayInventory, listWindows, objectRecord, resultValue, screenshotRegion, snapshotError, suggestedUiAction, toolResultMessage, uiSnapshot } from './desktop-core.mjs';
 import { activeWindowCaptureBounds, browserTitleHint, computerScreenshotTask, hasExplicitComputerScreenshotTarget, ocrScreenshotResult } from './desktop-vision.mjs';
 
-// Several simultaneous Windows PowerShell starts can stall until their shared
-// timeout on low-core hosts, which made the whole snapshot report every probe
-// as unavailable. Queue the probes on Windows; other platforms stay parallel.
-export async function settleComputerSnapshotProbes(tasks, { serial = process.platform === 'win32' } = {}) {
-  if (!serial) return Promise.allSettled(tasks.map((task) => task()));
-  const results = [];
-  for (const task of tasks) {
-    try {
-      results.push({ status: 'fulfilled', value: await task() });
-    } catch (reason) {
-      results.push({ status: 'rejected', reason });
+// Four simultaneous Windows PowerShell starts can stall until their shared
+// timeout on low-core hosts, while two finish normally. Keep a small pool on
+// Windows so the snapshot stays under the relay timeout; other platforms stay
+// fully parallel.
+export async function settleComputerSnapshotProbes(tasks, {
+  concurrency = process.platform === 'win32' ? 2 : Math.max(tasks.length, 1),
+} = {}) {
+  const limit = Math.max(1, Math.min(Number(concurrency) || 1, tasks.length || 1));
+  if (limit >= tasks.length) return Promise.allSettled(tasks.map((task) => task()));
+  const results = new Array(tasks.length);
+  let next = 0;
+  const worker = async () => {
+    for (;;) {
+      const index = next;
+      next += 1;
+      if (index >= tasks.length) return;
+      try {
+        results[index] = { status: 'fulfilled', value: await tasks[index]() };
+      } catch (reason) {
+        results[index] = { status: 'rejected', reason };
+      }
     }
-  }
+  };
+  await Promise.all(Array.from({ length: limit }, () => worker()));
   return results;
 }
 
