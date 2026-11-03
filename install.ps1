@@ -54,32 +54,83 @@ function Get-ReMCPArchitecture {
   }
 }
 
+function Invoke-ReMCPVersionRequest {
+  param([string]$Uri, [int]$TimeoutMilliseconds)
+  $requestTimer = [Diagnostics.Stopwatch]::StartNew()
+  $handler = $null
+  $client = $null
+  $cancel = $null
+  $reply = $null
+  try {
+    Add-Type -AssemblyName System.Net.Http
+    $handler = New-Object System.Net.Http.HttpClientHandler
+    $handler.AllowAutoRedirect = $false
+    $client = New-Object System.Net.Http.HttpClient($handler)
+    $client.MaxResponseContentBufferSize = 4096
+    $cancel = New-Object System.Threading.CancellationTokenSource
+    $client.DefaultRequestHeaders.Add('Cache-Control', 'no-cache')
+    $remaining = $TimeoutMilliseconds - $requestTimer.ElapsedMilliseconds
+    if ($remaining -lt 1) { throw 'Version request setup exceeded its deadline' }
+    $client.Timeout = [TimeSpan]::FromMilliseconds($remaining)
+    $cancel.CancelAfter($remaining)
+    $request = $client.GetAsync($Uri, $cancel.Token)
+    $remaining = $TimeoutMilliseconds - $requestTimer.ElapsedMilliseconds
+    if ($remaining -lt 1 -or !$request.Wait([int]$remaining)) { throw 'Version request timed out' }
+    $reply = $request.GetAwaiter().GetResult()
+    # GetAsync buffers at most 4096 bytes before completing, so this is local.
+    $content = $reply.Content.ReadAsStringAsync().GetAwaiter().GetResult()
+    $retry = if ($reply.Headers.RetryAfter) { $reply.Headers.RetryAfter.ToString() } else { '' }
+    return [pscustomobject]@{ StatusCode=[int]$reply.StatusCode; Content=$content; RetryAfter=$retry }
+  } catch {
+    if ($_.Exception -is [System.Management.Automation.PipelineStoppedException]) { throw }
+    throw 'ReMCP version request failed or timed out. Try again later.'
+  } finally {
+    if ($cancel) { $cancel.Cancel() }
+    if ($reply) { $reply.Dispose() }
+    if ($client) { $client.Dispose() } elseif ($handler) { $handler.Dispose() }
+    if ($cancel) { $cancel.Dispose() }
+  }
+}
+
 function Get-ReMCPRelease {
+  param(
+    [scriptblock]$Clock,
+    [scriptblock]$Sleep = { param($seconds) Start-Sleep -Milliseconds ([int][Math]::Floor($seconds * 1000)) },
+    [ValidateRange(1, 600)][int]$MaximumWaitSeconds = 180
+  )
   # The bootstrap itself always comes from remcp.site, so bootstrap code is never delegated to a
   # custom relay. The official version endpoint also prevents an npm @latest race during rollout:
   # Windows installs the exact client/runtime pair production currently advertises.
   $versionUrl = "$officialOrigin/api/agent/version"
-  # A rolling HA deployment intentionally advertises HTTP 409
-  # agent_update_paused until all backend replicas agree on the release.
-  # Retry that temporary coordination state (and HTTP 503 control-plane
-  # unavailability) without allowing an outdated or guessed npm version.
+  # Only the explicit rollout gate is retryable. Other conflicts, redirects,
+  # malformed responses and service failures fail closed without exposing bodies.
   $response = $null
-  for ($attempt = 1; $attempt -le 4; $attempt++) {
-    try {
-      $response = Invoke-WebRequest -UseBasicParsing -Uri $versionUrl -Headers @{ 'Cache-Control' = 'no-cache' }
-      break
-    } catch {
-      $statusCode = 0
-      try { $statusCode = [int]$_.Exception.Response.StatusCode } catch {}
-      if ($attempt -ge 4 -or ($statusCode -ne 409 -and $statusCode -ne 503)) {
-        throw
-      }
-      $delaySeconds = [Math]::Min(20, 5 * [Math]::Pow(2, $attempt - 1))
-      Write-Warning "ReMCP version discovery temporarily unavailable (HTTP $statusCode); retrying."
-      Start-Sleep -Seconds $delaySeconds
-    }
+  if (!$Clock) {
+    $started = [DateTime]::UtcNow
+    $timer = [Diagnostics.Stopwatch]::StartNew()
+    $Clock = { $started.AddMilliseconds($timer.Elapsed.TotalMilliseconds) }.GetNewClosure()
   }
-  if ($null -eq $response) { throw 'ReMCP version endpoint did not return a release after bounded retries.' }
+  $deadline = (& $Clock).AddSeconds($MaximumWaitSeconds)
+  while ((& $Clock) -lt $deadline) {
+    $remaining = [Math]::Floor(($deadline - (& $Clock)).TotalMilliseconds)
+    if ($remaining -lt 1) { break }
+    $reply = Invoke-ReMCPVersionRequest -Uri $versionUrl -TimeoutMilliseconds ([int][Math]::Min(15000, $remaining))
+    if ((& $Clock) -ge $deadline) { break }
+    if ($reply.StatusCode -eq 200) { $response = $reply; break }
+    $paused = $false
+    if ($reply.StatusCode -eq 409 -and $reply.Content.Length -le 4096) {
+      try { $paused = ([string](ConvertFrom-Json -InputObject $reply.Content).error -ceq 'agent_update_paused') } catch {}
+    }
+    if (!$paused) { throw "ReMCP version discovery failed (HTTP $($reply.StatusCode)). Try again later." }
+    $retry = 5
+    if ($reply.RetryAfter -match '^\d{1,4}$') { $retry = [int]$reply.RetryAfter }
+    $remaining = ($deadline - (& $Clock)).TotalSeconds
+    if ($remaining -le 0) { break }
+    $delaySeconds = [Math]::Min($remaining, [Math]::Max(1, [Math]::Min(30, $retry)))
+    Write-Warning 'ReMCP updates are temporarily paused during deployment; retrying.'
+    & $Sleep $delaySeconds
+  }
+  if ($null -eq $response) { throw 'ReMCP updates are still paused; try again after deployment completes.' }
   $release = $response.Content | ConvertFrom-Json
   $version = [string]$release.cliVersion
   $clientSpec = [string]$release.cli

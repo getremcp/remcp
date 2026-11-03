@@ -8,6 +8,7 @@ import process from 'node:process';
 import crypto from 'node:crypto';
 import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { spawnWindowsOwnedJob } from './windows-owned-job.mjs';
 
 const currentFile = fileURLToPath(import.meta.url);
 const root = process.env.REMCP_CONFIG_DIR || path.join(os.homedir(), '.config', 'remcp');
@@ -94,33 +95,48 @@ async function serve(cliEntry) {
   let requestedRestart = null;
   let startedAt = 0;
   let lastExit = null;
+  let containmentFailure = null;
   const usedNonces = new Set();
 
   function start() {
-    if (stopped || child) return;
+    if (stopped || child || containmentFailure) return;
     const logFile = path.join(root, 'windows-startup-agent.log');
     try { if (fs.statSync(logFile).size > 4 * 1024 * 1024) fs.truncateSync(logFile, 0); } catch {}
     const log = fs.openSync(logFile, 'a', 0o600);
     const prefix = path.resolve(path.dirname(cliEntry), '../../../../');
     try {
-      child = spawn(process.execPath, [cliEntry, 'start', '--service'], {
-        cwd: root, windowsHide: true, stdio: ['ignore', log, log, 'ipc'],
-        env: { ...process.env, REMCP_USER_STARTUP_SUPERVISOR:'1', NPM_CONFIG_PREFIX: prefix,
-          PATH: path.dirname(process.execPath) + path.delimiter + (process.env.PATH || '') },
-      });
+      const env = { ...process.env, REMCP_USER_STARTUP_SUPERVISOR:'1', NPM_CONFIG_PREFIX: prefix,
+        PATH: path.dirname(process.execPath) + path.delimiter + (process.env.PATH || '') };
+      child = process.platform === 'win32'
+        ? spawnWindowsOwnedJob(process.execPath, [cliEntry, 'start', '--service'], {cwd:root,log:logFile,env})
+        : spawn(process.execPath, [cliEntry, 'start', '--service'], {
+          cwd:root, windowsHide:true, stdio:['ignore',log,log,'ipc'], env,
+        });
     } finally { fs.closeSync(log); }
     const ownChild = child;
     startedAt = Date.now();
+    ownChild.ownedJob?.ready.then(() => { startedAt=Date.now(); }).catch(error => { lastExit=error.message; });
+    ownChild.ownedJob?.done.catch(error => { lastExit=error.message; });
     ownChild.on('error', error => {
       lastExit = error.message;
+      if (ownChild.ownedJob) {
+        containmentFailure = new Error('Windows job ownership failed; restart refused');
+        stopped=true;
+        return; // Retain the owner until close; only confirmedEmpty can release it.
+      }
       if (child === ownChild) {
         child = null;
         if (!stopped) restartTimer = setTimeout(start, 3000);
       }
     });
-    ownChild.on('exit', (code, signal) => {
+    ownChild.on('close', (code, signal) => {
       if (child !== ownChild) return;
       child = null;
+      // Completion failure does not prove the previous tree is empty. Fail closed.
+      if (ownChild.ownedJob && !ownChild.ownedJob.confirmedEmpty) {
+        containmentFailure = new Error('Windows job did not confirm an empty process tree; restart refused');
+        stopped=true; lastExit=containmentFailure.message; return;
+      }
       lastExit = code === null ? String(signal || 'unknown') : String(code);
       if (!stopped) restartTimer = setTimeout(start, 3000);
     });
@@ -128,17 +144,12 @@ async function serve(cliEntry) {
 
   async function endChild() {
     clearTimeout(restartTimer);
+    if (containmentFailure) throw containmentFailure;
     const ownChild = child;
     if (!ownChild) return;
+    if (ownChild.ownedJob) { await ownChild.ownedJob.stop(); return; }
     if (ownChild.exitCode === null && !ownChild.killed) {
-      if (process.platform === 'win32') {
-        const result = spawnSync('taskkill.exe', ['/PID', String(ownChild.pid), '/T', '/F'], {
-          windowsHide: true, encoding: 'utf8', timeout: 7000, maxBuffer: 2048,
-        });
-        if (result.status !== 0 && ownChild.exitCode === null) {
-          throw new Error('Could not terminate owned agent process tree');
-        }
-      } else ownChild.kill('SIGTERM');
+      ownChild.kill('SIGTERM');
     }
     if (ownChild.exitCode === null) await Promise.race([
       new Promise(resolve => ownChild.once('exit', resolve)),
@@ -184,6 +195,7 @@ async function serve(cliEntry) {
               process.exit(0);
             });
           } else if (request.action === 'restart') {
+            if (containmentFailure) throw containmentFailure;
             // Agent-initiated npm updates call this from a child of the current agent.
             // Killing that tree before the update CLI returns can abort the updater itself.
             // Coalesce requests and schedule the owned-child handoff after acknowledgement.
@@ -194,14 +206,14 @@ async function serve(cliEntry) {
                   stopped = true;
                   try { await endChild(); }
                   catch (error) { console.error('ReMCP supervisor restart failed:', error.message); }
-                  finally { stopped = false; if (!child) start(); }
+                  finally { if (!containmentFailure) { stopped = false; if (!child) start(); } }
                 })();
               }, 2500);
             }
             reply({ ok: true, restartScheduled: true });
           } else reply({
-            ok: true, childPid: child?.pid || null,
-            running: Boolean(child?.pid && child.exitCode === null),
+            ok: true, childPid: child?.ownedJob?.pid || child?.pid || null,
+            running: Boolean(child?.pid && child.exitCode === null && (!child.ownedJob || child.ownedJob.running)),
             restartPending: Boolean(requestedRestart),
             uptimeMs: child ? Date.now() - startedAt : null, lastExit,
           });
