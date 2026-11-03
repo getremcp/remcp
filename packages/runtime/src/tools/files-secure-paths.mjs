@@ -3,7 +3,7 @@ import os from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
 import { constants, createReadStream } from 'node:fs';
-import { access, chmod, chown, copyFile, cp, lstat, mkdir, mkdtemp, open, readFile, readdir, rename, rm, stat, unlink } from 'node:fs/promises';
+import { access, chmod, chown, copyFile, cp, lstat, mkdir, mkdtemp, open, readFile, readdir, realpath, rename, rm, stat, unlink } from 'node:fs/promises';
 import { pipeline } from 'node:stream/promises';
 import { liveConfig, runtimeConfig } from '../config.mjs';
 import { documentKind, readDocxText, readPdfText } from '../documents.mjs';
@@ -316,14 +316,43 @@ export async function openRegularFile(absolute, flags = READ_NOFOLLOW) {
   return openRegularFileAtPath(absolute, flags, absolute);
 }
 
+async function openLinuxDirectoryAnchor(absolute, options = {}) {
+  try {
+    return await openDirectoryPath(absolute, options);
+  } catch (error) {
+    if (runtimeConfig.allowedRoots.length) throw error;
+    // Unrestricted mode may traverse trusted links such as macOS-style aliases
+    // or user-created symlinked directories. Resolve only the anchor; returned
+    // tool paths stay lexical so the caller still sees the path it supplied.
+    if (options.create) await mkdir(absolute, { recursive:true }).catch(() => {});
+    const resolved = await realpath(absolute).catch(() => null);
+    if (!resolved) throw error;
+    return openDirectoryPath(resolved, options);
+  }
+}
+
+async function trustedNonLinuxDirectory(absolute, { create = false } = {}) {
+  if (create) await mkdir(absolute, { recursive: true });
+  const info = await lstat(absolute);
+  if (info.isSymbolicLink()) {
+    // With configured roots the path is already canonicalized; a remaining
+    // symlink component could be a confinement escape. Only unrestricted mode
+    // may follow trusted system links such as macOS /tmp -> /private/tmp.
+    if (runtimeConfig.allowedRoots.length) fail('Filesystem path component is not a directory');
+    const resolved = await realpath(absolute);
+    const target = await stat(resolved);
+    if (!target.isDirectory()) fail('Filesystem path component is not a directory');
+    return resolved;
+  }
+  if (!info.isDirectory()) fail('Filesystem path component is not a directory');
+  return absolute;
+}
+
 export async function openWritableParent(absolute, options = {}) {
   if (process.platform === 'linux' && constants.O_NOFOLLOW && constants.O_DIRECTORY) {
-    return openDirectoryPath(absolute, { create:true, ...options });
+    return openLinuxDirectoryAnchor(absolute, { create:true, ...options });
   }
-  await mkdir(absolute, { recursive:true });
-  const info = await lstat(absolute);
-  if (info.isSymbolicLink() || !info.isDirectory()) fail('Filesystem path component is not a directory');
-  return { anchor:absolute, close:async() => {} };
+  return { anchor: await trustedNonLinuxDirectory(absolute, { create:true }), close:async() => {} };
 }
 
 export async function writeResolvedFile(absolute, content, { append = false } = {}) {
@@ -352,11 +381,9 @@ export async function withWritableParent(absolute, callback) {
 
 export async function openExistingParent(absolute) {
   if (process.platform === 'linux' && constants.O_NOFOLLOW && constants.O_DIRECTORY) {
-    return openDirectoryPath(absolute);
+    return openLinuxDirectoryAnchor(absolute);
   }
-  const info = await lstat(absolute);
-  if (info.isSymbolicLink() || !info.isDirectory()) fail('Filesystem path component is not a directory');
-  return { anchor:absolute, close:async() => {} };
+  return { anchor: await trustedNonLinuxDirectory(absolute), close:async() => {} };
 }
 
 export async function withExistingParent(absolute, callback) {
@@ -370,13 +397,11 @@ export async function withExistingParent(absolute, callback) {
 
 export async function ensureDirectoryPath(absolute, options = {}) {
   if (process.platform === 'linux' && constants.O_NOFOLLOW && constants.O_DIRECTORY) {
-    const directory = await openDirectoryPath(absolute, { create:true, ...options });
+    const directory = await openLinuxDirectoryAnchor(absolute, { create:true, ...options });
     await directory.close();
     return;
   }
-  await mkdir(absolute, { recursive:true });
-  const info = await lstat(absolute);
-  if (info.isSymbolicLink() || !info.isDirectory()) fail('Filesystem path component is not a directory');
+  await trustedNonLinuxDirectory(absolute, { create:true });
 }
 
 export async function readRegularBuffer(absolute, maxBytes = Infinity) {
