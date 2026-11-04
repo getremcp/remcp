@@ -10,7 +10,7 @@ import {
 } from '../src/cli/windows-cli-shim.mjs';
 
 function fixture(t) {
-  const localAppData = fs.mkdtempSync(path.join(os.tmpdir(), 'remcp-win-self-heal-'));
+  const localAppData = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'remcp-win-self-heal-')));
   t.after(() => fs.rmSync(localAppData, { recursive:true, force:true }));
   const prefix = path.join(localAppData, 'ReMCP', 'runtime');
   const nodePath = path.join(prefix, 'node.exe');
