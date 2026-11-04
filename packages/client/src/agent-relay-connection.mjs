@@ -43,7 +43,9 @@ export function createAgentRelayConnection({
       reconnectTimer = null;
       connect();
     }, safeDelay);
-    reconnectTimer.unref?.();
+    // A failed handshake may leave no other referenced handles. Keep the reconnect
+    // timer referenced, or Node exits 0 and a supervisor can restart it forever.
+    // clearReconnect() releases the timer on intentional shutdown.
   }
 
   function scheduleBackoffReconnect() {

@@ -7,6 +7,7 @@ import { home, npm } from './env.mjs';
 import { buildVettedMacTemperatureAddon } from './mac-native-temperature.mjs';
 import { output, run } from './shell.mjs';
 import { withWindowsUpdateLock } from './windows-update-lock.mjs';
+import { assertWindowsNpmPowerShellShimOwned, preferWindowsCmdShim } from './windows-cli-shim.mjs';
 
 export function servicePlatform() {
   return process.env.NODE_ENV === 'test' && process.env.REMCP_TEST_PLATFORM ? process.env.REMCP_TEST_PLATFORM : process.platform;
@@ -55,7 +56,14 @@ function npmGlobalInstallArgs(specs, { preferOnline = false } = {}) {
 
 export function npmGlobalInstall(...specs) {
   const prefix = assertSafeReMcpNpmPrefix(globalPrefix()); // Reject an unsafe prefix before npm writes anything.
-  const install = () => run(npm.command, [...npm.args, ...npmGlobalInstallArgs(specs)]);
+  const install = () => {
+    const updatingClient = servicePlatform() === 'win32' && isManagedWindowsRuntimePrefix(prefix)
+      && specs.some(spec => /^@remcp\/remcp@/.test(spec));
+    // A custom remcp.ps1 must be refused BEFORE npm overwrites its contents.
+    if (updatingClient) assertWindowsNpmPowerShellShimOwned(prefix);
+    run(npm.command, [...npm.args, ...npmGlobalInstallArgs(specs)]);
+    if (updatingClient) preferWindowsCmdShim(prefix);
+  };
   if (servicePlatform() === 'win32') withWindowsUpdateLock(prefix, install);
   else install();
   if (servicePlatform() === 'darwin' && specs.some(spec => /^@remcp\/runtime@[0-9]/.test(spec))) {
@@ -184,6 +192,9 @@ function transactionalWindowsGlobalInstall({ resolved, prefix, packageNames, spe
     return;
   }
 
+  // The transaction deletes its previous shim backup after success. Reject a
+  // user-created remcp.ps1 before touching npm or moving any existing files.
+  if (packageNames.includes(PACKAGE_NAME)) assertWindowsNpmPowerShellShimOwned(prefix);
   const backupRoot = path.join(prefix, `.remcp-update-backup-${process.pid}-${Date.now()}`);
   const moved = [];
   const moveAside = (source, label) => {
@@ -221,6 +232,7 @@ function transactionalWindowsGlobalInstall({ resolved, prefix, packageNames, spe
       for (const shim of ['remcp', 'remcp.cmd', 'remcp.ps1']) moveAside(path.join(prefix, shim), `bin-${shim}`);
     }
     run(resolved.command, [...resolved.args, ...npmGlobalInstallArgs(specs, { preferOnline })]);
+    if (uniqueNames.includes(PACKAGE_NAME)) preferWindowsCmdShim(prefix);
   } catch (error) {
     restore(error);
     throw error;

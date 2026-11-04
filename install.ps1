@@ -214,6 +214,27 @@ function Test-ReMCPRelease {
   }
 }
 
+function Remove-ReMCPNpmPowerShellShadow {
+  param([Parameter(Mandatory=$true)][string]$Directory)
+  $ps1 = Join-Path $Directory 'remcp.ps1'
+  if (!(Test-Path -LiteralPath $ps1)) { return }
+  $item = Get-Item -LiteralPath $ps1 -ErrorAction Stop
+  if ($item.PSIsContainer -or (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0)) {
+    throw 'ReMCP refuses to remove an unknown PowerShell launcher.'
+  }
+  $body = [IO.File]::ReadAllText($ps1)
+  if ($body.Length -gt 16000 -or !$body.StartsWith('#!/usr/bin/env pwsh') -or
+      !$body.Contains('$basedir/node_modules/@remcp/remcp/bin/remcp.mjs')) {
+    throw 'ReMCP refuses to remove a non-npm PowerShell launcher.'
+  }
+  if (!(Test-Path -LiteralPath (Join-Path $Directory 'remcp.cmd') -PathType Leaf)) {
+    throw 'ReMCP cannot prefer the cmd launcher: remcp.cmd is missing.'
+  }
+  # With Restricted execution policy PowerShell resolves remcp.ps1 before remcp.cmd.
+  # Remove only npm's generated private-prefix shim; never change ExecutionPolicy.
+  Remove-Item -LiteralPath $ps1 -Force -ErrorAction Stop
+}
+
 function Initialize-ReMCPStage {
   param(
     [Parameter(Mandatory=$true)][string]$Destination,
@@ -271,6 +292,7 @@ function Initialize-ReMCPStage {
     if (!(Test-ReMCPRelease -Directory $Destination -Release $Release -Explain)) {
       throw 'The staged ReMCP release failed verification.'
     }
+    Remove-ReMCPNpmPowerShellShadow -Directory $Destination
   } catch {
     Remove-Item -LiteralPath $Destination -Recurse -Force -ErrorAction SilentlyContinue
     throw
@@ -355,6 +377,9 @@ if (!(Test-ReMCPRelease -Directory $runtimeDir -Release $release)) {
     throw
   }
 } else {
+  # A verified current release may still contain an npm .ps1 shadow created
+  # by an older installer or update; repair it without changing installed bytes.
+  Remove-ReMCPNpmPowerShellShadow -Directory $runtimeDir
   # A verified current release makes any leftover rollback directory stale.
   Remove-Item -LiteralPath $backup -Recurse -Force -ErrorAction SilentlyContinue
 }

@@ -1,10 +1,10 @@
 {
-  "version": "0.2.228",
-  "title": "Keep scoped Linux accessibility requests fast and follow GNOME recording formats.",
+  "version": "0.2.229",
+  "title": "Keep agents reconnecting and preserve safe Windows command launchers.",
   "changes": [
-    "Apply PID and application selectors before probing unrelated AT-SPI applications, preserving stable semantic targets and bounded UI waits.",
-    "Follow GNOME's actual MP4 or WebM recording path instead of assuming the requested filename template is the output file.",
-    "Confine returned recordings to their private staging directory and UUID stem; reject symlinks, empty files and explicit destination format mismatches.",
-    "Cover scoped snapshot/action wiring, both GNOME formats, default output and destination preservation with subprocess regressions and native Linux checks."
+    "Retain the relay reconnect timer after failed WebSocket handshakes so the agent cannot exit before its next retry; clear it on explicit shutdown.",
+    "Prefer the trusted npm-generated remcp.cmd launcher on Windows when a recognizable npm remcp.ps1 would be blocked by PowerShell script execution policy.",
+    "Refuse to delete or overwrite custom/symlinked PowerShell launchers and reject installations lacking a valid .cmd launcher before changing package files; never change system ExecutionPolicy or pairing credentials.",
+    "Cover real reconnect failures, shutdown, installer repair, Windows x64 and ARM64 command-resolution behavior, and public-client parity with native and cross-platform regression tests."
   ]
 }
