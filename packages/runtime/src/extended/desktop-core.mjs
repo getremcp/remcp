@@ -340,21 +340,31 @@ export async function uiSnapshot(args = {}) {
     ? args.active_only === true
     : (!explicitlyScoped && args.scope !== 'desktop');
   let effective = { ...args, active_only:activeOnly };
-  let raw = await adapter.uiSnapshot(effective);
+  // For wait_for_ui, share one deadline across native capture and Linux retries.
+  const deadline = args.timeout_ms != null && Number.isFinite(Number(args.timeout_ms))
+    ? Date.now() + clamp(args.timeout_ms, 30_000, 100, 120_000) : null;
+  const canRetry = () => deadline === null || Date.now() + 100 < deadline;
+  const capture = () => adapter.uiSnapshot({
+    ...effective,
+    ...(deadline === null ? {} : { timeout_ms:Math.max(100, deadline - Date.now()) }),
+  });
+  let raw = await capture();
   let value = resultValue(raw);
   const requestedDepth = Number(effective.max_depth);
   const isEmptySnapshot = payload => Array.isArray(payload)
     ? payload.length === 0
     : Array.isArray(payload?.nodes) && payload.nodes.length === 0;
-  if (process.platform === 'linux' && isEmptySnapshot(value)) {
-    // GNOME/AT-SPI can transiently report an empty tree. Retry once at the requested
-    // depth before reducing traversal depth, so valid deep trees are not discarded.
-    await sleep(40);
-    raw = await adapter.uiSnapshot(effective);
-    value = resultValue(raw);
-    if (isEmptySnapshot(value) && Number.isFinite(requestedDepth) && requestedDepth > 12) {
+  if (process.platform === 'linux' && isEmptySnapshot(value) && canRetry()) {
+    // GNOME/AT-SPI can transiently report an empty tree, but retries must
+    // never start after the caller's remaining wait budget is exhausted.
+    await sleep(deadline === null ? 40 : Math.min(40, Math.max(0, deadline - Date.now() - 100)));
+    if (canRetry()) {
+      raw = await capture();
+      value = resultValue(raw);
+    }
+    if (isEmptySnapshot(value) && Number.isFinite(requestedDepth) && requestedDepth > 12 && canRetry()) {
       effective = { ...effective, max_depth:12 };
-      raw = await adapter.uiSnapshot(effective);
+      raw = await capture();
       value = resultValue(raw);
     }
   }

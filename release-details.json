@@ -1,10 +1,11 @@
 {
-  "version": "0.2.226",
-  "title": "Check legacy Windows task ownership before updates even after a saved service opt-out.",
+  "version": "0.2.227",
+  "title": "Keep Windows Startup agents connected and bound Linux accessibility waits.",
   "changes": [
-    "Check for a surviving legacy Scheduled Task independently of serviceInstalled:false before changing npm packages or executable shims.",
-    "Refuse updates when Task Scheduler reports an existing task, access denial or ambiguous output; preserve package state instead of attempting an unowned handover.",
-    "Keep check-only and already-current Windows updates before the package-mutation preflight, and permit manual updates after verified task absence.",
-    "Cover the opt-out path with isolated package-write and command instrumentation on Windows x64, Windows ARM64 and Linux. Legacy task migration remains separate work."
+    "Preserve a healthy Windows Startup agent launched under a kernel Job Object without a Node IPC channel; retain shutdown-on-disconnect for legacy IPC-supervised children.",
+    "Keep Job Object containment and verified empty process trees when the supervisor stops, without changing existing pairing credentials.",
+    "Respect the caller's deadline in Linux AT-SPI snapshots and their empty-tree retries for wait_for_ui; resolve cached semantic targets before invalidating the tree.",
+    "Harden native Windows supervisor regression cleanup against transient file locks, while preserving orphan-process detection.",
+    "Cover Windows x64 native lifecycle and Linux accessibility deadline regressions; release after verified package parity and security/CI gates."
   ]
 }

@@ -265,7 +265,7 @@ while queue and len(out)<${maxNodes}:
    for i in range(e.childCount):queue.append((e.getChildAtIndex(i),d+1,app_name,pid,active,window_name,node_path+"."+str(i)))
   except:pass
 print(json.dumps(out))`;
-  const result = await runFile('python3', ['-c', script], { label: 'AT-SPI snapshot', timeout: 30_000, allowFailure: true });
+  const result = await runFile('python3', ['-c', script], { label: 'AT-SPI snapshot', timeout:clamp(args.timeout_ms, 30_000, 100, 30_000), allowFailure:true });
   let parsed = null;
   try { parsed = JSON.parse(result.stdout || ''); } catch {}
   if (Array.isArray(parsed)) return jsonResult({ platform: 'linux', count: parsed.length, nodes: parsed });

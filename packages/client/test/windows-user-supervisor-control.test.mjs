@@ -162,9 +162,15 @@ test('an unexpected supervisor death disconnects its owned agent IPC instead of 
     if (owner.exitCode === null) owner.kill('SIGKILL');
     try { fs.unlinkSync(windowsSupervisorPath(config)); } catch {}
     // Windows may briefly retain a handle to the just-closed named pipe after
-    // process liveness is already false. Do not mistake delayed file cleanup
-    // for an orphaned process; retry only this disposable test directory.
-    fs.rmSync(root, { recursive:true, force:true, maxRetries:20, retryDelay:100 });
+    // process liveness is already false. Recursive rm's internal retry is not
+    // reliable for an EBUSY nested directory: retry the disposable root itself.
+    for (let attempt = 0; ; attempt++) {
+      try { fs.rmSync(root, { recursive:true, force:true }); break; }
+      catch (error) {
+        if (attempt >= 75 || !['EBUSY','EPERM','ENOTEMPTY'].includes(error?.code)) throw error;
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+    }
   }
 });
 

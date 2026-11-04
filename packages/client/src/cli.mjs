@@ -15,6 +15,7 @@ import { configFile, npm, officialOrigin, runtimeConfigFile } from './cli/env.mj
 import { currentInstallationInfo, ensureMacCliCommand, installPersistentAgent, persistentServiceState, servicePlatform, rememberCurrentInstallation, restartPersistentServiceIfInstalled, serviceInstallationInfo, uninstallPersistentService } from './cli/service.mjs';
 import { auditKnownInstallations } from './cli/installation-audit.mjs';
 import { scheduleMacTemperatureRepair } from './cli/mac-native-temperature.mjs';
+import { guardSupervisorDisconnect } from './cli/supervised-agent-lifecycle.mjs';
 import { repairMacTemperatureAfterStart } from './cli/npm-global.mjs';
 import { run } from './cli/shell.mjs';
 import { updateCommand } from './cli/update.mjs';
@@ -188,13 +189,10 @@ export async function main(argv = process.argv.slice(2)) {
       installSpec: `${PACKAGE_NAME}@${VERSION}`,
       persistState: patch => saveConfig({ ...cfg, ...patch }),
     });
-    // The per-user Windows supervisor owns this child through a private Node IPC
-    // handle. If the supervisor dies, the agent must close its runtime rather than
-    // remain orphaned and create duplicates at the next interactive logon.
+    // Legacy Node supervisors use IPC; the Windows Job Object launcher does not.
+    // On Windows, the kernel job terminates the process tree when its owner exits.
     if (supervised && process.env.REMCP_USER_STARTUP_SUPERVISOR === '1') {
-      const closeOrphan = () => void agent.stop().finally(() => process.exit(0));
-      process.once('disconnect', closeOrphan);
-      if (!process.connected) closeOrphan();
+      guardSupervisorDisconnect(agent);
     }
     return;
   }

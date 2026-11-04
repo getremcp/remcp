@@ -133,7 +133,7 @@ test('Linux accessibility retries false-empty AT-SPI walks before using the cons
   );
   assert.match(
     desktopSource,
-    /process\.platform === 'linux' && isEmptySnapshot\(value\)[\s\S]{0,420}await sleep\(40\)[\s\S]{0,240}adapter\.uiSnapshot\(effective\)/,
+    /process\.platform === 'linux' && isEmptySnapshot\(value\) && canRetry\(\)[\s\S]{0,540}raw = await capture\(\)/,
     'a false-empty Linux snapshot should retry once at the requested depth',
   );
   assert.match(

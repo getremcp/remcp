@@ -52,6 +52,7 @@ export async function uiMatches(args = {}) {
     ...(resolved.app ? { app: resolved.app } : {}),
     ...((resolved.window_title || resolved.windowTitle) ? { window_title: resolved.window_title || resolved.windowTitle } : {}),
     ...(resolved.browser_dom === true ? { browser_dom:true } : {}),
+    ...(resolved.timeout_ms != null ? { timeout_ms:resolved.timeout_ms } : {}),
   });
   const payload = resultValue(result) || {};
   const nodes = Array.isArray(payload) ? payload : payload.nodes || [];
@@ -108,6 +109,7 @@ export async function uiConditionMatches(args, condition) {
         ...(args.app ? { app:args.app } : {}),
         ...((args.window_title || args.windowTitle) ? { window_title:args.window_title || args.windowTitle } : {}),
         ...(args.browser_dom === true ? { browser_dom:true } : {}),
+        ...(args.timeout_ms != null ? { timeout_ms:args.timeout_ms } : {}),
       })) || {};
       nodes = Array.isArray(snapshot) ? snapshot : snapshot.nodes || [];
     }
@@ -142,8 +144,27 @@ export async function waitForUi(args = {}) {
   if (['element_exists','element_enabled'].includes(condition) && !hasSelector) throw new Error(`wait_for_ui condition=${condition} requires a semantic target`);
   if (condition === 'active_window' && !(args.text || args.name || args.window_title || args.windowTitle)) throw new Error('wait_for_ui condition=active_window requires text, name, or window_title');
   if (['present','absent'].includes(state) && !hasSelector) throw new Error(`wait_for_ui state=${state} requires a semantic target`);
-  const deadline = Date.now() + timeoutMs;
   const startedAt = Date.now();
+  const deadline = startedAt + timeoutMs;
+  const expired = Symbol('wait_for_ui deadline');
+  // Resolve snapshot labels once, before invalidation; subsequent reads use the
+  // stable semantic locator rather than a label from a discarded tree.
+  const target = args.label != null ? { ...withResolvedUiLabel(args), label:undefined } : args;
+  const probe = async read => {
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) return expired;
+    try {
+      const value = await read({ ...target, timeout_ms:Math.max(100, remaining) });
+      return Date.now() >= deadline ? expired : value;
+    } catch (error) {
+      if (Date.now() >= deadline) return expired;
+      throw error;
+    }
+  };
+  const pause = async () => {
+    const remaining = deadline - Date.now();
+    if (remaining > 0) await sleep(Math.min(pollMs, remaining));
+  };
   let attempts = 0;
 
   if (condition) {
@@ -152,7 +173,9 @@ export async function waitForUi(args = {}) {
       attempts += 1;
       // A wait must observe fresh state, not repeatedly query the same 5-second cache.
       invalidateUiSnapshotCache();
-      evaluation = await uiConditionMatches(args, condition);
+      const observed = await probe(options => uiConditionMatches(options, condition));
+      if (observed === expired) break;
+      evaluation = observed;
       if (evaluation.matched) {
         return jsonResult({
           condition,
@@ -164,7 +187,7 @@ export async function waitForUi(args = {}) {
           ...(evaluation.detail ? { detail:evaluation.detail } : {}),
         });
       }
-      await sleep(pollMs);
+      await pause();
     } while (Date.now() < deadline);
     return jsonResult({
       condition,
@@ -178,13 +201,20 @@ export async function waitForUi(args = {}) {
   }
 
   invalidateUiSnapshotCache();
-  const baseline = state === 'changed' ? await uiMatches(args) : [];
+  const first = state === 'changed' ? await probe(uiMatches) : [];
+  const baseline = first === expired ? [] : first;
+  if (first === expired) {
+    return jsonResult({ state:'timeout', wanted:state, matched:0, attempts,
+      elapsed_ms:Date.now() - startedAt, nodes:[], before:[] });
+  }
   const baselineFingerprint = state === 'changed' ? uiFingerprint(baseline) : null;
   let nodes = baseline;
   do {
     attempts += 1;
     invalidateUiSnapshotCache();
-    nodes = await uiMatches(args);
+    const observed = await probe(uiMatches);
+    if (observed === expired) break;
+    nodes = observed;
     const changed = state === 'changed' && uiFingerprint(nodes) !== baselineFingerprint;
     if ((state === 'present' && nodes.length) || (state === 'absent' && !nodes.length) || changed) {
       return jsonResult({
@@ -196,7 +226,7 @@ export async function waitForUi(args = {}) {
         ...(state === 'changed' ? { before: baseline } : {}),
       });
     }
-    await sleep(pollMs);
+    await pause();
   } while (Date.now() < deadline);
   return jsonResult({ state:'timeout', wanted:state, matched:nodes.length, attempts, elapsed_ms:Date.now() - startedAt, nodes, ...(state === 'changed' ? { before:baseline } : {}) });
 }
