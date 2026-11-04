@@ -91,7 +91,9 @@ jobs:
 
   macos-documents:
     name: macOS runtime backends
-    runs-on: macos-latest
+    # Temporary Intel macOS runner while standard macos-latest ARM64 capacity is constrained.
+    # Keep all native macOS release gates; separately verify ARM64 on a paired real Mac.
+    runs-on: macos-15-intel
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
