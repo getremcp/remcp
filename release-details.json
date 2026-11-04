@@ -1,11 +1,11 @@
 {
-  "version": "0.2.230",
-  "title": "Keep Windows upgrades recoverable and Linux trash operations safe across filesystems.",
+  "version": "0.2.231",
+  "title": "Make device failure reasons and update discovery telemetry truthful.",
   "changes": [
-    "Refuse to replace a customized PowerShell launcher before staging or swapping an existing Windows installation; preserve it intact on failure.",
-    "Recognize only the complete canonical npm PowerShell launcher when deciding whether to remove its shadow of the verified cmd launcher.",
-    "Permit repairing a missing Windows batch launcher during an otherwise verified npm-owned upgrade.",
-    "Move Linux directories to a source-local, guarded trash directory when the home trash is on a different filesystem; preserve the original cross-filesystem behavior for regular files.",
-    "Keep previous Windows argv, focus, reconnect and event-log fixes; cover Linux cross-device and native Windows installer scenarios with regression tests."
+    "Classify missing terminal sessions and unmatched edit targets as not_found, and edit occurrence mismatches as invalid_input, instead of treating predictable refusals as generic runtime crashes.",
+    "Keep the classification restricted to fixed known tool errors; never transmit a process ID, file content, path or command through telemetry.",
+    "Report discovery of a newer client/runtime as agent_update_available without claiming the package was installed.",
+    "Limit repeated availability announcements and missing-CLI guidance to one per release pair per 30 minutes, while preserving scheduled release checks and updater safety guards.",
+    "Cover error classification, update checks and reconnect behavior with deterministic regression tests. Publication and production rollout remain subject to release gates."
   ]
 }

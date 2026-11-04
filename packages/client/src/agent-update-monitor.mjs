@@ -15,7 +15,7 @@ const POST_CONNECT_UPDATE_RECHECK_DELAYS_MS = Object.freeze([60_000, 5 * 60_000,
 const POST_CONNECT_UPDATE_RECHECK_JITTER_MS = 30_000;
 const UPDATE_RETRY_COOLDOWN_MS = 30 * 60 * 1000;
 
-export function createAgentUpdateMonitor({ options, serverUrl, queueEvent, getRuntimeState, onStopRequested, restartRuntime, isStopping, stop }) {
+export function createAgentUpdateMonitor({ options, serverUrl, queueEvent, getRuntimeState, onStopRequested, restartRuntime, isStopping, stop, resolveCli = globalCliEntry }) {
   const postConnectUpdateRecheckDelaysMs = (Array.isArray(options.updateRecheckDelaysMs)
     ? options.updateRecheckDelaysMs : POST_CONNECT_UPDATE_RECHECK_DELAYS_MS)
     .map(Number).filter(delay => Number.isFinite(delay) && delay >= 0 && delay < UPDATE_CHECK_INTERVAL_MS).slice(0, 3);
@@ -37,6 +37,8 @@ export function createAgentUpdateMonitor({ options, serverUrl, queueEvent, getRu
   let lastUpdateCheckError = '';
   let lastUpdateCheckErrorAt = 0;
   let lastDiscoveryAt = 0;
+  let lastAnnouncedVersion = '';
+  let lastAnnouncedAt = 0;
 
   function clearPostConnectUpdateChecks() {
     for (const timer of postConnectUpdateTimers) clearTimeout(timer);
@@ -86,10 +88,20 @@ export function createAgentUpdateMonitor({ options, serverUrl, queueEvent, getRu
       const decision = updateDecision({ advertised, cliVersion: VERSION, runtimeVersion, runtimePackageName: options.runtime?.packageName, runtimeDown });
       if (!decision.needed) return;
       const target = decision.target;
-      queueEvent({ event: 'agent_update', at: Date.now(), reason: `${decision.reason}:${target}`.slice(0, 32), success: true });
-      const cli = globalCliEntry();
+      const availabilityKey = `${target}|${decision.runtime}`;
+      const observedAt = Date.now();
+      const announce = availabilityKey !== lastAnnouncedVersion ||
+        observedAt - lastAnnouncedAt >= UPDATE_RETRY_COOLDOWN_MS;
+      if (announce) {
+        lastAnnouncedVersion = availabilityKey;
+        lastAnnouncedAt = observedAt;
+        // Version discovery is not installation success. The running version
+        // proves convergence only after the replacement agent reconnects.
+        queueEvent({ event: 'agent_update_available', at: observedAt, reason: decision.reason.slice(0, 32) });
+      }
+      const cli = resolveCli();
       if (!cli || !existsSync(cli)) {
-        console.error(`ReMCP ${target} is available; run: remcp update`);
+        if (announce) console.error(`ReMCP ${target} is available; run: remcp update`);
         return;
       }
       // A version that already failed to install is retried only after a cooldown, so a broken

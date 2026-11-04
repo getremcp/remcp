@@ -39,6 +39,20 @@ export function classifyRuntimeToolError(error, toolName = '') {
       return 'browser_navigation_failed';
     }
   }
+  // Expected, local session expiry and nonmatching edit requests should not be
+  // indistinguishable from runtime crashes. Use only fixed signatures scoped to
+  // the affected tool; never emit process IDs, file content or error messages.
+  if (error instanceof ToolError) {
+    if (['read_process_output','wait_for_process_output','force_terminate','interact_with_process']
+      .includes(toolName) && /^no remcp session with pid [0-9]+$/.test(message)) return 'not_found';
+    if (toolName === 'edit_block') {
+      if (/^old_string was not found in the file(?:, even after whitespace normalization)?$/.test(message)) return 'not_found';
+      if (/^expected [0-9]+ occurrence\(s\) of old_string but found [0-9]+\. add more surrounding context\.$/.test(message) ||
+          /^old_string matched [0-9]+ block\(s\) after whitespace normalization, expected [0-9]+\. add more surrounding context\.$/.test(message)) {
+        return 'invalid_input';
+      }
+    }
+  }
   if (/permission denied|access is denied|not authorized|not authorised|accessibility permission/.test(message)) return 'permission';
   if (/\b(?:file|path|source) not found\b|\bis not a directory\b/.test(message)) return 'not_found';
   if (/timed out|timeout after|time limit exceeded/.test(message)) return 'timeout';

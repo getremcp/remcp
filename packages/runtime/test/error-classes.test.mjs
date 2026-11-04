@@ -70,3 +70,36 @@ test('browser CDP failures use bounded actionable categories, not raw exception 
   assert.equal(classifyRuntimeToolError(new Error('CDP websocket connection timed out'), 'browser_tabs'), 'browser_unavailable');
   assert.equal(classifyRuntimeToolError(new Error('Page.navigate timed out'), 'browser_navigate'), 'timeout');
 });
+
+test('known missing terminal sessions and edit targets are not generic failures', () => {
+  const missingSession = new ToolError('No ReMCP session with pid 12345678');
+  for (const tool of ['read_process_output','wait_for_process_output','force_terminate','interact_with_process']) {
+    assert.equal(classifyRuntimeToolError(missingSession, tool),'not_found',tool);
+  }
+  assert.equal(classifyRuntimeToolError(missingSession, 'read_file'),'tool_error');
+  for (const message of [
+    'old_string was not found in the file',
+    'old_string was not found in the file, even after whitespace normalization',
+  ]) {
+    assert.equal(classifyRuntimeToolError(new ToolError(message),'edit_block'),'not_found');
+  }
+  for (const message of [
+    'Expected 2 occurrence(s) of old_string but found 1. Add more surrounding context.',
+    'old_string matched 2 block(s) after whitespace normalization, expected 1. Add more surrounding context.',
+  ]) {
+    assert.equal(classifyRuntimeToolError(new ToolError(message),'edit_block'),'invalid_input');
+  }
+});
+
+test('scope classification to supported tool names and anchored signatures', () => {
+  const cases=[
+    ['No ReMCP session with pid 12345678 from unrelated response','read_process_output'],
+    ['No ReMCP session with pid xyz','read_process_output'],
+    ['old_string was not found in the file while parsing payload','edit_block'],
+    ['old_string was not found in the file','start_process'],
+    ['Expected 2 occurrence(s) of old_string but found 1. Add more surrounding context.','read_file'],
+  ];
+  for(const [message, tool] of cases){
+    assert.equal(classifyRuntimeToolError(new ToolError(message),tool),'tool_error');
+  }
+});
