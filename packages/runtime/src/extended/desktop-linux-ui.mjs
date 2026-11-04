@@ -113,7 +113,9 @@ export async function windowAction(args) {
   return text(`Window action ${action} completed.`);
 }
 
-export function pyAtSpiPrelude() {
+export function pyAtSpiPrelude({ pid = 0, app = '' } = {}) {
+  const scopedPid = Number.isInteger(Number(pid)) ? Number(pid) : 0;
+  const scopedApp = JSON.stringify(optionalString(app) || '');
   return `import json,sys,math
 try:
  import pyatspi
@@ -188,10 +190,13 @@ def _proc(e):
  except: pass
  return 0
 q=[]
+scope_pid=${scopedPid};scope_app=${scopedApp}
 for app in desktop:
  try:
-  app_name=app.name or ""
   pid=_proc(app)
+  if scope_pid and pid!=scope_pid: continue
+  app_name=app.name or ""
+  if scope_app and scope_app.lower() not in app_name.lower(): continue
   active=False
   try:
    active=bool(app.getState().contains(pyatspi.STATE_ACTIVE))
@@ -216,7 +221,7 @@ export async function uiSnapshot(args = {}) {
   const wantedPid = Number.isInteger(Number(args.pid)) ? Number(args.pid) : 0;
   const wantedWindow = JSON.stringify(optionalString(args.window_title || args.windowTitle) || '');
   const activeOnly = args.active_only === true;
-  const script = pyAtSpiPrelude() + `
+  const script = pyAtSpiPrelude({ pid:wantedPid, app:args.app }) + `
 want_app=${wantedApp};want_pid=${wantedPid};want_window=${wantedWindow};want_active=${activeOnly ? 'True' : 'False'}
 roots=[]
 for root,app_name,pid,active in q:
@@ -288,7 +293,7 @@ export async function uiAction(args = {}) {
   const wantedName = JSON.stringify(optionalString(args.name) || '');
   const wantedRole = JSON.stringify(optionalString(args.role) || '');
   const value = JSON.stringify(String(args.value ?? ''));
-  const script = pyAtSpiPrelude() + `
+  const script = pyAtSpiPrelude({ pid:wantedPid, app:args.app }) + `
 want_index=${legacyIndex};want_pid=${wantedPid};want_path=${JSON.stringify(stablePath)}
 want_app=${wantedApp};want_window=${wantedWindow};want_name=${wantedName};want_role=${wantedRole};action=${JSON.stringify(action)};value=${value}
 queue=[];seen=0;target=None;target_meta={}

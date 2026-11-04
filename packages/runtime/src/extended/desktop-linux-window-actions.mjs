@@ -67,7 +67,7 @@ export async function nativeWaylandAccessibilityAction(row, actionNames) {
   if (!Number.isInteger(pid) || pid <= 0 || !Array.isArray(actionNames) || !actionNames.length) {
     return { applied:false, available:[] };
   }
-  const script = pyAtSpiPrelude() + `
+  const script = pyAtSpiPrelude({ pid }) + `
 want_pid=${pid};want_window=${JSON.stringify(String(row.title || ''))};wanted_actions=${JSON.stringify(actionNames)}
 target=None
 for root,app_name,pid,active in q:

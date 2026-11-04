@@ -253,11 +253,26 @@ print(JSON.stringify({ destination:started[1], stopped:stopped[0] }));
 async function recordGnomeShellScreen({ staged, stagingDirectory, seconds, fps }) {
   const helper = path.join(stagingDirectory, 'gnome-screencast.js');
   await writeFile(helper, GNOME_SCREENCAST_HELPER, { mode:0o600 });
-  await runFile('gjs', [helper, staged, String(seconds), String(fps)], {
+  const result = await runFile('gjs', [helper, staged, String(seconds), String(fps)], {
     label:'GNOME Shell screen recording',
     timeout:(seconds + 20) * 1000,
     maxBuffer:2 * 1024 * 1024,
   });
+  let report;
+  try { report = JSON.parse(result.stdout.trim()); } catch {}
+  const output = report?.destination;
+  // GNOME selects the container and may replace the template extension. Accept
+  // only the exact recording stem in our private staging directory, never an
+  // arbitrary path returned by the desktop service.
+  if (report?.stopped !== true || typeof output !== 'string' || !path.isAbsolute(output)
+    || path.dirname(output) !== stagingDirectory
+    || path.parse(output).name !== path.parse(staged).name
+    || !['.mp4','.webm'].includes(path.extname(output))) {
+    throw new Error('GNOME returned an invalid screen recording staging path or format');
+  }
+  const info = await lstat(output);
+  if (!info.isFile() || !info.size) throw new Error('GNOME screen recording is not a non-empty regular file');
+  return { path:output, format:path.extname(output).slice(1) };
 }
 
 export function validateRecordingDestinationFormat(destination, format) {
@@ -328,21 +343,27 @@ export async function recordScreen(args) {
     unavailable('Screen recording', 'ffmpeg is required on X11');
   }
 
-  const format = backend === 'gnome-shell' ? 'webm' : 'mp4';
+  let format = backend === 'gnome-shell' ? 'webm' : 'mp4';
   const requestedDestination = args.destination ? await resolveSafePath(args.destination, 'destination') : '';
   if (requestedDestination) {
-    validateRecordingDestinationFormat(requestedDestination, format);
+    if (backend !== 'gnome-shell') validateRecordingDestinationFormat(requestedDestination, format);
+    else if (path.extname(requestedDestination) && !['.mp4','.webm'].includes(path.extname(requestedDestination).toLowerCase())) {
+      throw new Error('GNOME screen recording destination must use .mp4, .webm or omit the extension');
+    }
     const existing = await lstat(requestedDestination).catch(() => null);
     if (existing?.isSymbolicLink()) throw new Error('Screen recording destination cannot be a symbolic link');
     if (existing && !existing.isFile()) throw new Error('Screen recording destination is not a regular file');
   }
 
   const stagingDirectory = await mkdtemp(path.join(os.tmpdir(), 'remcp-screen-'));
-  const staged = path.join(stagingDirectory, `capture-${randomUUID()}.${format}`);
+  let staged = path.join(stagingDirectory, `capture-${randomUUID()}.${format}`);
   let keepStaging = false;
   try {
     if (backend === 'gnome-shell') {
-      await recordGnomeShellScreen({ staged, stagingDirectory, seconds, fps });
+      const recorded = await recordGnomeShellScreen({ staged, stagingDirectory, seconds, fps });
+      staged = recorded.path;
+      format = recorded.format;
+      validateRecordingDestinationFormat(requestedDestination, format);
     } else if (backend === 'wf-recorder') {
       const result = await runFile('timeout', ['--signal=INT', `${seconds}s`, 'wf-recorder', '-f',staged,'-r',String(fps),'-c','libx264'], { label:'screen recording', timeout:(seconds+10)*1000, allowFailure:true });
       if (![0, 124, 130].includes(Number(result.code))) throw new Error(result.stderr.trim() || `wf-recorder exited ${result.code}`);

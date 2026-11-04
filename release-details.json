@@ -1,11 +1,10 @@
 {
-  "version": "0.2.227",
-  "title": "Keep Windows Startup agents connected and bound Linux accessibility waits.",
+  "version": "0.2.228",
+  "title": "Keep scoped Linux accessibility requests fast and follow GNOME recording formats.",
   "changes": [
-    "Preserve a healthy Windows Startup agent launched under a kernel Job Object without a Node IPC channel; retain shutdown-on-disconnect for legacy IPC-supervised children.",
-    "Keep Job Object containment and verified empty process trees when the supervisor stops, without changing existing pairing credentials.",
-    "Respect the caller's deadline in Linux AT-SPI snapshots and their empty-tree retries for wait_for_ui; resolve cached semantic targets before invalidating the tree.",
-    "Harden native Windows supervisor regression cleanup against transient file locks, while preserving orphan-process detection.",
-    "Cover Windows x64 native lifecycle and Linux accessibility deadline regressions; release after verified package parity and security/CI gates."
+    "Apply PID and application selectors before probing unrelated AT-SPI applications, preserving stable semantic targets and bounded UI waits.",
+    "Follow GNOME's actual MP4 or WebM recording path instead of assuming the requested filename template is the output file.",
+    "Confine returned recordings to their private staging directory and UUID stem; reject symlinks, empty files and explicit destination format mismatches.",
+    "Cover scoped snapshot/action wiring, both GNOME formats, default output and destination preservation with subprocess regressions and native Linux checks."
   ]
 }
