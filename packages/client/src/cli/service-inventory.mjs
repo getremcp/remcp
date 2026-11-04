@@ -16,7 +16,7 @@ export function persistentServiceExpected(config) {
   if (platform === 'darwin') return fs.existsSync(macServiceFile);
   if (platform === 'win32') {
     return windowsStartupScriptInstalled(windowsStartupScriptFile) ||
-      spawnSync('schtasks.exe', ['/Query', '/TN', windowsTaskName], { stdio: 'ignore' }).status === 0;
+      spawnSync('schtasks.exe', ['/Query', '/TN', windowsTaskName], { stdio: 'ignore', windowsHide: true }).status === 0;
   }
   return false;
 }
@@ -36,7 +36,7 @@ export function persistentServiceState(config) {
     return { expected, installed, active, manager:'launchd', name:macServiceLabel };
   }
   if (platform === 'win32') {
-    const query = spawnSync('schtasks.exe', ['/Query', '/TN', windowsTaskName, '/FO', 'LIST'], { encoding:'utf8' });
+    const query = spawnSync('schtasks.exe', ['/Query', '/TN', windowsTaskName, '/FO', 'LIST'], { encoding:'utf8', windowsHide:true });
     const installed = query.status === 0;
     const outputText = String(query.stdout || '');
     const active = installed && /(?:Status|Состояние):\s*Running/i.test(outputText);

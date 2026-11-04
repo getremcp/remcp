@@ -24,7 +24,7 @@ function packageLocalNodeModules() {
 const REPLACEMENT_HANDOVER_TIMEOUT_MS = 20_000;
 
 function globalNodeModules() {
-  const result = spawnSync(npm.command, [...npm.args, 'root', '--global'], { encoding: 'utf8' });
+  const result = spawnSync(npm.command, [...npm.args, 'root', '--global'], { encoding: 'utf8', windowsHide: true });
   if (result.error || result.status !== 0) throw new Error('Could not locate the global npm modules directory');
   return String(result.stdout || '').trim();
 }
@@ -142,7 +142,7 @@ export async function restartToApplyUpdate(cli, stopAgent, markStopping, onRunti
     }
     // Handing over to a version that cannot start would take the machine offline with nobody left to
     // retry. The new CLI has to answer `--version` before this process steps aside.
-    const probe = spawnSync(process.execPath, [cli, '--version'], { encoding: 'utf8', timeout: 30000 });
+    const probe = spawnSync(process.execPath, [cli, '--version'], { encoding: 'utf8', timeout: 30000, windowsHide: true });
     const reported = String(probe.stdout || '').trim();
     if (probe.error || probe.status !== 0 || !/^\d+\.\d+\.\d+/.test(reported)) {
       console.error(`The installed ReMCP ${installed || 'update'} did not run (${probe.error?.message || `exit ${probe.status}`}${reported ? `: ${reported}` : ''}). Keeping ${VERSION} running; retry with: remcp update`);
@@ -150,7 +150,7 @@ export async function restartToApplyUpdate(cli, stopAgent, markStopping, onRunti
     }
     console.log(`ReMCP ${installed || 'a newer version'} installed and verified (${reported}); restarting to apply it.`);
     if (!supervisorRestart()) {
-      spawn(process.execPath, [cli, 'start'], { detached: true, stdio: 'ignore', env: { ...process.env } }).unref();
+      spawn(process.execPath, [cli, 'start'], { detached: true, windowsHide: true, stdio: 'ignore', env: { ...process.env } }).unref();
       // Stepping aside is only safe once the replacement really holds the device: the relay closes
       // this socket with 1012 ('replaced') the moment another agent takes the machine over, and that
       // close is what stops this process. Without the wait, a replacement that cannot start left the
@@ -221,7 +221,7 @@ export function globalCliEntry({ packageLocal = true } = {}) {
   // CLI entry and avoid asking npm which global prefix happens to be active in a minimal service
   // environment (FNM/NVM/Hermes/Homebrew can all disagree with the shell).
   if (packageLocal && existsSync(PACKAGE_CLI_ENTRY)) return PACKAGE_CLI_ENTRY;
-  const prefix = spawnSync(npm.command, [...npm.args, 'prefix', '--global'], { encoding:'utf8' });
+  const prefix = spawnSync(npm.command, [...npm.args, 'prefix', '--global'], { encoding:'utf8', windowsHide:true });
   if (prefix.error || prefix.status !== 0) return null;
   const base = String(prefix.stdout || '').trim();
   return process.platform === 'win32'

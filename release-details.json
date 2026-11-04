@@ -1,11 +1,11 @@
 {
-  "version": "0.2.231",
-  "title": "Make device failure reasons and update discovery telemetry truthful.",
+  "version": "0.2.232",
+  "title": "Keep Windows installs, background updates, and agent startups free of extra console windows.",
   "changes": [
-    "Classify missing terminal sessions and unmatched edit targets as not_found, and edit occurrence mismatches as invalid_input, instead of treating predictable refusals as generic runtime crashes.",
-    "Keep the classification restricted to fixed known tool errors; never transmit a process ID, file content, path or command through telemetry.",
-    "Report discovery of a newer client/runtime as agent_update_available without claiming the package was installed.",
-    "Limit repeated availability announcements and missing-CLI guidance to one per release pair per 30 minutes, while preserving scheduled release checks and updater safety guards.",
-    "Cover error classification, update checks and reconnect behavior with deterministic regression tests. Publication and production rollout remain subject to release gates."
+    "Hide the Windows console for detached update handoff, pinned npm execution, Task Scheduler checks, and agent diagnostics; preserve non-Windows subprocess behavior.",
+    "Launch staged Windows Node/npm directly with CreateNoWindow rather than a visible npm.cmd shell, including paths with spaces and Unicode characters.",
+    "Keep runtime search, archive operations, and screenshot command probes from flashing additional CMD windows.",
+    "On startup, repair only verified npm-generated PowerShell launchers that shadow the existing trusted remcp.cmd, without changing ExecutionPolicy, custom scripts, pairing credentials, or active services.",
+    "Add native Windows x64/ARM64 regression coverage for hidden console windows, installer exit codes, malicious package specs, and safe launcher ownership; retain versioned public-first release gates."
   ]
 }

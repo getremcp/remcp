@@ -368,7 +368,7 @@ export async function moveArchiveFile(source, destination) {
 }
 
 export function archiveCommandProbe(name, versionArgs = ['--version']) {
-  const result = spawnSync(name, versionArgs, { encoding: 'utf8' });
+  const result = spawnSync(name, versionArgs, { encoding: 'utf8', windowsHide:true });
   return !result.error && result.status === 0 ? name : null;
 }
 

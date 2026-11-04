@@ -60,17 +60,17 @@ export async function createArchiveTool(args, extra = {}) {
      if (format === 'zip') {
        if (process.platform === 'win32') {
          if (!tools.tar) fail('Windows archive backend is unavailable: tar.exe is required');
-         const result = spawnSync(tools.tar, ['-a', '-c', '-f', staging, '--', ...archiveNames], { cwd: snapshotRoot, encoding: 'utf8', timeout: 120_000, maxBuffer: 16 * 1024 * 1024 });
+         const result = spawnSync(tools.tar, ['-a', '-c', '-f', staging, '--', ...archiveNames], { cwd: snapshotRoot, encoding: 'utf8', timeout: 120_000, maxBuffer: 16 * 1024 * 1024, windowsHide:true });
          if (result.status !== 0) fail(`tar.exe ZIP creation failed: ${(result.stderr || result.stdout || '').trim() || `exit ${result.status}`}`);
        } else {
          if (!tools.zip) fail('zip is not installed on this device; use format "tar.gz"');
-         const result = spawnSync(tools.zip, ['-r', '-q', '-y', staging, '--', ...archiveNames], { cwd: snapshotRoot, encoding: 'utf8', timeout: 120_000, maxBuffer: 16 * 1024 * 1024 });
+         const result = spawnSync(tools.zip, ['-r', '-q', '-y', staging, '--', ...archiveNames], { cwd: snapshotRoot, encoding: 'utf8', timeout: 120_000, maxBuffer: 16 * 1024 * 1024, windowsHide:true });
          if (result.status !== 0) fail(`zip failed: ${(result.stderr || result.stdout || '').trim() || `exit ${result.status}`}`);
        }
     } else if (format === 'tar' || format === 'tar.gz' || format === 'tgz') {
       if (!tools.tar) fail('tar is not installed on this device');
       const flags = format === 'tar' ? '-cf' : '-czf';
-       const result = spawnSync(tools.tar, [flags, staging, '--', ...archiveNames], { cwd: snapshotRoot, encoding: 'utf8', timeout: 120_000, maxBuffer: 16 * 1024 * 1024 });
+       const result = spawnSync(tools.tar, [flags, staging, '--', ...archiveNames], { cwd: snapshotRoot, encoding: 'utf8', timeout: 120_000, maxBuffer: 16 * 1024 * 1024, windowsHide:true });
       if (result.status !== 0) fail(`tar failed: ${(result.stderr || result.stdout || '').trim() || `exit ${result.status}`}`);
      } else {
        fail('format must be tar, tar.gz, or zip');
@@ -124,34 +124,34 @@ export async function extractArchiveTool(args) {
     if (existingDestination?.isSymbolicLink() || (existingDestination && !existingDestination.isDirectory())) fail('Archive destination is not a safe directory');
     if (format === 'zip' && process.platform !== 'win32') {
       if (!tools.unzip) fail('unzip is not installed on this device');
-      const listing = spawnSync(tools.unzip, ['-Z', '-1', archiveSnapshot], { encoding: 'utf8', timeout: 30_000, maxBuffer: 16 * 1024 * 1024 });
+      const listing = spawnSync(tools.unzip, ['-Z', '-1', archiveSnapshot], { encoding: 'utf8', timeout: 30_000, maxBuffer: 16 * 1024 * 1024, windowsHide:true });
       if (listing.error || listing.status !== 0) fail(`Could not inspect ZIP archive: ${(listing.stderr || listing.error?.message || `exit ${listing.status}`).trim()}`);
       const names = String(listing.stdout || '').split(/\r?\n/).filter(Boolean);
       if (names.length > 100_000 || names.some(name => !safeArchiveEntry(name))) fail('ZIP archive contains an unsafe path or too many entries');
-      const details = spawnSync(tools.unzip, ['-Z', '-v', archiveSnapshot], { encoding: 'utf8', timeout: 30_000, maxBuffer: 16 * 1024 * 1024 });
+      const details = spawnSync(tools.unzip, ['-Z', '-v', archiveSnapshot], { encoding: 'utf8', timeout: 30_000, maxBuffer: 16 * 1024 * 1024, windowsHide:true });
       if (details.error || details.status !== 0) fail(`Could not inspect ZIP sizes: ${(details.stderr || details.error?.message || `exit ${details.status}`).trim()}`);
       const detailText = String(details.stdout || '');
       if (/symbolic link|Unix file attributes \([^)]*\b12\d{4}/i.test(detailText)) fail('ZIP archive contains a symbolic link');
       const expandedBytes = archiveExpandedSize(detailText.split(/\r?\n/), /uncompressed size:\s*(\d+)\s*bytes/i, 'ZIP archive', names.length);
       assertArchiveExpandedSize(expandedBytes, 'ZIP archive');
-      const result = spawnSync(tools.unzip, ['-o', '-q', archiveSnapshot, '-d', staging], { encoding: 'utf8', timeout: 120_000, maxBuffer: 16 * 1024 * 1024 });
+      const result = spawnSync(tools.unzip, ['-o', '-q', archiveSnapshot, '-d', staging], { encoding: 'utf8', timeout: 120_000, maxBuffer: 16 * 1024 * 1024, windowsHide:true });
       if (result.status !== 0) fail(`unzip failed: ${(result.stderr || result.stdout || '').trim() || `exit ${result.status}`}`);
     } else {
       if (!tools.tar) fail(process.platform === 'win32' ? 'Windows archive backend is unavailable: tar.exe is required' : 'tar is not installed on this device');
       const listFlags = format === 'tar.gz' ? '-tzf' : format === 'tar.bz2' ? '-tjf' : format === 'tar.xz' ? '-tJf' : '-tf';
-      const listing = spawnSync(tools.tar, [listFlags, archiveSnapshot], { encoding: 'utf8', timeout: 30_000, maxBuffer: 16 * 1024 * 1024 });
+      const listing = spawnSync(tools.tar, [listFlags, archiveSnapshot], { encoding: 'utf8', timeout: 30_000, maxBuffer: 16 * 1024 * 1024, windowsHide:true });
       if (listing.error || listing.status !== 0) fail(`Could not inspect archive: ${(listing.stderr || listing.error?.message || `exit ${listing.status}`).trim()}`);
       const names = String(listing.stdout || '').split(/\r?\n/).filter(Boolean);
       if (names.length > 100_000 || names.some(name => !safeArchiveEntry(name))) fail('Archive contains an unsafe path or too many entries');
       const verboseFlags = format === 'tar.gz' ? '-tvzf' : format === 'tar.bz2' ? '-tvjf' : format === 'tar.xz' ? '-tvJf' : '-tvf';
-      const details = spawnSync(tools.tar, [verboseFlags, archiveSnapshot], { encoding: 'utf8', timeout: 30_000, maxBuffer: 16 * 1024 * 1024 });
+      const details = spawnSync(tools.tar, [verboseFlags, archiveSnapshot], { encoding: 'utf8', timeout: 30_000, maxBuffer: 16 * 1024 * 1024, windowsHide:true });
       if (details.error || details.status !== 0) fail(`Could not inspect archive sizes: ${(details.stderr || details.error?.message || `exit ${details.status}`).trim()}`);
       const detailLines = String(details.stdout || '').split(/\r?\n/);
       if (detailLines.some(line => /^[bclph]/.test(line))) fail('Archive contains a link or special file; archive destination is unsafe');
       const expandedBytes = archiveTarExpandedSize(detailLines, 'archive', names.length);
       assertArchiveExpandedSize(expandedBytes, 'archive');
       const flags = format === 'tar.gz' ? '-xzf' : format === 'tar.bz2' ? '-xjf' : format === 'tar.xz' ? '-xJf' : '-xf';
-      const result = spawnSync(tools.tar, [flags, archiveSnapshot, '-C', staging], { encoding: 'utf8', timeout: 120_000, maxBuffer: 16 * 1024 * 1024 });
+      const result = spawnSync(tools.tar, [flags, archiveSnapshot, '-C', staging], { encoding: 'utf8', timeout: 120_000, maxBuffer: 16 * 1024 * 1024, windowsHide:true });
       if (result.status !== 0) fail(`tar failed: ${(result.stderr || result.stdout || '').trim() || `exit ${result.status}`}`);
     }
     await assertExtractedTree(staging);

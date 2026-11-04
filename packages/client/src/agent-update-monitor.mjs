@@ -117,6 +117,7 @@ export function createAgentUpdateMonitor({ options, serverUrl, queueEvent, getRu
       const updateArgs = updateInvocationArgs(decision, options.trustRuntime === true);
       const child = spawn(process.execPath, [cli, ...updateArgs], {
         detached: true,
+        windowsHide: true,
         // The updater's own output is the only record of why an install failed, so it is piped back
         // into this agent's log instead of being discarded.
         stdio: ['ignore', 'pipe', 'pipe'],

@@ -27,7 +27,7 @@ function ripgrep() {
   if (process.env.REMCP_RUNTIME_FORCE_FALLBACK === '1') return null;
   if (ripgrepPath !== undefined) return ripgrepPath;
   try {
-    const result = spawnSync('rg', ['--version'], { encoding: 'utf8' });
+    const result = spawnSync('rg', ['--version'], { encoding: 'utf8', windowsHide:true });
     ripgrepPath = !result.error && result.status === 0 ? 'rg' : null;
   } catch { ripgrepPath = null; }
   return ripgrepPath;
@@ -200,7 +200,7 @@ function runRipgrep(session, { target, pattern, searchType, filePattern, ignoreC
     if (contextLines) args.push('-C', String(contextLines));
     args.push('--', pattern, searchTarget);
   }
-  const child = spawn(ripgrep(), args, { stdio: ['ignore', 'pipe', 'pipe'] });
+  const child = spawn(ripgrep(), args, { stdio: ['ignore', 'pipe', 'pipe'], windowsHide:true });
   session.cancel = () => child.kill('SIGTERM');
   let buffer = '';
   let stderr = '';

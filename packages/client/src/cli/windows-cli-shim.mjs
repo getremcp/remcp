@@ -71,3 +71,65 @@ export function preferWindowsCmdShim(prefix) {
   fs.unlinkSync(powershell);
   return true;
 }
+
+
+// An older auto-updater can install a newer client without running that newer
+// client's post-npm shim cleanup. Repair the canonical npm-owned shadow at
+// agent startup so a Windows account using Restricted PowerShell remains usable.
+// Do not touch arbitrary prefixes, custom scripts, links or nonstandard shims.
+export const WINDOWS_NPM_CMD_SHIM = String.raw`@ECHO off
+GOTO start
+:find_dp0
+SET dp0=%~dp0
+EXIT /b
+:start
+SETLOCAL
+CALL :find_dp0
+
+IF EXIST "%dp0%\node.exe" (
+  SET "_prog=%dp0%\node.exe"
+) ELSE (
+  SET "_prog=node"
+  SET PATHEXT=%PATHEXT:;.JS;=;%
+)
+
+endLocal & goto #_undefined_# 2>NUL || title %COMSPEC% & "%_prog%"  "%dp0%\node_modules\@remcp\remcp\bin\remcp.mjs" %*
+`;
+
+function sameCanonicalFile(actual, expected) {
+  if (!actual || !expected) return false;
+  const same = (a, b) => path.resolve(a).toLowerCase() === path.resolve(b).toLowerCase();
+  try {
+    return same(actual, expected) && same(fs.realpathSync(actual), expected)
+      && same(fs.realpathSync(expected), expected);
+  } catch { return false; }
+}
+
+export function repairManagedWindowsPowerShellShimOnStart({
+  platform = process.platform,
+  localAppData = process.env.LOCALAPPDATA,
+  nodePath = process.execPath,
+  cliEntry = process.argv[1],
+} = {}) {
+  if (platform !== 'win32' || !localAppData || !path.isAbsolute(localAppData)) return false;
+  const prefix = path.join(localAppData, 'ReMCP', 'runtime');
+  const expectedNode = path.join(prefix, 'node.exe');
+  const expectedCli = path.join(prefix, 'node_modules', '@remcp', 'remcp', 'bin', 'remcp.mjs');
+  if (!sameCanonicalFile(nodePath, expectedNode) || !sameCanonicalFile(cliEntry, expectedCli)) return false;
+
+  const directory = fs.lstatSync(prefix);
+  if (!directory.isDirectory() || directory.isSymbolicLink()) {
+    throw new Error('Refusing Windows launcher self-repair outside a real managed runtime directory');
+  }
+  if (!assertWindowsNpmPowerShellShimOwned(prefix)) return false;
+  const cmdPath = path.join(prefix, 'remcp.cmd');
+  const cmdStat = fs.lstatSync(cmdPath);
+  if (!cmdStat.isFile() || cmdStat.isSymbolicLink()) {
+    throw new Error('Refusing Windows launcher self-repair without a trusted batch shim');
+  }
+  const cmdBody = fs.readFileSync(cmdPath, 'utf8');
+  if (normalizedShim(cmdBody) !== normalizedShim(WINDOWS_NPM_CMD_SHIM)) {
+    throw new Error('Refusing Windows launcher self-repair for an unrecognized batch shim');
+  }
+  return preferWindowsCmdShim(prefix);
+}

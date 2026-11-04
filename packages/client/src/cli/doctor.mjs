@@ -108,7 +108,7 @@ export function runtimeAllowedRoots() {
 }
 
 export function installedVersion(packageName) {
-  const prefix = spawnSync(npm.command, [...npm.args, 'prefix', '--global'], { encoding: 'utf8' });
+  const prefix = spawnSync(npm.command, [...npm.args, 'prefix', '--global'], { encoding: 'utf8', windowsHide: true });
   if (prefix.error || prefix.status !== 0) return null;
   const manifest = path.join(String(prefix.stdout || '').trim(), 'lib', 'node_modules', ...packageName.split('/'), 'package.json');
   try { return JSON.parse(fs.readFileSync(manifest, 'utf8')).version || null; } catch { return null; }

@@ -135,8 +135,8 @@ export async function takeScreenshotTool(args) {
       }
       if (!await pathExists(file)) {
         for (const candidate of SCREENSHOT_COMMANDS) {
-          if (spawnSync('which', [candidate.command], { encoding: 'utf8' }).status !== 0) continue;
-          const result = spawnSync(candidate.command, candidate.args(file), { encoding: 'utf8', timeout: 30000 });
+          if (spawnSync('which', [candidate.command], { encoding: 'utf8', windowsHide:true }).status !== 0) continue;
+          const result = spawnSync(candidate.command, candidate.args(file), { encoding: 'utf8', timeout: 30000, windowsHide:true });
           if (result.status === 0 && await pathExists(file)) break;
           attempts.push(`${candidate.command}: ${(result.stderr || '').trim() || ('exit ' + result.status)}`);
         }

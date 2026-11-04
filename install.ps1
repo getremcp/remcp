@@ -266,6 +266,50 @@ exit $ret
   Remove-Item -LiteralPath $ps1 -Force -ErrorAction Stop
 }
 
+# Do not allocate a console during installation or legacy task cleanup.
+function Invoke-ReMCPQuietNative {
+  param([string]$Binary, [string]$Arguments)
+  $start = New-Object System.Diagnostics.ProcessStartInfo
+  $start.FileName = $Binary; $start.Arguments = $Arguments
+  $start.UseShellExecute = $false; $start.CreateNoWindow = $true
+  $start.WindowStyle = [System.Diagnostics.ProcessWindowStyle]::Hidden
+  $child = New-Object System.Diagnostics.Process
+  $child.StartInfo = $start
+  try {
+    if (!$child.Start()) { throw 'ReMCP could not start a hidden native process.' }
+    $child.WaitForExit()
+    return $child.ExitCode
+  } finally { $child.Dispose() }
+}
+
+function Invoke-ReMCPStagedNpm {
+  param(
+    [Parameter(Mandatory=$true)][string]$Node,
+    [Parameter(Mandatory=$true)][string]$NpmCli,
+    [Parameter(Mandatory=$true)][string]$ClientSpec,
+    [Parameter(Mandatory=$true)][string]$RuntimeSpec
+  )
+  if (!(Test-Path -LiteralPath $Node -PathType Leaf) -or
+      !(Test-Path -LiteralPath $NpmCli -PathType Leaf) -or $NpmCli.Contains('"')) {
+    throw 'The staged ReMCP Node/npm executable is missing or invalid.'
+  }
+  if ($ClientSpec -notmatch '^@remcp/remcp@\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$' -or
+      $RuntimeSpec -notmatch '^@remcp/runtime@\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$') {
+    throw 'ReMCP refused an invalid package spec before launching npm.'
+  }
+  $npmArguments = '"' + $NpmCli + '" install --global ' + $ClientSpec + ' ' + $RuntimeSpec +
+    ' --no-audit --no-fund --ignore-scripts --loglevel=error'
+  $exitCode = Invoke-ReMCPQuietNative -Binary $Node -Arguments $npmArguments
+  if ($exitCode -ne 0) { throw "ReMCP installation failed with exit code $exitCode." }
+}
+
+function Invoke-ReMCPLegacyTask {
+  param([ValidateSet('End','Run')][string]$Action)
+  $exe = Join-Path $env:SystemRoot 'System32\schtasks.exe'
+  if (!(Test-Path -LiteralPath $exe -PathType Leaf)) { throw 'Windows Task Scheduler utility is missing.' }
+  $null = Invoke-ReMCPQuietNative -Binary $exe -Arguments ('/' + $Action + ' /TN "ReMCP Agent"')
+}
+
 function Initialize-ReMCPStage {
   param(
     [Parameter(Mandatory=$true)][string]$Destination,
@@ -308,13 +352,11 @@ function Initialize-ReMCPStage {
     try {
       $env:NPM_CONFIG_PREFIX = $Destination
       $env:Path = "$Destination;$oldPath"
-      $npm = Join-Path $Destination 'npm.cmd'
+      $npmCli = Join-Path $Destination 'node_modules\npm\bin\npm-cli.js'
       $clientSpec = [string]$Release.cli
       $runtimeSpec = [string]$Release.runtime
-      & $npm install --global $clientSpec $runtimeSpec --no-audit --no-fund --ignore-scripts --loglevel=error
-      if ($LASTEXITCODE -ne 0) {
-        throw "ReMCP installation failed with exit code $LASTEXITCODE."
-      }
+      Invoke-ReMCPStagedNpm -Node (Join-Path $Destination 'node.exe') -NpmCli $npmCli `
+        -ClientSpec $clientSpec -RuntimeSpec $runtimeSpec
     } finally {
       $env:NPM_CONFIG_PREFIX = $oldPrefix
       $env:Path = $oldPath
@@ -364,11 +406,11 @@ function Write-ReMCPWrapper {
 
 function Restore-ReMCPBackup {
   if (!(Test-Path -LiteralPath $backup -PathType Container)) { return $false }
-  try { schtasks.exe /End /TN 'ReMCP Agent' 2>$null | Out-Null } catch {}
+  try { Invoke-ReMCPLegacyTask -Action End } catch {}
   Remove-Item -LiteralPath $runtimeDir -Recurse -Force -ErrorAction SilentlyContinue
   Move-Item -LiteralPath $backup -Destination $runtimeDir -Force
   Write-ReMCPWrapper
-  try { schtasks.exe /Run /TN 'ReMCP Agent' 2>$null | Out-Null } catch {}
+  try { Invoke-ReMCPLegacyTask -Action Run } catch {}
   return $true
 }
 
@@ -394,7 +436,7 @@ if (!(Test-ReMCPRelease -Directory $runtimeDir -Release $release)) {
 
   # Only stop a running agent after the complete replacement has downloaded, installed and passed
   # verification. The offline window is therefore just two local directory moves.
-  try { schtasks.exe /End /TN 'ReMCP Agent' 2>$null | Out-Null } catch {}
+  try { Invoke-ReMCPLegacyTask -Action End } catch {}
   Remove-Item -LiteralPath $backup -Recurse -Force -ErrorAction SilentlyContinue
   if (Test-Path -LiteralPath $runtimeDir -PathType Container) {
     Move-Item -LiteralPath $runtimeDir -Destination $backup -Force

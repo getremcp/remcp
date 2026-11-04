@@ -17,6 +17,7 @@ import { auditKnownInstallations } from './cli/installation-audit.mjs';
 import { scheduleMacTemperatureRepair } from './cli/mac-native-temperature.mjs';
 import { guardSupervisorDisconnect } from './cli/supervised-agent-lifecycle.mjs';
 import { repairMacTemperatureAfterStart } from './cli/npm-global.mjs';
+import { repairManagedWindowsPowerShellShimOnStart } from './cli/windows-cli-shim.mjs';
 import { run } from './cli/shell.mjs';
 import { updateCommand } from './cli/update.mjs';
 function fetchConfiguredServer(url, options) {
@@ -165,6 +166,13 @@ export async function main(argv = process.argv.slice(2)) {
       || Boolean(process.env.INVOCATION_ID)
       || String(process.env.XPC_SERVICE_NAME || '').includes('com.remcp.agent');
     const cfg = rememberCurrentInstallation(loadConfig(), { service:supervised });
+    if (process.platform === 'win32') {
+      try { repairManagedWindowsPowerShellShimOnStart(); }
+      catch (error) {
+        // Never take a paired device offline because an old launcher is custom or unreadable.
+        console.error(`ReMCP Windows PowerShell launcher self-repair skipped: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
     // A service can start from an absolute fnm/nvm Node path even when an interactive macOS shell
     // cannot resolve the npm-global `remcp` binary. Refresh the stable user shim on every start so
     // an auto-update repairs the next Terminal session without requiring a manual PATH edit.

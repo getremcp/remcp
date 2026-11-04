@@ -62,13 +62,13 @@ export function resolveNpm({ nodePath = process.execPath, home = os.homedir(), p
 
 // The version npm itself reports, or null when it cannot be executed at all.
 export function npmVersion(resolved = resolveNpm()) {
-  const result = spawnSync(resolved.command, [...resolved.args, '--version'], { encoding: 'utf8', timeout: 15000 });
+  const result = spawnSync(resolved.command, [...resolved.args, '--version'], { encoding: 'utf8', timeout: 15000, windowsHide: true });
   if (result.error || result.status !== 0) {
     // A login shell may still find npm (nvm and Homebrew write their PATH into the profile).
-    const shell = process.platform === 'win32' ? null : spawnSync('/bin/sh', ['-lc', 'command -v npm'], { encoding: 'utf8', timeout: 15000 });
+    const shell = process.platform === 'win32' ? null : spawnSync('/bin/sh', ['-lc', 'command -v npm'], { encoding: 'utf8', timeout: 15000, windowsHide: true });
     const found = String(shell?.stdout || '').trim().split('\n').pop();
     if (found && existsSync(found)) {
-      const retry = spawnSync(found, ['--version'], { encoding: 'utf8', timeout: 15000 });
+      const retry = spawnSync(found, ['--version'], { encoding: 'utf8', timeout: 15000, windowsHide: true });
       if (!retry.error && retry.status === 0) return { version: String(retry.stdout).trim(), source: found };
     }
     return null;
@@ -79,5 +79,5 @@ export function npmVersion(resolved = resolveNpm()) {
 // Runs npm with the resolved command, so callers never depend on PATH.
 export function npmRun(args, { encoding = 'utf8', stdio = 'inherit' } = {}) {
   const resolved = resolveNpm();
-  return spawnSync(resolved.command, [...resolved.args, ...args], { encoding, stdio });
+  return spawnSync(resolved.command, [...resolved.args, ...args], { encoding, stdio, windowsHide: true });
 }
