@@ -1,4 +1,5 @@
 import { msaaBrowserSnapshot, windowsUiRootScript } from './desktop-windows-msaa.mjs';
+import { quoteWindowsArgument } from './windows-argv.mjs';
 import path from 'node:path';
 import process from 'node:process';
 
@@ -75,7 +76,8 @@ public static class RM {
    if(target!=0&&current!=target)attachTarget=AttachThreadInput(current,target,true);
    if(foreground!=0&&current!=foreground&&foreground!=target)attachForeground=AttachThreadInput(current,foreground,true);
    ShowWindow(h,9);AllowSetForegroundWindow(-1);BringWindowToTop(h);
-   SetWindowPos(h,new IntPtr(-1),0,0,0,0,0x0001|0x0002|0x0010|0x0040);
+   // HWND_TOP preserves the window's existing topmost status.
+   SetWindowPos(h,IntPtr.Zero,0,0,0,0,0x0001|0x0002|0x0010|0x0040);
    return SetForegroundWindow(h);
   }finally{
    if(attachForeground)AttachThreadInput(current,foreground,false);
@@ -445,8 +447,8 @@ export async function notification(args = {}) {
 
 export async function launchApp(app,argv=[],options={}) {
   const query=escapePowerShellSingle(String(app));
-  const argsText=argv.map(v=>`'${escapePowerShellSingle(v)}'`).join(',');
-  const argumentClause=argv.length?`-ArgumentList @(${argsText})`:'';
+  const argsText=escapePowerShellSingle(argv.map(quoteWindowsArgument).join(' '));
+  const argumentClause=argv.length?`-ArgumentList '${argsText}'`:'';
   const hasArgs=argv.length?'$true':'$false';
   const cwd=options.cwd?escapePowerShellSingle(String(options.cwd)):'';
   const hasCwd=cwd?'$true':'$false';

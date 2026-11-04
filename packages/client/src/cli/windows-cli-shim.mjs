@@ -5,6 +5,41 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+// Exact npm cmd-shim template; partial markers cannot establish ownership.
+export const WINDOWS_NPM_POWERSHELL_SHIM = String.raw`#!/usr/bin/env pwsh
+$basedir=Split-Path $MyInvocation.MyCommand.Definition -Parent
+
+$exe=""
+if ($PSVersionTable.PSVersion -lt "6.0" -or $IsWindows) {
+  # Fix case when both the Windows and Linux builds of Node
+  # are installed in the same directory
+  $exe=".exe"
+}
+$ret=0
+if (Test-Path "$basedir/node$exe") {
+  # Support pipeline input
+  if ($MyInvocation.ExpectingInput) {
+    $input | & "$basedir/node$exe"  "$basedir/node_modules/@remcp/remcp/bin/remcp.mjs" $args
+  } else {
+    & "$basedir/node$exe"  "$basedir/node_modules/@remcp/remcp/bin/remcp.mjs" $args
+  }
+  $ret=$LASTEXITCODE
+} else {
+  # Support pipeline input
+  if ($MyInvocation.ExpectingInput) {
+    $input | & "node$exe"  "$basedir/node_modules/@remcp/remcp/bin/remcp.mjs" $args
+  } else {
+    & "node$exe"  "$basedir/node_modules/@remcp/remcp/bin/remcp.mjs" $args
+  }
+  $ret=$LASTEXITCODE
+}
+exit $ret
+`;
+
+function normalizedShim(text) {
+  return text.replace(/^\uFEFF/, '').replace(/\r\n/g, '\n').replace(/\n+$/, '');
+}
+
 export function assertWindowsNpmPowerShellShimOwned(prefix) {
   const powershell = path.join(prefix, 'remcp.ps1');
   let metadata;
@@ -14,8 +49,7 @@ export function assertWindowsNpmPowerShellShimOwned(prefix) {
     throw new Error('Refusing to replace an unknown ReMCP PowerShell launcher');
   }
   const contents = fs.readFileSync(powershell, 'utf8');
-  if (contents.length > 16000 || !contents.startsWith('#!/usr/bin/env pwsh')
-    || !contents.includes('$basedir/node_modules/@remcp/remcp/bin/remcp.mjs')) {
+  if (contents.length > 16000 || normalizedShim(contents) !== normalizedShim(WINDOWS_NPM_POWERSHELL_SHIM)) {
     throw new Error('Refusing to remove a non-npm ReMCP PowerShell launcher');
   }
   return true;

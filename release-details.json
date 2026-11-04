@@ -1,10 +1,11 @@
 {
-  "version": "0.2.229",
-  "title": "Keep agents reconnecting and preserve safe Windows command launchers.",
+  "version": "0.2.230",
+  "title": "Keep Windows upgrades recoverable and Linux trash operations safe across filesystems.",
   "changes": [
-    "Retain the relay reconnect timer after failed WebSocket handshakes so the agent cannot exit before its next retry; clear it on explicit shutdown.",
-    "Prefer the trusted npm-generated remcp.cmd launcher on Windows when a recognizable npm remcp.ps1 would be blocked by PowerShell script execution policy.",
-    "Refuse to delete or overwrite custom/symlinked PowerShell launchers and reject installations lacking a valid .cmd launcher before changing package files; never change system ExecutionPolicy or pairing credentials.",
-    "Cover real reconnect failures, shutdown, installer repair, Windows x64 and ARM64 command-resolution behavior, and public-client parity with native and cross-platform regression tests."
+    "Refuse to replace a customized PowerShell launcher before staging or swapping an existing Windows installation; preserve it intact on failure.",
+    "Recognize only the complete canonical npm PowerShell launcher when deciding whether to remove its shadow of the verified cmd launcher.",
+    "Permit repairing a missing Windows batch launcher during an otherwise verified npm-owned upgrade.",
+    "Move Linux directories to a source-local, guarded trash directory when the home trash is on a different filesystem; preserve the original cross-filesystem behavior for regular files.",
+    "Keep previous Windows argv, focus, reconnect and event-log fixes; cover Linux cross-device and native Windows installer scenarios with regression tests."
   ]
 }

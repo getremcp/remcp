@@ -5,14 +5,15 @@ import * as diagnostics from '../src/extended/diagnostics.mjs';
 import * as platform from '../src/extended/diagnostics-platform.mjs';
 import * as audio from '../src/extended/diagnostics-audio.mjs';
 
-test('all original diagnostics exports survive the module split', () => {
-  const originalExports = [
+test('diagnostics preserves its exports and explicit event-log script helpers', () => {
+  const expectedExports = [
     'POWER_ACTION_MAX_DELAY_SECONDS',
     'audioTool', 'compactNetworkSummary', 'diagnosticHandlers',
+    'buildWindowsEventLogScript',
     'environmentTool', 'eventLog', 'filterMacosTcpListeners',
     'gnomeScreencastCandidate', 'gnomeScreencastSupported',
     'installedApps', 'installedAppsPayload', 'linuxListenerBackend',
-    'macosLaunchctlDomain', 'networkTool', 'normalizeInstalledApp',
+    'macosEventLogPredicate', 'macosLaunchctlDomain', 'networkTool', 'normalizeInstalledApp',
     'normalizePowerActionDelay', 'parseAmixerAudioStatus',
     'parseAvfoundationScreenInput', 'parseInstalledAppsTsv',
     'parsePactlAudioStatus', 'parseWpctlAudioStatus', 'powerAction',
@@ -21,7 +22,7 @@ test('all original diagnostics exports survive the module split', () => {
     'validateRecordingDestinationFormat', 'waitForPowerActionDelay',
     'windowsAudioPowerShell', 'windowsInstalledAppsPowerShell',
   ];
-  assert.deepEqual(Object.keys(diagnostics).sort(), originalExports.sort());
+  assert.deepEqual(Object.keys(diagnostics).sort(), expectedExports.sort());
   const implementationNames = [
     ...Object.keys(platform), ...Object.keys(audio),
   ];

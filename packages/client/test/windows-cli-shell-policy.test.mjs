@@ -5,12 +5,12 @@ import { existsSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
-import { assertWindowsNpmPowerShellShimOwned, preferWindowsCmdShim } from '../src/cli/windows-cli-shim.mjs';
+import { assertWindowsNpmPowerShellShimOwned, preferWindowsCmdShim, WINDOWS_NPM_POWERSHELL_SHIM } from '../src/cli/windows-cli-shim.mjs';
 
 const privateInstaller = new URL('../public/install.ps1', import.meta.url);
 const installer = fs.readFileSync(existsSync(privateInstaller)
   ? privateInstaller : new URL('../../../install.ps1', import.meta.url), 'utf8');
-const npmShim = '#!/usr/bin/env pwsh\n$basedir=Split-Path $MyInvocation.MyCommand.Definition -Parent\n& "$basedir/node_modules/@remcp/remcp/bin/remcp.mjs" $args\n';
+const npmShim = WINDOWS_NPM_POWERSHELL_SHIM;
 
 function fixture(t, { cli = true, powershell = npmShim } = {}) {
   const prefix = fs.mkdtempSync(path.join(os.tmpdir(), 'remcp-cli-policy-'));
@@ -32,6 +32,15 @@ test('unexpected custom PowerShell shim must remain untouched', t => {
   const prefix = fixture(t, { powershell:'Write-Output "CUSTOM SCRIPT"\n' });
   assert.throws(() => preferWindowsCmdShim(prefix), /non-npm/);
   assert.equal(fs.readFileSync(path.join(prefix, 'remcp.ps1'), 'utf8'), 'Write-Output "CUSTOM SCRIPT"\n');
+});
+
+test('a modified npm shim remains user-owned even when its original markers survive', t => {
+  for (const custom of [npmShim + 'Write-Output "USER CUSTOMIZATION"\n', npmShim.replace('$basedir=', 'Write-Output "USER"\n$basedir=')]) {
+    const prefix = fixture(t, { powershell: custom });
+    assert.throws(() => assertWindowsNpmPowerShellShimOwned(prefix), /non-npm/);
+    assert.throws(() => preferWindowsCmdShim(prefix), /non-npm/);
+    assert.equal(fs.readFileSync(path.join(prefix, 'remcp.ps1'), 'utf8'), custom);
+  }
 });
 
 test('a missing batch launcher refuses removal of the working script', t => {
@@ -63,7 +72,7 @@ test('Windows update and install reject a custom shim before npm or rollback fil
   fs.mkdirSync(prefix, { recursive:true });
   fs.mkdirSync(bin);
   fs.writeFileSync(path.join(prefix, 'remcp.cmd'), '@echo original');
-  const custom = 'Write-Output "CUSTOM LAUNCHER"\n';
+  const custom = npmShim + 'Write-Output "CUSTOM LAUNCHER"\n';
   fs.writeFileSync(path.join(prefix, 'remcp.ps1'), custom);
   const marker = path.join(root, 'npm-invoked');
   const npmStub = path.join(bin, 'npm');

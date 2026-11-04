@@ -334,14 +334,28 @@ export async function moveToTrashTool(args) {
       destination = trash;
     } catch { destination = null; }
   }
-  if (!destination) destination = path.join(path.dirname(source), '.remcp-trash');
-  const existingDestination = await lstat(destination).catch(() => null);
-  if (existingDestination?.isSymbolicLink()) fail('Refusing to use a symlink as the trash directory');
-  if (existingDestination && !existingDestination.isDirectory()) fail('Trash destination is not a directory');
-  await ensureDirectoryPath(destination);
-  destination = await resolveSafePath(destination, 'trash');
-  const destinationInfo = await lstat(destination);
-  if (!destinationInfo.isDirectory() || destinationInfo.isSymbolicLink()) fail('Refusing to use a symlink as the trash directory');
+  const localTrash = path.join(path.dirname(source), '.remcp-trash');
+  if (!destination) destination = localTrash;
+  const prepareTrash = async candidate => {
+    const existing = await lstat(candidate).catch(() => null);
+    if (existing?.isSymbolicLink()) fail('Refusing to use a symlink as the trash directory');
+    if (existing && !existing.isDirectory()) fail('Trash destination is not a directory');
+    await ensureDirectoryPath(candidate);
+    const safe = await resolveSafePath(candidate, 'trash');
+    const info = await lstat(safe);
+    if (!info.isDirectory() || info.isSymbolicLink()) fail('Refusing to use a symlink as the trash directory');
+    return { path: safe, device: info.dev };
+  };
+  const sourceInfo = await lstat(source).catch(() => fail(`Path not found: ${displayPath(source)}`));
+  if (sourceInfo.isSymbolicLink()) fail('source cannot be a symbolic link');
+  let prepared = await prepareTrash(destination);
+  // A same-volume rename keeps an entire directory recoverable without copying it.
+  // If the home trash is on another filesystem, use a guarded sibling trash.
+  if (prepared.device !== sourceInfo.dev && sourceInfo.isDirectory()) {
+    prepared = await prepareTrash(localTrash);
+    if (prepared.device !== sourceInfo.dev) fail('No writable trash directory on the source filesystem');
+  }
+  destination = prepared.path;
   const stamp = new Date().toISOString().replace(/[:.]/g, '-');
   let target = path.join(destination, `${stamp}-${path.basename(source)}`);
   let counter = 1;

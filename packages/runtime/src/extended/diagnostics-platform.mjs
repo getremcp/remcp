@@ -98,21 +98,36 @@ export async function serviceTool(args) {
   return text(`${policy?.note ? `${policy.note}\n` : ''}${action} requested for service ${name}.`);
 }
 
+// Windows Get-WinEvent raises NoMatchingEventsFound (and exits nonzero) when a
+// bounded time range has no events. Empty logs are not failed diagnostics, but
+// access denied/invalid log queries must still fail closed.
+export function buildWindowsEventLogScript({ log, seconds, filter, limit }) {
+  const safeLog = escapePowerShellSingle(log);
+  const where = filter ? ` | Where-Object { $_.Message -like '*${escapePowerShellSingle(filter)}*' -or $_.ProviderName -like '*${escapePowerShellSingle(filter)}*' }` : '';
+  const pipeline = `Get-WinEvent -FilterHashtable @{LogName='${safeLog}';StartTime=(Get-Date).AddSeconds(-${seconds})} -ErrorAction Stop${where} | Select-Object -First ${limit} TimeCreated,Id,LevelDisplayName,ProviderName,Message | ConvertTo-Json -Compress -Depth 3`;
+  return `try { ${pipeline} } catch { if ([string]$_.FullyQualifiedErrorId -like 'NoMatchingEventsFound,*') { '[]' } else { throw } }`;
+}
+
+// Unified log records the invocation of `/usr/bin/log show` itself, whose
+// arguments contain the sought text. Exclude that self-generated event.
+export function macosEventLogPredicate(filter) {
+  return `eventMessage CONTAINS[c] ${JSON.stringify(filter)} AND process != "log"`;
+}
+
 export async function eventLog(args) {
   const limit = clamp(args.limit, 200, 1, 5000);
   const since = durationSpec(args.since);
   const filter = optionalString(args.filter || args.query);
   if (process.platform === 'win32') {
-    const log = escapePowerShellSingle(optionalString(args.log) || 'System');
+    const log = optionalString(args.log) || 'System';
     const n = Number.parseInt(since, 10), unit = since.at(-1);
     const seconds = n * ({ s:1, m:60, h:3600, d:86400 }[unit] || 60);
-    const where = filter ? ` | Where-Object { $_.Message -like '*${escapePowerShellSingle(filter)}*' -or $_.ProviderName -like '*${escapePowerShellSingle(filter)}*' }` : '';
-    const script = `Get-WinEvent -FilterHashtable @{LogName='${log}';StartTime=(Get-Date).AddSeconds(-${seconds})} -ErrorAction SilentlyContinue${where} | Select-Object -First ${limit} TimeCreated,Id,LevelDisplayName,ProviderName,Message | ConvertTo-Json -Compress -Depth 3`;
+    const script = buildWindowsEventLogScript({ log, seconds, filter, limit });
     return text((await runPowerShell(script, { label: 'event log', timeout: 30_000 })).stdout.trim() || '[]');
   }
   if (process.platform === 'darwin') {
     const argv = ['show','--last',since,'--style','ndjson'];
-    if (filter) argv.push('--predicate', `eventMessage CONTAINS[c] ${JSON.stringify(filter)}`);
+    if (filter) argv.push('--predicate', macosEventLogPredicate(filter));
     const { stdout } = await runFileHeadLines('/usr/bin/log', argv, limit, { label: 'macOS unified log', timeout: 30_000, maxBuffer: 4 * 1024 * 1024 });
     return text(stdout);
   }

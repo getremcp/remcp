@@ -215,7 +215,7 @@ function Test-ReMCPRelease {
 }
 
 function Remove-ReMCPNpmPowerShellShadow {
-  param([Parameter(Mandatory=$true)][string]$Directory)
+  param([Parameter(Mandatory=$true)][string]$Directory, [switch]$CheckOnly)
   $ps1 = Join-Path $Directory 'remcp.ps1'
   if (!(Test-Path -LiteralPath $ps1)) { return }
   $item = Get-Item -LiteralPath $ps1 -ErrorAction Stop
@@ -223,10 +223,41 @@ function Remove-ReMCPNpmPowerShellShadow {
     throw 'ReMCP refuses to remove an unknown PowerShell launcher.'
   }
   $body = [IO.File]::ReadAllText($ps1)
-  if ($body.Length -gt 16000 -or !$body.StartsWith('#!/usr/bin/env pwsh') -or
-      !$body.Contains('$basedir/node_modules/@remcp/remcp/bin/remcp.mjs')) {
+  $expected = @'
+#!/usr/bin/env pwsh
+$basedir=Split-Path $MyInvocation.MyCommand.Definition -Parent
+
+$exe=""
+if ($PSVersionTable.PSVersion -lt "6.0" -or $IsWindows) {
+  # Fix case when both the Windows and Linux builds of Node
+  # are installed in the same directory
+  $exe=".exe"
+}
+$ret=0
+if (Test-Path "$basedir/node$exe") {
+  # Support pipeline input
+  if ($MyInvocation.ExpectingInput) {
+    $input | & "$basedir/node$exe"  "$basedir/node_modules/@remcp/remcp/bin/remcp.mjs" $args
+  } else {
+    & "$basedir/node$exe"  "$basedir/node_modules/@remcp/remcp/bin/remcp.mjs" $args
+  }
+  $ret=$LASTEXITCODE
+} else {
+  # Support pipeline input
+  if ($MyInvocation.ExpectingInput) {
+    $input | & "node$exe"  "$basedir/node_modules/@remcp/remcp/bin/remcp.mjs" $args
+  } else {
+    & "node$exe"  "$basedir/node_modules/@remcp/remcp/bin/remcp.mjs" $args
+  }
+  $ret=$LASTEXITCODE
+}
+exit $ret
+'@
+  $normalized = $body.Replace("`r`n", "`n").TrimEnd([char[]]"`r`n")
+  if ($body.Length -gt 16000 -or $normalized -cne $expected.Replace("`r`n", "`n").TrimEnd([char[]]"`r`n")) {
     throw 'ReMCP refuses to remove a non-npm PowerShell launcher.'
   }
+  if ($CheckOnly) { return }
   if (!(Test-Path -LiteralPath (Join-Path $Directory 'remcp.cmd') -PathType Leaf)) {
     throw 'ReMCP cannot prefer the cmd launcher: remcp.cmd is missing.'
   }
@@ -356,6 +387,9 @@ if (!(Test-Path -LiteralPath $runtimeDir -PathType Container) -and (Test-Path -L
 $release = Get-ReMCPRelease
 $swapped = $false
 if (!(Test-ReMCPRelease -Directory $runtimeDir -Release $release)) {
+  # A successful swap deletes its rollback copy. Refuse user launchers before
+  # staging or moving the old runtime; validation must not remove its npm shim.
+  Remove-ReMCPNpmPowerShellShadow -Directory $runtimeDir -CheckOnly
   Initialize-ReMCPStage -Destination $staged -Release $release
 
   # Only stop a running agent after the complete replacement has downloaded, installed and passed
