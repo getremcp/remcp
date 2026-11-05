@@ -44,7 +44,7 @@ function printHelp() {
 }
 
 // The running agent snapshots update policy at startup. A saved toggle alone does not
-// change its six-hour polling loop, so reload a managed service after a policy change.
+// change its per-device polling schedule, so reload a managed service after a policy change.
 // Defer Linux handoff to avoid terminating a remote command before it returns.
 export function applyAutoUpdatePreference(cfg, enabled, {
   persist = saveConfig,
@@ -219,7 +219,7 @@ export async function main(argv = process.argv.slice(2)) {
     const action = String(positional[0] || 'status').toLowerCase();
     const cfg = loadConfig(false) || {};
     if (action === 'status') {
-      console.log(JSON.stringify({ autoUpdate: autoUpdateEnabled(cfg), checkIntervalHours: 6 }, null, 2));
+      console.log(JSON.stringify({ autoUpdate: autoUpdateEnabled(cfg), checkIntervalHours: 0.5, fleetRolloutHours:24 }, null, 2));
       return;
     }
     if (['on', 'enable', 'off', 'disable'].includes(action)) {

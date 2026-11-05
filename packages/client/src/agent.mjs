@@ -8,6 +8,7 @@ import { localRuntimeEntry } from './agent-update.mjs';
 export { localRuntimeEntry, supervisorRestart, updateDecision } from './agent-update.mjs';
 import { normalizedServerUrl, sendRelayMessage, jitter, deviceMetrics } from './agent-utilities.mjs';
 import { createAgentUpdateMonitor, UPDATE_CHECK_INTERVAL_MS } from './agent-update-monitor.mjs';
+import { nextFleetManifestDelayMs } from './agent-update-rollout.mjs';
 import { createAgentResponder } from './agent-responder.mjs';
 import { createAgentRelayConnection } from './agent-relay-connection.mjs';
 import { createRuntimeCapabilities, normalizeRuntimeToolNames } from './agent-runtime-capabilities.mjs';
@@ -288,12 +289,20 @@ export async function runAgent(options) {
     }),
     respond, inFlight, sendMetricsSample, reportInstallOnce, flushTelemetry,
     checkForUpdate, schedulePostConnectUpdateChecks, clearPostConnectUpdateChecks, stop,
+    checkUpdatesOnConnect: Array.isArray(options.updateRecheckDelaysMs),
   });
 
   scheduleMetricsSample();
   const telemetryFlushTimer = setInterval(flushTelemetry, TELEMETRY_SEND_INTERVAL_MS);
   telemetryFlushTimer.unref?.();
-  const updateTimer = setInterval(() => void checkForUpdate(), UPDATE_CHECK_INTERVAL_MS);
+  // Spread 100k devices across the entire 30-minute manifest polling cycle.
+  // The stable device phase survives reconnects/restarts without local writes.
+  let recurringUpdateTimer = null;
+  const updateTimer = setTimeout(() => {
+    void checkForUpdate({ scheduled:true });
+    recurringUpdateTimer = setInterval(() => void checkForUpdate({ scheduled:true }), UPDATE_CHECK_INTERVAL_MS);
+    recurringUpdateTimer.unref?.();
+  }, nextFleetManifestDelayMs(deviceId, Date.now(), UPDATE_CHECK_INTERVAL_MS));
   updateTimer.unref?.();
 
   async function stop() {
@@ -305,7 +314,8 @@ export async function runAgent(options) {
     clearPostConnectUpdateChecks();
     if (telemetryTimer) clearTimeout(telemetryTimer);
     clearInterval(telemetryFlushTimer);
-    clearInterval(updateTimer);
+    clearTimeout(updateTimer);
+    if (recurringUpdateTimer) clearInterval(recurringUpdateTimer);
     for (const controller of inFlight.values()) controller.abort();
     activeSocket?.terminate();
     stopPromise = Promise.allSettled([mcp?.close(), transport?.close()]).then(results => {

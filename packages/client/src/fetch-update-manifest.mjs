@@ -29,6 +29,9 @@ export async function fetchUpdateManifest(url, {
       (async () => {
         const response = await fetchImpl(url, {
           redirect: 'error',
+          // Signals support for deterministic fleet rollout; old agents send
+          // plain fetch requests and use a shared Redis admission budget.
+          headers: { 'x-remcp-update-scheduler':'v1' },
           signal: controller.signal,
         });
         if (!response.ok) return null;

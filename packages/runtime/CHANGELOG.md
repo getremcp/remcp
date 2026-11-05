@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.235 — 2026-11-05
+
+- Publish the unchanged local runtime in lockstep with the fleet-aware 0.2.235 ReMCP agent update.
+- No additional runtime tools, permissions or protocol privileges; the update scheduling changes are client/backend coordination only.
+
 ## 0.2.234 — 2026-11-05
 
 - Publish the unchanged local runtime with the compatible 0.2.234 ReMCP agent update.

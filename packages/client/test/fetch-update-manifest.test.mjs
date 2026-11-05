@@ -10,12 +10,12 @@ test('returns a valid update manifest without losing its fields', async () => {
   const result = await fetchUpdateManifest(url, {
     timeoutMs: 250,
     fetchImpl: async (input, init) => {
-      request = { input, redirect: init.redirect };
+      request = { input, redirect: init.redirect, scheduler: init.headers?.['x-remcp-update-scheduler'] };
       return { ok: true, json: async () => advertised };
     },
   });
   assert.deepEqual(result, advertised);
-  assert.deepEqual(request, { input: url, redirect: 'error' });
+  assert.deepEqual(request, { input: url, redirect: 'error', scheduler:'v1' });
 });
 
 test('preserves no-update semantics for non-2xx responses', async () => {

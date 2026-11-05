@@ -3,6 +3,7 @@ import { spawn } from 'node:child_process';
 import process from 'node:process';
 import { VERSION } from './version.mjs';
 import { fetchUpdateManifest } from './fetch-update-manifest.mjs';
+import { updateRolloutEligibility } from './agent-update-rollout.mjs';
 import { globalCliEntry, globalInstalledVersion, isNewer, restartToApplyUpdate, updateDecision, updateInvocationArgs } from './agent-update.mjs';
 
 // Poll releases while connected too: relying on reconnect alone can leave a
@@ -11,7 +12,9 @@ export const UPDATE_CHECK_INTERVAL_MS = 30 * 60 * 1000;
 const UPDATE_CHECK_TIMEOUT_MS = 12000;
 // A flapping relay must not trigger update discovery on every successful reconnect.
 const UPDATE_CHECK_RECONNECT_GAP_MS = 30000;
-const POST_CONNECT_UPDATE_RECHECK_DELAYS_MS = Object.freeze([60_000, 5 * 60_000, 15 * 60_000]);
+// Fleet clients already have a per-device wall-clock polling phase. Avoid
+// bursty reconnect-triggered rechecks; explicit short QA fixtures may opt in.
+const POST_CONNECT_UPDATE_RECHECK_DELAYS_MS = Object.freeze([]);
 const POST_CONNECT_UPDATE_RECHECK_JITTER_MS = 30_000;
 const UPDATE_RETRY_COOLDOWN_MS = 30 * 60 * 1000;
 
@@ -99,6 +102,15 @@ export function createAgentUpdateMonitor({ options, serverUrl, queueEvent, getRu
         // proves convergence only after the replacement agent reconnects.
         queueEvent({ event: 'agent_update_available', at: observedAt, reason: decision.reason.slice(0, 32) });
       }
+      const eligible = updateRolloutEligibility({
+        deviceId: options.deviceId,
+        target: availabilityKey,
+        rollout: advertised.rollout,
+        // An explicitly raised minimum version or broken local runtime needs
+        // repair without the normal gradual fleet-release delay.
+        urgent: decision.reason === 'runtime-repair' || Boolean(minimum && isNewer(minimum, VERSION)),
+      }, observedAt);
+      if (!eligible.ready) return;
       const cli = resolveCli();
       if (!cli || !existsSync(cli)) {
         if (announce) console.error(`ReMCP ${target} is available; run: remcp update`);

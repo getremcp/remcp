@@ -1,11 +1,11 @@
 {
-  "version": "0.2.234",
-  "title": "Recover paired devices promptly after network changes and prevent stale relay sessions from disrupting active work.",
+  "version": "0.2.235",
+  "title": "Keep devices online during deployment and stagger automatic updates across large fleets.",
   "changes": [
-    "Probe relay WebSocket liveness from the client every 15 seconds and close silent half-open sessions before the operating system's TCP timeout.",
-    "Limit stalled opening handshakes to 12 seconds; retry transient proxy and captive-portal responses without overriding device revocation or workspace-disable controls.",
-    "Reject duplicate concurrent client connections and ignore obsolete socket events after a new session replaces an unsuccessful handshake.",
-    "Bound the agent's outbound WebSocket buffer to prevent uncontrolled memory growth on broken network links while retaining support for legitimate large runtime responses.",
-    "Verify reconnect, stale-close safety, duplicate connection prevention, timeout recovery, revocation and PostgreSQL-backed pairing in isolated regression tests; no new runtime permissions or MCP tools."
+    "Defer new agent updates throughout backend HA rollout and a bounded 10-minute post-deploy stabilization window, without blocking a subsequent deployment.",
+    "Spread each new automatic client/runtime upgrade across a deterministic 24-hour per-device release window, with a shared Redis epoch and server time to withstand reconnects and clock skew.",
+    "Distribute automatic version checks across per-device 30-minute cycles rather than creating a reconnect-triggered request storm.",
+    "Admit at most 120 legacy automatic update hints per minute across backend replicas, while leaving manual updates and urgent runtime repairs available.",
+    "Package the fleet scheduler and its regression tests with the public client, preserving exact-release source and npm-artifact parity."
   ]
 }

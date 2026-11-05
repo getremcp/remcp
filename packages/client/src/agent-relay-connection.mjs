@@ -18,6 +18,7 @@ export function createAgentRelayConnection({
   setSocket, getHelloState, respond, inFlight,
   sendMetricsSample, reportInstallOnce, flushTelemetry,
   checkForUpdate, schedulePostConnectUpdateChecks, clearPostConnectUpdateChecks, stop,
+  checkUpdatesOnConnect = false,
   heartbeatIntervalMs = HEARTBEAT_INTERVAL_MS, handshakeTimeoutMs = HANDSHAKE_TIMEOUT_MS,
 }) {
   let revoked = false;
@@ -163,7 +164,9 @@ export function createAgentRelayConnection({
       sendMetricsSample();
       reportInstallOnce();
       flushTelemetry();
-      void checkForUpdate();
+      // Normal fleet clients poll on a stable per-device phase, not all on
+      // every relay handshake. Explicit short QA rechecks retain hot-path coverage.
+      if (checkUpdatesOnConnect) void checkForUpdate();
       schedulePostConnectUpdateChecks();
     });
     ws.on('pong', () => { if (activeSocket === ws) awaitingPong = false; });
