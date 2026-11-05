@@ -9,6 +9,8 @@ import { nextDeployReconnect } from './agent-deploy-reconnect.mjs';
 const RECONNECT_BASE_MS = 2_000;
 const RECONNECT_FIRST_MS = 500;
 const RECONNECT_MAX_MS = 60_000;
+const HEARTBEAT_INTERVAL_MS = 15_000;
+const HANDSHAKE_TIMEOUT_MS = 12_000;
 // Higher-level agent owns runtime supervision/telemetry; this controller owns only relay transport.
 export function createAgentRelayConnection({
   agentUrl, serverUrl, deviceToken, deviceId, deviceName,
@@ -16,6 +18,7 @@ export function createAgentRelayConnection({
   setSocket, getHelloState, respond, inFlight,
   sendMetricsSample, reportInstallOnce, flushTelemetry,
   checkForUpdate, schedulePostConnectUpdateChecks, clearPostConnectUpdateChecks, stop,
+  heartbeatIntervalMs = HEARTBEAT_INTERVAL_MS, handshakeTimeoutMs = HANDSHAKE_TIMEOUT_MS,
 }) {
   let revoked = false;
   let reconnectTimer = null;
@@ -24,6 +27,13 @@ export function createAgentRelayConnection({
   let requestedReconnectReason = '';
   let connectedAt = 0;
   let rapidDeployDisconnects = 0;
+  // Timing overrides are used only by isolated transport regression tests.
+  const heartbeatInterval = Number.isFinite(heartbeatIntervalMs) && heartbeatIntervalMs >= 20
+    ? Math.min(60_000, Math.floor(heartbeatIntervalMs)) : HEARTBEAT_INTERVAL_MS;
+  const handshakeTimeout = Number.isFinite(handshakeTimeoutMs) && handshakeTimeoutMs >= 100
+    ? Math.min(120_000, Math.floor(handshakeTimeoutMs)) : HANDSHAKE_TIMEOUT_MS;
+  let clearActiveHeartbeat = () => {};
+  let activeSocket = null;
   function scheduleReconnect(delay) {
     if (isStopping() || revoked || reconnectTimer) return;
     // Keep the upper-bound guard in control flow immediately before the timer sink. CodeQL's
@@ -60,15 +70,35 @@ export function createAgentRelayConnection({
   }
 
   function connect() {
-    if (isStopping()) return;
+    if (isStopping() || revoked) return;
+    if (activeSocket && (activeSocket.readyState === WebSocket.OPEN ||
+      activeSocket.readyState === WebSocket.CONNECTING)) return;
     // The device token is intentionally sent only to the configured ReMCP relay during the
     // authenticated WebSocket handshake.
     // codeql[js/file-access-to-http]
-    const ws = new WebSocket(agentUrl, { headers: { Authorization: `Bearer ${deviceToken}` } });
+    const ws = new WebSocket(agentUrl, {
+      headers: { Authorization: `Bearer ${deviceToken}` },
+      handshakeTimeout,
+    });
+    activeSocket = ws;
+    let heartbeatTimer = null;
+    let awaitingPong = false;
+    function clearHeartbeat() {
+      if (heartbeatTimer) clearInterval(heartbeatTimer);
+      heartbeatTimer = null;
+    }
+    clearActiveHeartbeat = clearHeartbeat;
     // The ws client leaves cleanup/retry to the caller when an unexpected-response listener exists.
     // A temporary workspace pause therefore needs an explicit retry; otherwise the first 423 leaves
     // this WebSocket stuck in CONNECTING forever and turning the device back on cannot recover it.
     ws.on('unexpected-response', (request, response) => {
+      if (activeSocket !== ws) {
+        response.resume();
+        request.destroy();
+        return;
+      }
+      activeSocket = null;
+      setSocket(null);
       const handshakeRevoked = String(response.headers['x-remcp-revoked'] || '') === '1';
       const handshakeDisabled = String(response.headers['x-remcp-disabled'] || '') === '1';
       if (handshakeRevoked) revoked = true;
@@ -82,23 +112,42 @@ export function createAgentRelayConnection({
         scheduleReconnect(jitter(RECONNECT_BASE_MS));
         return;
       }
-      const status = Number(response.statusCode || 0);
-      const transientHandshakeFailure = status === 408 || status === 425 || status === 429 || (status >= 500 && status <= 599);
-      if (transientHandshakeFailure && !revoked) {
-        // A reverse proxy or relay deploy can refuse the HTTP upgrade before a WebSocket exists.
-        // With an unexpected-response listener the client does not reliably emit close afterwards,
-        // so this branch must schedule its own retry or a still-running agent can stay offline forever.
+      if (!revoked) {
+        // Even a captive-portal redirect or unexpected proxy rejection may be temporary.
+        // ws does not reliably emit close with an unexpected-response listener, so retry
+        // all non-revocation failures with bounded backoff rather than staying offline forever.
+        // The explicit revocation signal above remains final and cannot be bypassed.
         scheduleBackoffReconnect();
       }
     });
     setSocket(ws);
     ws.on('open', () => {
+      if (activeSocket !== ws || isStopping()) {
+        ws.terminate();
+        return;
+      }
       connectedAt = Date.now();
       if (reconnectTimer) {
         clearTimeout(reconnectTimer);
         reconnectTimer = null;
       }
       setReconnects(0);
+      // A network switch can strand a TCP/WebSocket session without close or error.
+      // Probe relay liveness client-side and terminate a stale socket to reconnect.
+      heartbeatTimer = setInterval(() => {
+        if (ws.readyState !== WebSocket.OPEN) return;
+        if (awaitingPong) {
+          console.error('ReMCP relay heartbeat timeout; terminating stale connection.');
+          ws.terminate();
+          return;
+        }
+        awaitingPong = true;
+        try { ws.ping(); } catch {
+          console.error('ReMCP relay ping failed; terminating stale connection.');
+          ws.terminate();
+        }
+      }, heartbeatInterval);
+      heartbeatTimer.unref?.();
       sendRelayMessage(ws, {
         type: 'hello',
         deviceId,
@@ -117,7 +166,9 @@ export function createAgentRelayConnection({
       void checkForUpdate();
       schedulePostConnectUpdateChecks();
     });
+    ws.on('pong', () => { if (activeSocket === ws) awaitingPong = false; });
     ws.on('message', raw => {
+      if (activeSocket !== ws) return;
       let message;
       try { message = JSON.parse(raw.toString()); } catch { return; }
       if (message?.type === 'reconnect') {
@@ -134,6 +185,10 @@ export function createAgentRelayConnection({
       }
     });
     ws.on('close', code => {
+      clearHeartbeat();
+      if (activeSocket !== ws) return;
+      activeSocket = null;
+      setSocket(null);
       clearPostConnectUpdateChecks();
       for (const controller of inFlight.values()) controller.abort();
       if (isStopping()) return;
@@ -173,6 +228,10 @@ export function createAgentRelayConnection({
 
   return {
     connect,
-    clearReconnect() { if (reconnectTimer) clearTimeout(reconnectTimer); reconnectTimer = null; },
+    clearReconnect() {
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      reconnectTimer = null;
+      clearActiveHeartbeat();
+    },
   };
 }

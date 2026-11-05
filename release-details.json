@@ -1,13 +1,11 @@
 {
-  "version": "0.2.233",
-  "title": "Ship owner-consented WebRTC desktop video and authenticated control, with verified Wayland startup recovery.",
+  "version": "0.2.234",
+  "title": "Recover paired devices promptly after network changes and prevent stale relay sessions from disrupting active work.",
   "changes": [
-    "Add the opt-in native Linux WebRTC media bridge and desktop_webrtc_offer, desktop_webrtc_heartbeat and desktop_webrtc_stop runtime tools for owner-approved, single-session desktop video; input remains on the authenticated device RPC path and is never authorized by media alone.",
-    "Require an explicit per-session site consent, owner-bound signaling, Redis-fenced admission and fail-closed Stop quarantine; public origins and multi-replica deployments remain disabled without the shared distributed lease.",
-    "Add the workspace Screen Preview module and opt-in WebRTC viewer/control UI; video grants no keyboard, pointer, clipboard or audio access by itself.",
-    "Discover GNOME Mutter display geometry for a real user-session bus when a managed Linux agent starts without graphical environment variables; do not invent displays or grant screen capture.",
-    "Import a narrowly allowlisted Wayland environment only after verifying the current-user runtime directory and socket; preserve explicit X11/TTY sessions.",
-    "Reject unsafe directory permissions, symlink aliases, stale session context and asynchronously changed graphical settings; retain fail-closed headless behavior.",
-    "Add deterministic Linux/extended-tool regressions and verify the public runtime projection and package contents on ASUS. Windows/macOS native release validation remains a gate."
+    "Probe relay WebSocket liveness from the client every 15 seconds and close silent half-open sessions before the operating system's TCP timeout.",
+    "Limit stalled opening handshakes to 12 seconds; retry transient proxy and captive-portal responses without overriding device revocation or workspace-disable controls.",
+    "Reject duplicate concurrent client connections and ignore obsolete socket events after a new session replaces an unsuccessful handshake.",
+    "Bound the agent's outbound WebSocket buffer to prevent uncontrolled memory growth on broken network links while retaining support for legitimate large runtime responses.",
+    "Verify reconnect, stale-close safety, duplicate connection prevention, timeout recovery, revocation and PostgreSQL-backed pairing in isolated regression tests; no new runtime permissions or MCP tools."
   ]
 }

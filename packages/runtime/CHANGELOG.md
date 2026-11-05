@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.234 — 2026-11-05
+
+- Publish the unchanged local runtime with the compatible 0.2.234 ReMCP agent update.
+- The agent reconnect and memory-bound transport improvements add no new runtime tools, device permissions or protocol privileges.
+
 ## 0.2.194 — 2026-10-28
 
 - Ship the unchanged 84-tool runtime alongside the compatible 0.2.194 ReMCP agent with terminal QR pairing.

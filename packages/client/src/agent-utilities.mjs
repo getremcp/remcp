@@ -12,8 +12,19 @@ export function normalizedServerUrl(value, { allowInsecure = false } = {}) {
   return url.href.replace(/\/$/, '');
 }
 
+// Above the maximum legal runtime response, but bounded so dead links cannot retain
+// unbounded telemetry or concurrent tool results in the agent process.
+export const MAX_RELAY_BUFFERED_BYTES = 64 * 1024 * 1024;
+
 export function sendRelayMessage(socket, message) {
   if (socket?.readyState !== 1) return false;
+  if (socket.bufferedAmount > MAX_RELAY_BUFFERED_BYTES) {
+    // The WebSocket can look OPEN after an interface switch while its TCP send queue
+    // cannot drain. Ending it lets the bounded reconnect loop restore delivery.
+    console.error('ReMCP relay outbound buffer saturated; reconnecting.');
+    socket.terminate?.();
+    return false;
+  }
   // The authenticated relay is ReMCP's explicit data boundary: model-requested tool results are
   // intentionally returned to the paired workspace and never to an arbitrary third-party URL.
   // codeql[js/file-access-to-http]
