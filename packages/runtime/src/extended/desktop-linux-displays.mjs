@@ -29,8 +29,8 @@ export function unwrapDbus(value) {
   return value;
 }
 
-export async function mutterDisplayInventory() {
-  if (!isWaylandSession()) return null;
+export async function mutterDisplayInventory({ allowUnknownSession = false } = {}) {
+  if (!allowUnknownSession && !isWaylandSession()) return null;
   let dbus;
   try { dbus = await import('@jellybrick/dbus-next'); } catch { return null; }
   const bus = dbus.sessionBus();
@@ -231,6 +231,16 @@ export async function resolveLinuxDisplayInventory({
         if (rows.length) return rows;
       }
     }
+  }
+
+  // A systemd user agent can start before GNOME exports DISPLAY and
+  // XDG_SESSION_TYPE to its service. The authenticated user bus still
+  // exposes Mutter's real geometry; do not guess coordinates or use XTEST.
+  if (!wayland && !env.DISPLAY && !env.WAYLAND_DISPLAY
+      && !env.XDG_SESSION_TYPE
+      && env.DBUS_SESSION_BUS_ADDRESS && env.XDG_RUNTIME_DIR) {
+    const mutter = await mutterProbe({ allowUnknownSession:true }).catch(() => null);
+    if (Array.isArray(mutter) && mutter.length) return mutter;
   }
 
   if (commandExistsFn('xrandr')) {

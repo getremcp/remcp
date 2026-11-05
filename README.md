@@ -255,7 +255,7 @@ For source-linked developer documentation alongside local computer access, combi
 with, [DesktopCommanderMCP](https://github.com/wonderwhy-er/DesktopCommanderMCP) or any other MCP
 server.
 
-**84 granular device operations, 10 hosted production definitions.** Current production advertises 8 device-facing façade tools plus 2 account/fleet tools, all model-visible. If custom widgets are explicitly re-enabled, discovery expands to 15 definitions by adding 5 app-only UI helpers. See the generated **[full tool reference](docs/TOOLS.md)** for every current façade and its operation list.
+**87 granular device operations, 10 hosted production definitions.** Current production advertises 8 device-facing façade tools plus 2 account/fleet tools, all model-visible. If custom widgets are explicitly re-enabled, discovery expands to 15 definitions by adding 5 app-only UI helpers. See the generated **[full tool reference](docs/TOOLS.md)** for every current façade and its operation list.
 
 **Device runtime surface:**
 
@@ -275,7 +275,7 @@ server.
 | Diagnostics | `service`, `event_log`, `network`, `installed_apps`, `environment`, `audio`, `power_action`, `record_screen` |
 | Documents | `read_document`, `edit_spreadsheet`, `edit_document`, `pdf_action` |
 
-The hosted ReMCP endpoint currently advertises **10 model-visible tools** with `REMCP_CUSTOM_WIDGETS_ENABLED=false`; no app-only render/save/refresh helpers or `structuredContent.preview` references are exposed. The compact surface routes to all 84 granular runtime operations, and 101 compatibility names remain callable for cached clients without inflating discovery for new models. If widgets are explicitly re-enabled later, the hosted catalog expands to 15 definitions and 106 compatibility names. Each online device returned by `list_devices` reports its live supported subset, and unavailable operations fail closed.
+The hosted ReMCP endpoint currently advertises **10 model-visible tools** with `REMCP_CUSTOM_WIDGETS_ENABLED=false`; no app-only render/save/refresh helpers or `structuredContent.preview` references are exposed. The compact surface routes to all 87 granular runtime operations, and 101 compatibility names remain callable for cached clients without inflating discovery for new models. If widgets are explicitly re-enabled later, the hosted catalog expands to 15 definitions and 106 compatibility names. Each online device returned by `list_devices` reports its live supported subset, and unavailable operations fail closed.
 
 ### Tool selection for AI agents
 

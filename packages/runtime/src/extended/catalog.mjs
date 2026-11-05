@@ -12,8 +12,10 @@ import { waylandPortalCandidate } from '../wayland-remote-desktop.mjs';
 import { commandExists, desktopSessionAvailable, runFile } from './common.mjs';
 import { desktopHandlers } from './desktop.mjs';
 import { displayInventoryAvailable, regionScreenshotBackends } from './desktop-linux.mjs';
+import { hydrateLinuxDesktopEnv } from './desktop-linux-session-env.mjs';
 import { diagnosticHandlers, gnomeScreencastSupported, recordScreenAvailable } from './diagnostics.mjs';
 import { documentHandlers } from './documents.mjs';
+import { desktopWebRtcHandlers, webRtcWorkerAvailable } from './desktop-webrtc-bridge.mjs';
 
 function define(name, title, description, inputSchema, annotations, handler, requires = []) {
   const enriched = enrichSchemaDescriptions(inputSchema);
@@ -157,6 +159,12 @@ export const extendedToolDefinitions = [
   define('clipboard', 'Clipboard', 'Read, write, or clear the system text clipboard using native operating-system clipboard facilities.', o({ action:e(['read','write','clear']), text:s('Text to write.') }, ['action']), mutating, desktopHandlers.clipboard, ['clipboard']),
   define('display_inventory', 'Display inventory', 'List connected displays/monitors and their geometry and primary-display status using native display tools.', o(), readOnlyLive, desktopHandlers.display_inventory, ['displays']),
   define('screenshot_region', 'Screenshot region', 'Capture a desktop rectangle, a selected top-level window, or a selected monitor and return it as an inline PNG. This avoids full-desktop screenshots when only one UI area matters.', o({ x:n(), y:n(), width:n(), height:n(), window_id:s('Window id returned by list_windows.'), pid:n(), app:s(), title:s(), monitor:s('Monitor name substring, or "primary".'), monitor_index:n('Zero-based monitor index from display_inventory.'), padding:n('Optional pixels added around the resolved rectangle; 0..200.') }), readOnlyLive, desktopHandlers.screenshot_region, ['screen_region']),
+  define('desktop_webrtc_offer', 'WebRTC desktop offer (dev only)', 'Use this only after the device owner explicitly requests a live view-only session: negotiate one OS-consented video stream with the installed local aiortc worker. No embedded HTTP server, clipboard or input.',
+    o({session_id:s('Server-issued UUID.'),mode:e(['view'],'One-way view-only media. Input control uses the separate authenticated device RPC route.'),sdp:s('ICE-complete video-only SDP offer.')},['session_id','mode','sdp']),mutatingNonDestructive,desktopWebRtcHandlers.desktop_webrtc_offer,['webrtc_pilot']),
+  define('desktop_webrtc_heartbeat', 'WebRTC video heartbeat (dev only)', 'Use this only to extend the existing authorized WebRTC video session; it cannot start capture or grant input.',
+    o({session_id:s('Existing session UUID.')},['session_id']),mutatingNonDestructive,desktopWebRtcHandlers.desktop_webrtc_heartbeat,['webrtc_pilot']),
+  define('desktop_webrtc_stop', 'WebRTC video stop (dev only)', 'Use this when the user or host must end the matching WebRTC video session and release its peer, GStreamer stream and OS ScreenCast grant.',
+    o({session_id:s('Existing session UUID.')},['session_id']),mutatingNonDestructive,desktopWebRtcHandlers.desktop_webrtc_stop,['webrtc_pilot']),
   define('open_path', 'Open path', 'Open a permitted local file or directory in its system-associated desktop application. Filesystem confinement is checked before opening.', o({ path:s('File or directory to open.') }, ['path']), additive, desktopHandlers.open_path, ['desktop_open']),
   define('reveal_path', 'Reveal path', 'Reveal a permitted local file or directory in Finder, Explorer, or the Linux file manager after applying ReMCP filesystem confinement.', o({ path:s('File or directory to reveal.') }, ['path']), additive, desktopHandlers.reveal_path, ['desktop_open']),
   define('notification', 'Desktop notification', 'Show a native desktop notification or user-visible popup on the paired computer.', o({ title:s(), message:s('Notification message.'), timeout_seconds:n() }, ['message']), additive, desktopHandlers.notification, ['notifications']),
@@ -250,6 +258,7 @@ export async function capabilitySnapshot() {
   const win = process.platform === 'win32';
   const mac = process.platform === 'darwin';
   const linux = process.platform === 'linux';
+  if(linux)await hydrateLinuxDesktopEnv();
   const desktopShellCapabilities = desktopShellCapabilitySnapshot();
   const desktopSession = desktopShellCapabilities.desktop_session;
   const pyAtSpi = linux && desktopSession ? await linuxHasPyAtSpi() : false;
@@ -263,6 +272,7 @@ export async function capabilitySnapshot() {
   const documentCapabilities = documentCapabilitySnapshot();
   return {
     ...desktopShellCapabilities,
+    webrtc_pilot:linux && desktopSession && webRtcWorkerAvailable(),
     windows: win || mac || (desktopSession && (commandExists('wdotool') || commandExists('wmctrl') || (wayland && pyAtSpi))),
     ui: win || mac || (desktopSession && pyAtSpi),
     input: win || mac || (desktopSession && (portalInput || x11Input || (wayland && commandExists('wtype')))),

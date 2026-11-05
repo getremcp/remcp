@@ -11,3 +11,10 @@ bd8597c6f8a07c6742a3e86a9d54f1c350215006:test/drain.test.mjs:generic-api-key:33
 b7867aa62cd9d01d3806a69afce1ffae23aeb72c:test/byok-providers.test.mjs:generic-api-key:14
 # Worktree-only fingerprint for the same unchanged deterministic drain-test placeholder (history fingerprints above).
 test/drain.test.mjs:generic-api-key:33
+
+# Strictly scoped historical false positives, introduced in private PR #2103.
+# Both are deterministic, nonfunctional "whsec_synthetic_*" webhook fixtures
+# for signature-verification tests. No real Stripe API/webhook key appears here.
+# Keep exact SHA/path/rule/line; never blanket-ignore Stripe credentials.
+6d3aff8bb0461df204587d3d6650b4347e71a616:test/stripe-billing.test.mjs:generic-api-key:11
+6d3aff8bb0461df204587d3d6650b4347e71a616:test/stripe-billing-postgres.test.mjs:generic-api-key:22

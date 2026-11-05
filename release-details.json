@@ -1,11 +1,13 @@
 {
-  "version": "0.2.232",
-  "title": "Keep Windows installs, background updates, and agent startups free of extra console windows.",
+  "version": "0.2.233",
+  "title": "Ship owner-consented WebRTC desktop video and authenticated control, with verified Wayland startup recovery.",
   "changes": [
-    "Hide the Windows console for detached update handoff, pinned npm execution, Task Scheduler checks, and agent diagnostics; preserve non-Windows subprocess behavior.",
-    "Launch staged Windows Node/npm directly with CreateNoWindow rather than a visible npm.cmd shell, including paths with spaces and Unicode characters.",
-    "Keep runtime search, archive operations, and screenshot command probes from flashing additional CMD windows.",
-    "On startup, repair only verified npm-generated PowerShell launchers that shadow the existing trusted remcp.cmd, without changing ExecutionPolicy, custom scripts, pairing credentials, or active services.",
-    "Add native Windows x64/ARM64 regression coverage for hidden console windows, installer exit codes, malicious package specs, and safe launcher ownership; retain versioned public-first release gates."
+    "Add the opt-in native Linux WebRTC media bridge and desktop_webrtc_offer, desktop_webrtc_heartbeat and desktop_webrtc_stop runtime tools for owner-approved, single-session desktop video; input remains on the authenticated device RPC path and is never authorized by media alone.",
+    "Require an explicit per-session site consent, owner-bound signaling, Redis-fenced admission and fail-closed Stop quarantine; public origins and multi-replica deployments remain disabled without the shared distributed lease.",
+    "Add the workspace Screen Preview module and opt-in WebRTC viewer/control UI; video grants no keyboard, pointer, clipboard or audio access by itself.",
+    "Discover GNOME Mutter display geometry for a real user-session bus when a managed Linux agent starts without graphical environment variables; do not invent displays or grant screen capture.",
+    "Import a narrowly allowlisted Wayland environment only after verifying the current-user runtime directory and socket; preserve explicit X11/TTY sessions.",
+    "Reject unsafe directory permissions, symlink aliases, stale session context and asynchronously changed graphical settings; retain fail-closed headless behavior.",
+    "Add deterministic Linux/extended-tool regressions and verify the public runtime projection and package contents on ASUS. Windows/macOS native release validation remains a gate."
   ]
 }

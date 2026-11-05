@@ -20,6 +20,7 @@ const EXPECTED = [
   'computer_snapshot','computer_action','list_windows','window_action','launch_app',
   'ui_snapshot','ui_find','ui_action','type_text','keyboard','pointer','drag_drop',
   'scroll','wait_for_ui','clipboard','display_inventory','screenshot_region',
+  'desktop_webrtc_offer','desktop_webrtc_heartbeat','desktop_webrtc_stop',
   'open_path','reveal_path','notification',
   'browser_tabs','browser_navigate','browser_snapshot','browser_find','browser_action',
   'browser_wait','browser_devtools','browser_evaluate',
