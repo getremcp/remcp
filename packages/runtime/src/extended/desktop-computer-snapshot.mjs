@@ -8,6 +8,7 @@ import { clamp, desktopSessionAvailable, jsonResult, optionalString, requireEnum
 import * as linux from './desktop-linux.mjs';
 import * as macos from './desktop-macos.mjs';
 import * as windows from './desktop-windows.mjs';
+import { windowsDesktopSessionStatus } from './desktop-windows-session.mjs';
 import { browserAction, browserCapabilityAvailable, browserSnapshot } from './browser.mjs';
 import { probeBrowserReadiness } from './browser-readiness.mjs';
 import { findOcrText, ocrImage } from './ocr.mjs';
@@ -43,8 +44,19 @@ export async function settleComputerSnapshotProbes(tasks, {
   return results;
 }
 
-export async function computerSnapshot(args = {}) {
-  const desktopAvailable = desktopSessionAvailable();
+export async function resolveComputerDesktopSession({
+  platform = process.platform,
+  available = desktopSessionAvailable(),
+  windowsProbe = windowsDesktopSessionStatus,
+} = {}) {
+  if (!available) return { status:'unavailable', available:false, reason:'no_graphical_session' };
+  if (platform !== 'win32') return { status:'available', available:true };
+  return windowsProbe();
+}
+
+export async function computerSnapshot(args = {}, { desktopSessionProbe = resolveComputerDesktopSession } = {}) {
+  const desktopSession = await desktopSessionProbe();
+  const desktopAvailable = desktopSession.available !== false;
   const screenshotRequested = args.include_screenshot !== false || args.include_ocr === true;
   const captureScreenshot = desktopAvailable && screenshotRequested;
   const includeUi = args.include_ui !== false;
@@ -86,7 +98,7 @@ export async function computerSnapshot(args = {}) {
     shapeErrors.push({ source:'cursor', message:'cursor position returned an invalid result shape' });
   }
   const parsedUi = includeUi ? parse(uiResult, null) : null;
-  const ui = objectRecord(parsedUi) || { platform:process.platform, count:0, nodes:[], ...(includeUi ? { unavailable:true } : { skipped:true }) };
+  const ui = objectRecord(parsedUi) || { platform:process.platform, count:0, nodes:[], ...(includeUi ? { unavailable:true, ...(desktopSession.available === false ? { reason:desktopSession.reason } : {}) } : { skipped:true }) };
   if (includeUi && parsedUi !== ui && parsedUi != null) {
     shapeErrors.push({ source:'ui', message:'accessibility snapshot returned an invalid result shape' });
   }
@@ -208,6 +220,7 @@ export async function computerSnapshot(args = {}) {
     device: { hostname: os.hostname(), platform: process.platform, arch: process.arch },
     platform: process.platform,
     hostname: os.hostname(),
+    desktop_session:desktopSession,
     active_app: activeApp,
     active_window: activeWindow,
     windows,
@@ -218,6 +231,7 @@ export async function computerSnapshot(args = {}) {
     ...(args.browser_readiness === true ? { browser_readiness:readiness || { status:'invalid_response', ready:false, candidate_pages:0, next_step:'use_native_accessibility' } } : {}),
     ...(ocr ? { ocr } : {}),
     fallback_chain: {
+      desktop_session:desktopSession,
       accessibility: { requested:includeUi, available:includeUi && desktopAvailable && uiResult.status === 'fulfilled' && Boolean(uiResult.value), nodes:uiNodes.length },
       native_browser_dom: {
         requested:includeUi && args.ui_browser_dom === true,

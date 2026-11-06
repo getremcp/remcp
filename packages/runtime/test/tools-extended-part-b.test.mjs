@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { chmodSync, existsSync, mkdirSync, readFileSync, statSync, symlinkSync, truncateSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { homedir } from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { body, freshWorkspace, isError, waitFor } from './helpers.mjs';
 import { applyLiveConfig, liveConfig } from '../src/config.mjs';
@@ -90,7 +91,7 @@ test('move_to_trash keeps the data and refuses to lose it', async () => {
   const result = body(await invokeTool('move_to_trash', { source: target }));
   assert.match(result, /Moved/);
   const moved = result.match(/to (\S+)\./)[1];
-  const absolute = moved.startsWith('~/') ? join(process.env.HOME, moved.slice(2)) : moved;
+  const absolute = moved.startsWith('~/') ? join(homedir(), moved.slice(2)) : moved;
   assert.equal(readFileSync(absolute, 'utf8'), 'recoverable\n');
   assert.equal(isError(await invokeTool('move_to_trash', { source: target })), true);
 });

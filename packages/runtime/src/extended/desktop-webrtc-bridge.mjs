@@ -34,9 +34,16 @@ export function webRtcWorkerAvailable(env=process.env,platform=process.platform)
 export function createDesktopWebRtcBridge({
   env=process.env,platform=process.platform,spawnChild=spawn,
   now=Date.now,setIntervalFn=setInterval,clearIntervalFn=clearInterval,
+  stopExitTimeoutMs=5_000,terminationEscalationMs=3_000,
 }={}){
+  if(!Number.isSafeInteger(stopExitTimeoutMs)||stopExitTimeoutMs<100||
+     stopExitTimeoutMs>10_000||
+     !Number.isSafeInteger(terminationEscalationMs)||
+     terminationEscalationMs<100||terminationEscalationMs>10_000)
+    throw new RangeError('Invalid WebRTC native Stop exit deadline');
   let child=null, current=null, active=false, started=0, seen=0;
-  let stdout='', sequence=0, clock=null;
+  let stdout='', sequence=0, clock=null, pendingExit=null;
+  let lastExitedSession=null;
   const waits=new Map();
 
   function rejectWaits(){
@@ -46,14 +53,45 @@ export function createDesktopWebRtcBridge({
     }
     waits.clear();
   }
-  function shutdown(){
+  // A SIGTERM request or stdio Stop ACK is NOT evidence of process exit.
+  // Hold a local admission fence until the kernel reports the child exit.
+  // This covers the direct child only, not escaped descendants: production
+  // still requires separate verified process-tree containment.
+  function shutdown(alreadyExited=false){
     if(clock){clearIntervalFn(clock);clock=null;}
-    const target=child;
+    const target=child,session=current;
     child=null;current=null;active=false;stdout='';
     rejectWaits();
-    if(target&&!target.killed){
-      try{target.stdin.end();target.kill('SIGTERM');}catch{}
+    if(!target)return pendingExit?.promise??Promise.resolve(false);
+    let confirmExit;
+    const exited=new Promise(resolve=>{confirmExit=resolve;});
+    const marker={target,promise:exited};
+    pendingExit=marker;
+    let escalation;
+    const onExit=()=>{
+      target.removeListener('exit',onExit);
+      if(escalation)clearTimeout(escalation);
+      if(pendingExit===marker)pendingExit=null;
+      lastExitedSession=session;
+      confirmExit(true);
+    };
+    target.once('exit',onExit);
+    if(alreadyExited||target.exitCode!==null&&target.exitCode!==undefined||
+       target.signalCode!==null&&target.signalCode!==undefined){
+      onExit();
+    }else{
+      // Only signal the child spawned by this bridge. SIGKILL is a bounded
+      // escalation, not a Stop proof: never release the fence without exit.
+      escalation=setTimeout(()=>{
+        if(pendingExit!==marker)return;
+        try{target.kill('SIGKILL');}catch{}
+      },terminationEscalationMs);
+      escalation.unref?.();
+      if(!target.killed){
+        try{target.stdin.end();target.kill('SIGTERM');}catch{}
+      }
     }
+    return exited;
   }
   function receive(chunk){
     stdout+=chunk.toString('utf8');
@@ -140,14 +178,16 @@ export function createDesktopWebRtcBridge({
     child=worker;stdout='';
     worker.stdout.on('data',chunk=>{if(child===worker)receive(chunk);});
     worker.once('error',()=>{if(child===worker)shutdown();});
-    worker.once('exit',()=>{if(child===worker)shutdown();});
+    worker.once('exit',()=>{if(child===worker)shutdown(true);});
   }
 
   async function offer({session_id:sid,mode,sdp},extra={}){
     if(!UUID.test(String(sid))||mode!=='view'||typeof sdp!=='string'||
        Buffer.byteLength(sdp)>MAX_SDP||sdp.length<100)
       throw new Error('Invalid view-only WebRTC offer');
-    if(current!==null||child)throw new Error('Another WebRTC session is active');
+    if(current!==null||child||pendingExit)
+      throw new Error('Another WebRTC session is active');
+    lastExitedSession=null;
     current=sid;started=seen=now();active=false;
     let cancelled=false;
     const cancel=()=>{cancelled=true;shutdown();};
@@ -189,10 +229,19 @@ export function createDesktopWebRtcBridge({
     try{
       const reply=await send('stop',sid,{},4000);
       if(reply.sessionId!==sid)throw new Error('Invalid WebRTC stop acknowledgement');
-      return jsonResult({ok:true,sessionId:sid});
-    }finally{shutdown();}
+    }catch(error){shutdown();throw error;}
+    const exited=shutdown();
+    let timer;
+    const confirmed=lastExitedSession===sid||await Promise.race([
+      exited,
+      new Promise(resolve=>{timer=setTimeout(()=>resolve(false),stopExitTimeoutMs);}),
+    ]).finally(()=>clearTimeout(timer));
+    if(!confirmed)
+      throw new Error('WebRTC worker Stop unconfirmed: native process still running');
+    return jsonResult({ok:true,sessionId:sid});
   }
-  return {offer,heartbeat,stop,shutdown,
+  // Do not expose the internal alreadyExited override to callers.
+  return {offer,heartbeat,stop,shutdown:()=>shutdown(),
     get activeSession(){return current;},
   };
 }

@@ -18,3 +18,11 @@ test/drain.test.mjs:generic-api-key:33
 # Keep exact SHA/path/rule/line; never blanket-ignore Stripe credentials.
 6d3aff8bb0461df204587d3d6650b4347e71a616:test/stripe-billing.test.mjs:generic-api-key:11
 6d3aff8bb0461df204587d3d6650b4347e71a616:test/stripe-billing-postgres.test.mjs:generic-api-key:22
+
+# Historical deterministic, non-credential heartbeat test nonce in PR #2219.
+# Ignore only the original commit/path/rule/line; future findings stay enabled.
+6c86619a5698bc20f395cf713bd0e85b39ba4031:web/scripts/qa-utm-viewer-heartbeat.test.cjs:generic-api-key:6
+
+# Synthetic whsec_synthetic_fixture_123456789 used exclusively by billing mock tests
+# in PR #2217. Allowlist only that historical commit/path/rule/line (not real keys).
+28a59dedca843b800aa51c16342bd1aae574cad4:test/helpers/stripe-billing-fixture.mjs:generic-api-key:9

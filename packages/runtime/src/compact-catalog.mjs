@@ -1,5 +1,6 @@
-import { TEXT_OUTPUT_SCHEMA, supportedCoreTools, toolDefinitions } from './catalog.mjs';
-import { advertisedExtendedTools, extendedToolDefinitions } from './extended/catalog.mjs';
+import { TEXT_OUTPUT_SCHEMA, toolDefinitions } from './catalog.mjs';
+import { extendedToolDefinitions } from './extended/catalog.mjs';
+import { supportedRuntimeToolDefinitions } from './tool-availability.mjs';
 
 export const compactRuntimeGroups = Object.freeze({
   manage_files: Object.freeze([
@@ -126,11 +127,8 @@ function groupedDefinition(name, members) {
 }
 
 export async function supportedRuntimeOperationNames() {
-  const supportedExtended = new Set((await advertisedExtendedTools()).map(tool => tool.name));
-  return new Set([
-    ...supportedCoreTools().map(tool => tool.name),
-    ...extendedToolDefinitions.filter(tool => supportedExtended.has(tool.name)).map(tool => tool.name),
-  ]);
+  const { core, extended } = await supportedRuntimeToolDefinitions();
+  return new Set([...core, ...extended].map(tool => tool.name));
 }
 
 export async function compactRuntimeToolDefinitions() {

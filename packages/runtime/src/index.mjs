@@ -2,8 +2,9 @@
 import process from 'node:process';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import { advertisedTools as advertisedCoreTools, supportedCoreTools, toolDefinitions as coreToolDefinitions } from './catalog.mjs';
-import { allExtendedTools, advertisedExtendedTools, extendedToolDefinitions } from './extended/catalog.mjs';
+import { advertisedTools as advertisedCoreTools, toolDefinitions as coreToolDefinitions } from './catalog.mjs';
+import { allExtendedTools, extendedToolDefinitions } from './extended/catalog.mjs';
+import { supportedRuntimeToolDefinitions } from './tool-availability.mjs';
 import { describeConfig, configurationError, runtimeConfigDir } from './config.mjs';
 import { shutdownSessions, startSessionSweeper } from './sessions.mjs';
 import { flush, setTelemetrySink, shutdownTelemetry, telemetryEnabled } from './telemetry.mjs';
@@ -13,7 +14,8 @@ const args = process.argv.slice(2);
 const allToolDefinitions = [...coreToolDefinitions, ...extendedToolDefinitions];
 
 async function advertisedRuntimeTools() {
-  return [...supportedCoreTools(), ...await advertisedExtendedTools()];
+  const { core, extended } = await supportedRuntimeToolDefinitions();
+  return [...core, ...extended];
 }
 
 async function writeStdout(value) {

@@ -1,6 +1,7 @@
 import process from 'node:process';
-import { supportedCoreTools, toolDefinitions, TEXT_OUTPUT_SCHEMA } from './catalog.mjs';
-import { advertisedExtendedTools, extendedToolDefinitions } from './extended/catalog.mjs';
+import { toolDefinitions, TEXT_OUTPUT_SCHEMA } from './catalog.mjs';
+import { extendedToolDefinitions } from './extended/catalog.mjs';
+import { supportedRuntimeToolDefinitions } from './tool-availability.mjs';
 import { invokeTool } from './invoke.mjs';
 
 const DEFAULT_CAPABILITY_POLL_MS = 3000;
@@ -26,10 +27,8 @@ export async function startRuntimeMcpServer({ version, instructions, onError = (
     import('@modelcontextprotocol/server/stdio'),
   ]);
 
-  const initiallySupported = new Set([
-    ...supportedCoreTools().map(tool => tool.name),
-    ...(await advertisedExtendedTools()).map(tool => tool.name),
-  ]);
+  const initial = await supportedRuntimeToolDefinitions();
+  const initiallySupported = new Set([...initial.core, ...initial.extended].map(tool => tool.name));
   let activeServer = null;
   let capabilityTimer = null;
   let capabilityPollRunning = false;
@@ -69,9 +68,10 @@ export async function startRuntimeMcpServer({ version, instructions, onError = (
       if (closed || capabilityPollRunning) return;
       capabilityPollRunning = true;
       try {
-        const next = new Set((await advertisedExtendedTools()).map(tool => tool.name));
+        const updated = await supportedRuntimeToolDefinitions();
+        const next = new Set([...updated.core, ...updated.extended].map(tool => tool.name));
         let changed = false;
-        for (const definition of extendedToolDefinitions) {
+        for (const definition of [...toolDefinitions, ...extendedToolDefinitions]) {
           const before = lastSupported.has(definition.name);
           const after = next.has(definition.name);
           if (before === after) continue;

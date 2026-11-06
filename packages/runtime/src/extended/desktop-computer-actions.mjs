@@ -16,6 +16,7 @@ import { clipboard, displayInventory, keyboard, listWindows, notification, point
 import { dragDrop, launchApp, openPath, revealPath, typeText, uiFind, waitForUi } from './desktop-ui-actions.mjs';
 import { clickOcrText } from './desktop-vision.mjs';
 import { computerSnapshot } from './desktop-computer-snapshot.mjs';
+import { assertWindowsInteractiveDesktop, guardWindowsDesktopTool } from './desktop-windows-session.mjs';
 
 export function browserComputerAction(args, action) {
   const mapped = {
@@ -367,4 +368,41 @@ export const desktopHandlers = {
   open_path: openPath,
   reveal_path: revealPath,
   notification,
+};
+
+// Explicit browser-only actions and non-UI waits remain usable with no Windows
+// desktop. Auto-targeted actions may need native input, so they fail closed.
+// Mixed batches must not execute early browser steps before later unsafe native
+// operations are rejected.
+export function computerActionRequiresDesktop(args = {}) {
+  const action = String(args?.action || '');
+  const target = String(args?.target || args?.target_type || 'auto');
+  if (action === 'wait') return false;
+  if (action === 'batch') {
+    return !Array.isArray(args.steps) || args.steps.some(computerActionRequiresDesktop);
+  }
+  if (action === 'keyboard') {
+    return !(target === 'browser' && args.key && !args.shortcut && !Array.isArray(args.keys));
+  }
+  if (['ui','pointer','window','drag','clipboard','launch_app','open_path',
+    'reveal_path','notification','multi_select','multi_edit','double_click',
+    'right_click','move','down','up','minimize','maximize','restore',
+    'move_resize','resize','close'].includes(action)) return true;
+  return target !== 'browser';
+}
+
+// Keep native desktop tools unavailable in Windows Session 0 without blocking
+// terminal, filesystem and explicitly browser-targeted CDP actions.
+const nativeDesktopTools = [
+  'list_windows', 'window_action', 'launch_app', 'ui_snapshot', 'ui_find',
+  'ui_action', 'type_text', 'keyboard', 'pointer', 'drag_drop', 'scroll',
+  'wait_for_ui', 'clipboard', 'display_inventory', 'screenshot_region',
+  'open_path', 'reveal_path', 'notification',
+];
+for (const name of nativeDesktopTools) {
+  desktopHandlers[name] = guardWindowsDesktopTool(desktopHandlers[name]);
+}
+desktopHandlers.computer_action = async (args = {}) => {
+  if (computerActionRequiresDesktop(args)) await assertWindowsInteractiveDesktop();
+  return computerAction(args);
 };

@@ -20,7 +20,7 @@ async function waitFor(predicate, timeout = 15000) {
 for (const originallyTopmost of [false, true]) {
   test(`Windows focus preserves topmost=${originallyTopmost}`, {
     skip: process.platform !== 'win32', timeout: 90000,
-  }, async () => {
+  }, async t => {
     const root = await mkdtemp(path.join(os.tmpdir(), 'remcp-window-focus-'));
     const ready = path.join(root, 'ready.json');
     const script = `
@@ -70,8 +70,20 @@ public static class FocusStyleProbe {
         return stdout.trim() === 'True';
       };
       assert.equal(await isTopmost(), originallyTopmost, 'fixture must start in its requested z-order band');
-      await windowAction({ action: 'focus', id });
-      assert.equal(await isTopmost(), originallyTopmost, 'focusing must preserve the window topmost flag');
+      let foregroundDenied = false;
+      try {
+        await windowAction({ action: 'focus', id });
+      } catch (error) {
+        // Windows may deny foreground activation to a remote/non-foreground QA
+        // process. Never report focus as successful or skip any other error.
+        if (!/Windows refused foreground focus/.test(String(error))) throw error;
+        foregroundDenied = true;
+      }
+      assert.equal(await isTopmost(), originallyTopmost,
+        'focus attempts must preserve the window topmost flag even when Windows denies foreground access');
+      if (foregroundDenied) {
+        t.skip('Windows denied foreground activation; topmost preserved, positive focus unverified');
+      }
     } finally {
       if (child.exitCode === null && child.signalCode === null) {
         try { await windowAction({ action: 'close', ...(id ? { id } : { pid: child.pid }) }); } catch {}

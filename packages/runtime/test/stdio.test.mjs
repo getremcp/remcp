@@ -195,6 +195,14 @@ test('runtime negotiates MCP 2026-07-28 and delivers subscription-based tool cha
     assert.equal(await waitUntil(() => changes.some(change =>
       !change.error && Array.isArray(change.tools) && change.tools.some(tool => tool.name === 'browser_tabs')
     )), true, 'modern subscriptions/listen should receive browser tool appearance');
+    assert.equal(changes.length, 1,
+      'modern subscriptions/listen should get one atomic update for the browser capability group');
+    const appearedNames = new Set(changes[0].tools.map(tool => tool.name));
+    const initialNames = new Set(initial.tools.map(tool => tool.name));
+    assert.ok([...initialNames].every(name => appearedNames.has(name)),
+      'native and system tools must stay advertised when browser tools appear');
+    assert.ok([...appearedNames].some(name => name.startsWith('browser_') && !initialNames.has(name)),
+      'browser capability group must appear in the same update');
 
     await new Promise(resolve => server.close(resolve));
     server = null;
@@ -202,6 +210,13 @@ test('runtime negotiates MCP 2026-07-28 and delivers subscription-based tool cha
     assert.equal(await waitUntil(() => changes.slice(appearedAt + 1).some(change =>
       !change.error && Array.isArray(change.tools) && !change.tools.some(tool => tool.name === 'browser_tabs')
     )), true, 'modern subscriptions/listen should receive browser tool disappearance');
+    assert.equal(changes.length, 2,
+      'modern subscriptions/listen should get one atomic removal update for the browser capability group');
+    const removedNames = new Set(changes[1].tools.map(tool => tool.name));
+    assert.ok([...initialNames].every(name => removedNames.has(name)),
+      'native and system tools must remain listed after browser capability removal');
+    assert.equal([...removedNames].some(name => name.startsWith('browser_') && !initialNames.has(name)), false,
+      'all newly advertised browser tools must be removed together');
   } finally {
     if (server) await new Promise(resolve => server.close(resolve));
     await client.close();

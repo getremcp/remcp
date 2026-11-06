@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.2.237 — 2026-11-06
+
+- Detect Windows Session 0 without enumerating users or modifying Windows login/security settings, and report native desktop_session unavailable when no interactive process desktop exists.
+- Hide native Windows GUI, capture and recording tools from advertised capability lists in Session 0 while retaining terminal, filesystem, document and independently available CDP/browser tools.
+- Fail closed before invoking native desktop actions, screenshots and recording, including mixed action preflights.
+- Cache only capability discovery, never action authorization; emit one atomic tools/list_changed notification when browser availability changes.
+- Gate an experimental Linux WebRTC Stop acknowledgement on confirmed exit of its directly owned Python media worker, with bounded SIGTERM/SIGKILL escalation and fail-closed local admission. Do not equate this with signed process-tree or macOS/Windows native Stop proof; the feature remains off by default.
+- Preserve runtime protocol compatibility and the published 0.2.235/0.2.236 fixes. Locked-user and background service session transitions require further native validation.
+
 ## 0.2.236 — 2026-11-05
 
 - Report CDP readiness only for eligible page targets and classify configured unavailable CDP connections with bounded diagnostics.

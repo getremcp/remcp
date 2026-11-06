@@ -11,6 +11,7 @@ import { documentKind, readDocxText, readPdfText } from '../documents.mjs';
 import { diffStats, unifiedDiff } from '../diff.mjs';
 import { describeFilesystemFailure } from '../permissions.mjs';
 import { capturePortalScreenshot, isWaylandSession } from '../screenshot-portal.mjs';
+import { assertWindowsInteractiveDesktop } from '../extended/desktop-windows-session.mjs';
 import { applyHunks, parseUnifiedDiff } from '../patch.mjs';
 import { countEvent, recordEvent } from '../telemetry.mjs';
 import { clampInteger, decodeText, displayPath, fail, fitsOutput, globToRegExp, image, isInsideRoot, looksBinary, multi, pageLines, resolveSafePath, splitLines, text, throwIfCancelled } from '../util.mjs';
@@ -98,6 +99,8 @@ export async function runWindowsScreenshot(file, runProcess = execFileAsync) {
 }
 
 export async function takeScreenshotTool(args) {
+  // Reject Windows Session 0 before allocating files or running pixel capture.
+  await assertWindowsInteractiveDesktop();
   const requestedDirectory = args.directory ? await resolveSafePath(args.directory, 'directory') : '';
   const temporaryDirectory = requestedDirectory ? '' : await mkdtemp(path.join(os.tmpdir(), 'remcp-screenshot-'));
   const directory = requestedDirectory || temporaryDirectory;

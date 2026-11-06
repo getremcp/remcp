@@ -9,6 +9,7 @@ import { isWaylandSession } from '../screenshot-portal.mjs';
 import { openDirectoryPath } from '../tools/files.mjs';
 import { resolveSafePath } from '../util.mjs';
 import { clamp, commandExists, jsonResult, runFile, unavailable } from './common.mjs';
+import { assertWindowsInteractiveDesktop } from './desktop-windows-session.mjs';
 
 export function resolveRecordScreenFfmpeg({
   platform = process.platform,
@@ -330,6 +331,8 @@ async function copyRecordingFile(source, destination) {
 }
 
 export async function recordScreen(args) {
+  // Reject Windows Session 0 before creating temporary files or starting ffmpeg.
+  await assertWindowsInteractiveDesktop();
   const seconds = clamp(args.duration_seconds, 5, 1, 120);
   const fps = clamp(args.fps, 15, 1, 60);
   const wayland = process.platform === 'linux' && isWaylandSession();

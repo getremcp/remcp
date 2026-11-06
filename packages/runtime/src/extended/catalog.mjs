@@ -11,6 +11,7 @@ import { isWaylandSession } from '../screenshot-portal.mjs';
 import { waylandPortalCandidate } from '../wayland-remote-desktop.mjs';
 import { commandExists, desktopSessionAvailable, runFile } from './common.mjs';
 import { desktopHandlers } from './desktop.mjs';
+import { cachedWindowsDesktopSessionStatus } from './desktop-windows-session.mjs';
 import { displayInventoryAvailable, regionScreenshotBackends } from './desktop-linux.mjs';
 import { hydrateLinuxDesktopEnv } from './desktop-linux-session-env.mjs';
 import { diagnosticHandlers, gnomeScreencastSupported, recordScreenAvailable } from './diagnostics.mjs';
@@ -254,6 +255,24 @@ export function documentCapabilitySnapshot({
   };
 }
 
+// A paired Windows service may be online in Session 0 while native desktop
+// tools are impossible. Keep computer_snapshot and CDP discoverable; they
+// provide their own unavailable status and/or browser-only operation.
+export const WINDOWS_SESSION_SCOPED_CAPABILITIES = Object.freeze([
+  'desktop_session', 'desktop_open', 'windows', 'ui', 'input', 'pointer',
+  'drag', 'clipboard', 'displays', 'screen_region', 'notifications', 'record',
+]);
+
+export function limitWindowsSessionCapabilities(capabilities, {
+  platform = process.platform,
+  sessionStatus = null,
+} = {}) {
+  if (platform !== 'win32' || sessionStatus?.available === true) return capabilities;
+  const bounded = { ...capabilities };
+  for (const name of WINDOWS_SESSION_SCOPED_CAPABILITIES) bounded[name] = false;
+  return bounded;
+}
+
 export async function capabilitySnapshot() {
   const win = process.platform === 'win32';
   const mac = process.platform === 'darwin';
@@ -270,7 +289,7 @@ export async function capabilitySnapshot() {
   const displayInventoryReady = linux && desktopSession ? await displayInventoryAvailable() : false;
   const browserCdp = browserRemoteEnabled() && await browserControlAvailable(undefined, 500);
   const documentCapabilities = documentCapabilitySnapshot();
-  return {
+  const capabilities = {
     ...desktopShellCapabilities,
     webrtc_pilot:linux && desktopSession && webRtcWorkerAvailable(),
     windows: win || mac || (desktopSession && (commandExists('wdotool') || commandExists('wmctrl') || (wayland && pyAtSpi))),
@@ -293,6 +312,12 @@ export async function capabilitySnapshot() {
     record: recordScreenAvailable({ platform:process.platform, wayland, gnomeSupported:gnomeRecord }),
     ...documentCapabilities,
   };
+  return win
+    ? limitWindowsSessionCapabilities(capabilities, {
+      platform:process.platform,
+      sessionStatus:await cachedWindowsDesktopSessionStatus(),
+    })
+    : capabilities;
 }
 
 function isSupported(definition, capabilities) {
@@ -308,9 +333,9 @@ export function allExtendedTools() {
   return extendedToolDefinitions.map(publicShape);
 }
 
-export async function advertisedExtendedTools() {
-  const capabilities = await capabilitySnapshot();
-  return extendedToolDefinitions.filter(definition => isSupported(definition, capabilities)).map(publicShape);
+export async function advertisedExtendedTools(capabilities = null) {
+  const current = capabilities ?? await capabilitySnapshot();
+  return extendedToolDefinitions.filter(definition => isSupported(definition, current)).map(publicShape);
 }
 
 export async function capabilityFingerprint() {

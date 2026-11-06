@@ -1,11 +1,13 @@
 {
-  "version": "0.2.236",
-  "title": "Fix browser CDP readiness and macOS CLI alias auditing after fleet-safe 0.2.235.",
+  "version": "0.2.237",
+  "title": "Keep Windows Session 0 safe and require verified Linux WebRTC worker exit before acknowledging Stop.",
   "changes": [
-    "Reject ineligible CDP targets when reporting browser readiness and classify configured unavailable endpoints without weakening loopback, origin or authorization controls.",
-    "Count a CLI installation alias only when the final entrypoint is a symlink; a symlinked ancestor such as macOS /var to /private/var does not imply a second install.",
-    "Preserve published 0.2.235 fleet-safe staggering, backend settling, Redis fencing, device revocation and WebRTC production opt-in protections.",
-    "Add browser and CLI regression tests without new MCP tools, expanded device permissions, automatic cleanup or unsolicited screen capture.",
-    "Release only after required protected CI, native platform QA, source provenance and public/npm parity gates."
+    "Distinguish interactive Windows sessions from Session 0 using a bounded process-local readiness probe; unknown readiness fails closed for native UI actions.",
+    "Avoid screenshot, pointer, UIA and recording side effects without an interactive desktop; keep filesystem, terminal, document and independently available browser tools discoverable.",
+    "Cache advertised capability discovery for 2.5 seconds with in-flight coalescing, but recheck readiness on every native desktop mutation or capture.",
+    "Deliver atomic modern MCP tools/list_changed notifications when live capability groups appear or disappear.",
+    "Require the actual Linux WebRTC media worker exit before acknowledging Stop; on an uncertain Stop, deny another capture session and escalate only the owned child after a bounded grace period. The opt-in experimental worker remains disabled by default and has no public media activation.",
+    "Preserve the fleet-safe 0.2.235 updater and 0.2.236 browser readiness/macOS CLI improvements; locked-user secure desktop and background-service transitions remain follow-up validation targets.",
+    "Release only after exact-source public npm/tag parity, native Windows x64/ARM64 verification, protected CI and controlled fleet rollout."
   ]
 }
