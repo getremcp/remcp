@@ -4,6 +4,14 @@ import path from 'node:path';
 const CLIENT_PACKAGE = '@remcp/remcp';
 const MAX_HISTORY = 32;
 
+function isExplicitCliAlias(cliPath) {
+  // A symlink in an ancestor directory (e.g. macOS /var -> /private/var)
+  // changes realpath but does not make the final CLI entry itself an alias.
+  // lstat checks the final path component without following that entry.
+  try { return fs.lstatSync(cliPath).isSymbolicLink(); }
+  catch { return false; } // A concurrently removed entry cannot be trusted.
+}
+
 // Inventory only paths previously recorded by this owner and the two current CLI
 // entrypoints. Never crawl npm/node directories or infer running processes.
 function installedPackageAt(cliPath) {
@@ -52,7 +60,7 @@ export function auditKnownInstallations(config, { currentCliPath, serviceCliPath
     }
     copy.sources.add(candidate.source);
     copy.cliPaths.add(candidate.path);
-    if (candidate.path !== installed.resolved && !aliases.some(a => a.path === candidate.path)) {
+    if (isExplicitCliAlias(candidate.path) && !aliases.some(a => a.path === candidate.path)) {
       aliases.push({ path:candidate.path, resolvesTo:installed.resolved });
     }
   }

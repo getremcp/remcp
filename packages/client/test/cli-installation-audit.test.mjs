@@ -79,3 +79,38 @@ test('recognizes npm Windows .cmd shim using manifest, never by filename alone',
   fs.writeFileSync(path.join(pkg, 'package.json'), JSON.stringify({ name:'@remcp/remcp', version:'0.2.209' }));
   assert.equal(auditKnownInstallations({ installations:[{ cliPath:cli }] }).packageCopyCount, 1);
 }));
+
+test('symlinked ancestor alone is not a CLI alias or an additional installation', () => usingFixture(dir => {
+  const canonical = packageCli(path.join(dir, 'actual', 'managed'));
+  const parentAlias = path.join(dir, 'mapped-root');
+  fs.symlinkSync(path.join(dir, 'actual'), parentAlias, 'dir');
+  const throughAncestor = path.join(parentAlias, 'managed', 'node_modules', '@remcp', 'remcp', 'bin', 'remcp.mjs');
+  assert.notEqual(throughAncestor, fs.realpathSync(throughAncestor));
+  assert.equal(fs.lstatSync(throughAncestor).isSymbolicLink(), false);
+  const report = auditKnownInstallations(
+    { installations:[{ cliPath:throughAncestor }] },
+    { currentCliPath:throughAncestor, serviceCliPath:canonical },
+  );
+  assert.equal(report.packageCopyCount, 1);
+  assert.equal(report.otherCopyCount, 0);
+  assert.equal(report.aliases.length, 0, 'only the ancestor, not the final CLI, is a symlink');
+  assert.equal(report.copies[0].isInvoked, true);
+  assert.equal(report.copies[0].isManagedService, true);
+}));
+
+test('explicit CLI symlink remains one alias even under a symlinked ancestor', () => usingFixture(dir => {
+  const canonical = packageCli(path.join(dir, 'actual', 'managed'));
+  const parentAlias = path.join(dir, 'mapped-root');
+  fs.symlinkSync(path.join(dir, 'actual'), parentAlias, 'dir');
+  const shortcut = path.join(dir, 'actual', 'launch', 'remcp');
+  fs.mkdirSync(path.dirname(shortcut), { recursive:true });
+  fs.symlinkSync(canonical, shortcut);
+  const viaParent = path.join(parentAlias, 'launch', 'remcp');
+  const report = auditKnownInstallations(
+    { installations:[{ cliPath:viaParent },{ cliPath:canonical }] },
+    { currentCliPath:viaParent, serviceCliPath:canonical },
+  );
+  assert.equal(report.packageCopyCount, 1);
+  assert.equal(report.aliases.length, 1, 'count the actual CLI symlink exactly once');
+  assert.equal(report.aliases[0].resolvesTo, fs.realpathSync(canonical));
+}));

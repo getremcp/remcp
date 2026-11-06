@@ -85,6 +85,21 @@ test('verified loopback target yields ready without returning URLs or titles',as
   assert.doesNotMatch(JSON.stringify(result),/private|title|token|8\.8\.8\.8/);
 });
 
+test('CDP sockets without eligible page URLs must not advertise browser readiness',()=>{
+  const unusable = [
+    { ...target('missing-url'),url:undefined },
+    { ...target('file-page'),url:'file:///etc/passwd' },
+    { ...target('browser-internal'),url:'chrome://settings' },
+    { ...target('credentials'),url:'https://user:secret@example.com/' },
+  ];
+  assert.deepEqual(classifyBrowserReadiness({Browser:'Chromium/130'},unusable,endpoint),{
+    status:'no_tabs',ready:false,candidate_pages:0,
+  });
+  assert.deepEqual(classifyBrowserReadiness({Browser:'Chromium/130'},[
+    ...unusable,{...target('blank'),url:'about:blank'},
+  ],endpoint),{status:'ready',ready:true,candidate_pages:1});
+});
+
 test('no unbounded probing or browser side effects',async()=>{
   const source=readFileSync(new URL('../src/extended/browser-readiness.mjs',import.meta.url),'utf8');
   assert.match(source,/Math\.min\(800/);
@@ -136,7 +151,7 @@ test('readiness status is briefly cached per loopback endpoint without cached au
   const request=async path=>{
     requests++;
     return path==='/json/version'?{Browser:'Chromium/130'}:[{
-      type:'page',id:'a',webSocketDebuggerUrl:'ws://127.0.0.1:19367/devtools/page/a',
+      type:'page',id:'a',url:'about:blank',webSocketDebuggerUrl:'ws://127.0.0.1:19367/devtools/page/a',
     }];
   };
   const args={enabled:true,endpoint:alternate,request,cache:true};
@@ -161,7 +176,7 @@ test('simultaneous readiness probes share one read-only CDP discovery', async()=
   const request=async path=>{
     paths.push(path);
     if(path==='/json/version') { entered(); await latch; return {Browser:'Chromium/130'}; }
-    return [{type:'page',id:'page',webSocketDebuggerUrl:'ws://127.0.0.1:19381/devtools/page/page'}];
+    return [{type:'page',id:'page',url:'about:blank',webSocketDebuggerUrl:'ws://127.0.0.1:19381/devtools/page/page'}];
   };
   const args={enabled:true,endpoint:alternate,request,cache:true,now:10000};
   const calls=Array.from({length:10},()=>probeBrowserReadiness(args));

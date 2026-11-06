@@ -1,11 +1,11 @@
 {
-  "version": "0.2.235",
-  "title": "Keep devices online during deployment and stagger automatic updates across large fleets.",
+  "version": "0.2.236",
+  "title": "Fix browser CDP readiness and macOS CLI alias auditing after fleet-safe 0.2.235.",
   "changes": [
-    "Defer new agent updates throughout backend HA rollout and a bounded 10-minute post-deploy stabilization window, without blocking a subsequent deployment.",
-    "Spread each new automatic client/runtime upgrade across a deterministic 24-hour per-device release window, with a shared Redis epoch and server time to withstand reconnects and clock skew.",
-    "Distribute automatic version checks across per-device 30-minute cycles rather than creating a reconnect-triggered request storm.",
-    "Admit at most 120 legacy automatic update hints per minute across backend replicas, while leaving manual updates and urgent runtime repairs available.",
-    "Package the fleet scheduler and its regression tests with the public client, preserving exact-release source and npm-artifact parity."
+    "Reject ineligible CDP targets when reporting browser readiness and classify configured unavailable endpoints without weakening loopback, origin or authorization controls.",
+    "Count a CLI installation alias only when the final entrypoint is a symlink; a symlinked ancestor such as macOS /var to /private/var does not imply a second install.",
+    "Preserve published 0.2.235 fleet-safe staggering, backend settling, Redis fencing, device revocation and WebRTC production opt-in protections.",
+    "Add browser and CLI regression tests without new MCP tools, expanded device permissions, automatic cleanup or unsolicited screen capture.",
+    "Release only after required protected CI, native platform QA, source provenance and public/npm parity gates."
   ]
 }

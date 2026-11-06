@@ -11,6 +11,12 @@ test('browser CDP outages are distinguishable from unrelated runtime errors', ()
     new Error('CDP websocket connection timed out'), 'browser_action',
   ), 'browser_unavailable');
   assert.equal(classifyRuntimeToolError(
+    new Error('The configured CDP endpoint is unavailable at http://127.0.0.1:9222'), 'browser_tabs',
+  ), 'browser_unavailable');
+  assert.equal(classifyRuntimeToolError(
+    new Error('The configured CDP endpoint is unavailable at http://127.0.0.1:9222'), 'read_file',
+  ), 'runtime_error');
+  assert.equal(classifyRuntimeToolError(
     new Error('Browser CDP endpoint is unavailable'), 'read_file',
   ), 'runtime_error');
   assert.equal(classifyRuntimeToolError(Object.assign(new Error('unavailable'), {code:'ECONNREFUSED'}), 'browser_wait'), 'browser_unavailable');

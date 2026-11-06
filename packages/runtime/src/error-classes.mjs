@@ -20,7 +20,7 @@ export function classifyRuntimeToolError(error, toolName = '') {
   if (browserTool && code === 'BROWSER_TARGET_DISAPPEARED') return 'browser_target_stale';
   if (/\bcancelled\b|\bcanceled\b|\baborted by the client\b/.test(message)) return 'cancelled';
   if (/blocked (?:by|local|private)|outside the directories this device allows|private browser destination|blocked local browser scheme/.test(message)) return 'blocked';
-  if (browserTool && /browser cdp endpoint is unavailable|browser control is unavailable|cdp websocket (?:error|connection timed out)|local cdp endpoint did not become ready/.test(message)) {
+  if (browserTool && /(?:browser|the configured) cdp endpoint is unavailable|browser control is unavailable|cdp websocket (?:error|connection timed out)|local cdp endpoint did not become ready/.test(message)) {
     return 'browser_unavailable';
   }
   if (browserTool) {

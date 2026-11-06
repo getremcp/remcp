@@ -1,7 +1,7 @@
 // Optional bounded local CDP readiness probe. This reports availability only;
 // it never exposes tab titles/URLs, starts Chrome, changes CDP flags or grants
 // permission to access targets. Actual actions always re-check browser policy.
-import { browserRemoteEnabled, endpointUrl, requestJson, validatedTargetWebSocketUrl } from './browser-endpoint.mjs';
+import { browserRemoteEnabled, endpointUrl, requestJson, safePageUrl, validatedTargetWebSocketUrl } from './browser-endpoint.mjs';
 
 const records = new Map();
 // Avoid duplicate /json/version + /json/list reads when several agent calls
@@ -19,6 +19,10 @@ export function classifyBrowserReadiness(version, targets, endpoint) {
   for (const target of targets.slice(0, 1000)) {
     if (target?.type !== 'page' || !target?.id || !target?.webSocketDebuggerUrl) continue;
     try {
+      // A CDP socket alone does not make a page eligible for browser_tabs.
+      // Validate its URL with the same synchronous scheme/host policy; full
+      // DNS/allowlist checks still happen at use time in browser_tabs.
+      safePageUrl(target.url);
       validatedTargetWebSocketUrl(target, endpointUrl(endpoint));
       pages += 1;
     } catch {

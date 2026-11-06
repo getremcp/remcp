@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.236 — 2026-11-05
+
+- Report CDP readiness only for eligible page targets and classify configured unavailable CDP connections with bounded diagnostics.
+- Retain browser authorization, loopback restrictions, runtime tool contracts and opt-in WebRTC boundaries.
+- Coordinate with client macOS CLI alias corrections, without rewriting the already published fleet-safe 0.2.235 runtime.
+
 ## 0.2.235 — 2026-11-05
 
 - Publish the unchanged local runtime in lockstep with the fleet-aware 0.2.235 ReMCP agent update.
