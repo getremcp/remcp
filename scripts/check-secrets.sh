@@ -10,7 +10,19 @@ repo="$(git rev-parse --show-toplevel)"
 tmp="$(mktemp -d "${TMPDIR:-/tmp}/remcp-gitleaks.XXXXXX")"
 trap 'rm -rf "$tmp"' EXIT
 
-curl --fail --silent --show-error --location   --retry 2 --retry-delay 2 --connect-timeout 10 --max-time 60   --output "$tmp/$ARCHIVE" "$URL"
+# GitHub's release-download CDN intermittently returns 504 on hosted runners.
+# The immutable release asset is also available from GitHub's REST API. Both
+# paths must produce the same independently pinned SHA-256; fail closed otherwise.
+if ! curl --fail --silent --show-error --location --retry 2 --retry-delay 2 \
+  --connect-timeout 10 --max-time 60 --output "$tmp/$ARCHIVE" "$URL"; then
+  printf 'Gitleaks CDN unavailable; retrying the same pinned asset via GitHub API.\n' >&2
+  curl --fail --silent --show-error --location --retry 3 --retry-all-errors \
+    --connect-timeout 10 --max-time 90 \
+    -H 'Accept: application/octet-stream' \
+    -H 'X-GitHub-Api-Version: 2022-11-28' \
+    --output "$tmp/$ARCHIVE" \
+    https://api.github.com/repos/gitleaks/gitleaks/releases/assets/378332058
+fi
 printf '%s  %s\n' "$SHA256" "$tmp/$ARCHIVE" | sha256sum --check --status
 tar -xzf "$tmp/$ARCHIVE" -C "$tmp" gitleaks
 
