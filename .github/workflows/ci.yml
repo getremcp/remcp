@@ -339,9 +339,18 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          curl --fail --silent --show-error --location \
-            --output /tmp/mcp-publisher.tar.gz \
-            https://github.com/modelcontextprotocol/registry/releases/download/v1.8.1/mcp-publisher_linux_amd64.tar.gz
+          # GitHub's release CDN may return 504 on a fresh Actions runner.
+          # Fall back to the exact immutable REST asset, keeping the pinned digest.
+          if ! curl --fail --silent --show-error --location --retry 2 --retry-delay 2 \
+            --connect-timeout 10 --max-time 60 --output /tmp/mcp-publisher.tar.gz \
+            https://github.com/modelcontextprotocol/registry/releases/download/v1.8.1/mcp-publisher_linux_amd64.tar.gz; then
+            curl --fail --silent --show-error --location --retry 3 --retry-all-errors \
+              --connect-timeout 10 --max-time 90 \
+              -H 'Accept: application/octet-stream' \
+              -H 'X-GitHub-Api-Version: 2022-11-28' \
+              --output /tmp/mcp-publisher.tar.gz \
+              https://api.github.com/repos/modelcontextprotocol/registry/releases/assets/504323513
+          fi
           echo 'a06c9096dcb9727c13555b6be26c7effa707b01f06a4c561ba7a3635443cf2cc  /tmp/mcp-publisher.tar.gz' | sha256sum --check
           tar -xzf /tmp/mcp-publisher.tar.gz -C /tmp mcp-publisher
           chmod +x /tmp/mcp-publisher
@@ -576,9 +585,18 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          curl --fail --silent --show-error --location \
-            --output /tmp/mcp-publisher.tar.gz \
-            https://github.com/modelcontextprotocol/registry/releases/download/v1.8.1/mcp-publisher_linux_amd64.tar.gz
+          # GitHub's release CDN may return 504 on a fresh Actions runner.
+          # Fall back to the exact immutable REST asset, keeping the pinned digest.
+          if ! curl --fail --silent --show-error --location --retry 2 --retry-delay 2 \
+            --connect-timeout 10 --max-time 60 --output /tmp/mcp-publisher.tar.gz \
+            https://github.com/modelcontextprotocol/registry/releases/download/v1.8.1/mcp-publisher_linux_amd64.tar.gz; then
+            curl --fail --silent --show-error --location --retry 3 --retry-all-errors \
+              --connect-timeout 10 --max-time 90 \
+              -H 'Accept: application/octet-stream' \
+              -H 'X-GitHub-Api-Version: 2022-11-28' \
+              --output /tmp/mcp-publisher.tar.gz \
+              https://api.github.com/repos/modelcontextprotocol/registry/releases/assets/504323513
+          fi
           echo 'a06c9096dcb9727c13555b6be26c7effa707b01f06a4c561ba7a3635443cf2cc  /tmp/mcp-publisher.tar.gz' | sha256sum --check
           tar -xzf /tmp/mcp-publisher.tar.gz -C /tmp mcp-publisher
           chmod +x /tmp/mcp-publisher
