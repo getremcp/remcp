@@ -5,6 +5,7 @@ export { persistentServiceExpected, persistentServiceState, releasePairPresentAt
 // Installing, repairing and removing the background agent: one supervisor per platform, plus the
 // write-access tweaks a fresh install needs. Service maintenance follows local OS permissions.
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import process from 'node:process';
 import { spawnSync } from 'node:child_process';
@@ -17,6 +18,7 @@ import { PACKAGE_NAME, VERSION } from '../version.mjs';
 import { saveConfig } from './config.mjs';
 import { configDir, home, linuxServiceFile, linuxServiceLauncherFile, macServiceFile, macServiceLabel, windowsServiceLauncherFile, windowsStartupScriptFile, windowsTaskName } from './env.mjs';
 import { run } from './shell.mjs';
+import { linuxActiveServiceFile, linuxServiceScope, linuxSystemAgentOwned, linuxSystemServiceFile, ensureLinuxLinger, ensureLinuxCliCommand } from './service-linux.mjs';
 import { windowsServiceLauncherText, windowsTaskAbsenceCommand, windowsStartupScriptText, windowsStartupScriptInstalled } from './windows-supervisor.mjs';
 import { ensureWindowsSupervisorKey, windowsSupervisorCommand } from './windows-user-supervisor.mjs';
 
@@ -62,11 +64,30 @@ function writeLinuxServiceLauncher(cliPath = globalCliPath(), nodePath = process
 
 export function installLinuxService(cliPath = globalCliPath(), nodePath = process.execPath) {
   const launcherFile = writeLinuxServiceLauncher(cliPath, nodePath);
-  const unit = `[Unit]\nDescription=ReMCP device agent\nAfter=network-online.target\nWants=network-online.target\n\n[Service]\nType=simple\nExecStart=${quoteSystemd(launcherFile)} start --service\nRestart=always\nRestartSec=3\n\n[Install]\nWantedBy=default.target\n`;
-  fs.mkdirSync(path.dirname(linuxServiceFile), { recursive: true });
-  fs.writeFileSync(linuxServiceFile, unit);
-  run('systemctl', ['--user', 'daemon-reload']);
-  run('systemctl', ['--user', 'enable', '--now', 'remcp-agent.service']);
+  // Fresh root installs are boot services owned by PID 1. Legacy per-user units are
+  // left under their existing supervisor, but must have linger enabled.
+  const privileged = process.getuid?.() === 0 && path.resolve(home) === path.resolve(os.userInfo().homedir);
+  if (privileged && fs.existsSync(linuxSystemServiceFile) && !linuxSystemAgentOwned()) {
+    throw new Error('Refusing to replace an unmanaged systemd remcp-agent.service');
+  }
+  const system = privileged && (linuxSystemAgentOwned() || !fs.existsSync(linuxServiceFile));
+  if (system) {
+    if (fs.existsSync(linuxSystemServiceFile) && !linuxSystemAgentOwned()) {
+      throw new Error('Refusing to replace an unmanaged systemd remcp-agent.service');
+    }
+    const unit = `[Unit]\nDescription=ReMCP headless device agent (system service)\nAfter=network-online.target\nWants=network-online.target\n\n[Service]\nType=simple\nUser=root\nWorkingDirectory=/root\nEnvironment=HOME=/root\nUMask=0077\nExecStart=${quoteSystemd(launcherFile)} start --service\nRestart=always\nRestartSec=5\n\n[Install]\nWantedBy=multi-user.target\n`;
+    fs.writeFileSync(linuxSystemServiceFile, unit, { mode:0o644 });
+    run('systemctl', ['daemon-reload']);
+    run('systemctl', ['enable', '--now', 'remcp-agent.service']);
+  } else {
+    ensureLinuxLinger();
+    const unit = `[Unit]\nDescription=ReMCP device agent\nAfter=network-online.target\nWants=network-online.target\n\n[Service]\nType=simple\nExecStart=${quoteSystemd(launcherFile)} start --service\nRestart=always\nRestartSec=3\n\n[Install]\nWantedBy=default.target\n`;
+    fs.mkdirSync(path.dirname(linuxServiceFile), { recursive: true });
+    fs.writeFileSync(linuxServiceFile, unit);
+    run('systemctl', ['--user', 'daemon-reload']);
+    run('systemctl', ['--user', 'enable', '--now', 'remcp-agent.service']);
+  }
+  ensureLinuxCliCommand(cliPath, nodePath);
 }
 
 export function writeWindowsServiceLauncher(cliPath = globalCliPath(), nodePath = process.execPath) {
@@ -241,11 +262,13 @@ export function ensureServiceIfRecorded(config) {
     const platform = servicePlatform();
     let restartScheduled = null;
     if (platform === 'linux') {
-      // Read and repair the unit through one descriptor. This avoids a check/read/write race where
-      // the path could be replaced between validation and mutation.
+      const scope = linuxServiceScope();
+      if (scope === 'user') ensureLinuxLinger();
+      // Read and repair the active unit through one descriptor. Never create a
+      // second user agent when a PID-1 system service already owns this pairing.
       let fd = null;
       try {
-        fd = fs.openSync(linuxServiceFile, fs.constants.O_RDWR | (fs.constants.O_NOFOLLOW || 0));
+        fd = fs.openSync(linuxActiveServiceFile(), fs.constants.O_RDWR | (fs.constants.O_NOFOLLOW || 0));
       } catch (error) {
         if (error?.code !== 'ENOENT') throw error;
       }
@@ -279,7 +302,7 @@ export function ensureServiceIfRecorded(config) {
             }
             fs.ftruncateSync(fd, data.length);
             fs.fsyncSync(fd);
-            run('systemctl', ['--user', 'daemon-reload']);
+            run('systemctl', [...(scope === 'user' ? ['--user'] : []), 'daemon-reload']);
           }
         } finally {
           fs.closeSync(fd);
@@ -308,24 +331,28 @@ export function ensureServiceIfRecorded(config) {
   }
 }
 
-export function deferredLinuxAgentRestartArgs(pid) {
+export function deferredLinuxAgentRestartArgs(pid, scope = 'user') {
   if (!Number.isSafeInteger(pid) || pid <= 0) throw new Error('Invalid process identifier');
-  return ['--user', '--on-active=3s', `--unit=remcp-agent-settings-${pid}`,
-    'systemctl', '--user', 'restart', 'remcp-agent.service'];
+  if (scope !== 'user' && scope !== 'system') throw new Error('Invalid Linux service scope');
+  const option = scope === 'user' ? ['--user'] : [];
+  return [...option, '--on-active=3s', `--unit=remcp-agent-settings-${pid}`,
+    'systemctl', ...option, 'restart', 'remcp-agent.service'];
 }
 
 export function restartPersistentServiceIfInstalled(config, { deferLinux = false, deferWindows = false } = {}) {
   if (!persistentServiceExpected(config)) return null;
   const platform = servicePlatform();
-  if (platform === 'linux' && fs.existsSync(linuxServiceFile)) {
+  if (platform === 'linux' && fs.existsSync(linuxActiveServiceFile())) {
+    const scope = linuxServiceScope();
+    const option = scope === 'user' ? ['--user'] : [];
     // Only owner-confirmed remote policy changes defer their restart. Ordinary
     // installs and updates preserve their existing synchronous supervisor contract.
     if (deferLinux) {
-      run('systemd-run', deferredLinuxAgentRestartArgs(process.pid));
+      run('systemd-run', deferredLinuxAgentRestartArgs(process.pid, scope));
       return 'remcp-agent.service (restart scheduled)';
     }
-    run('systemctl', ['--user', 'daemon-reload']);
-    run('systemctl', ['--user', 'restart', 'remcp-agent.service']);
+    run('systemctl', [...option, 'daemon-reload']);
+    run('systemctl', [...option, 'restart', 'remcp-agent.service']);
     return 'remcp-agent.service';
   }
   if (platform === 'darwin' && fs.existsSync(macServiceFile)) {
@@ -357,9 +384,11 @@ export function restartPersistentServiceIfInstalled(config, { deferLinux = false
 export function uninstallPersistentService() {
   const platform = servicePlatform();
   if (platform === 'linux') {
-    spawnSync('systemctl', ['--user', 'disable', '--now', 'remcp-agent.service'], { stdio: 'inherit' });
-    try { fs.unlinkSync(linuxServiceFile); } catch {}
-    spawnSync('systemctl', ['--user', 'daemon-reload'], { stdio: 'inherit' });
+    const scope = linuxServiceScope();
+    const option = scope === 'user' ? ['--user'] : [];
+    spawnSync('systemctl', [...option, 'disable', '--now', 'remcp-agent.service'], { stdio:'inherit' });
+    try { fs.unlinkSync(linuxActiveServiceFile()); } catch {}
+    spawnSync('systemctl', [...option, 'daemon-reload'], { stdio:'inherit' });
   } else if (platform === 'darwin') {
     const domain = macLaunchDomain();
     spawnSync('launchctl', ['bootout', domain, macServiceFile], { stdio: 'ignore' });

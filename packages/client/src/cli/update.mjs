@@ -12,6 +12,7 @@ import { loadConfig, saveConfig } from './config.mjs';
 import { assertSecureServerUrl } from './connect.mjs';
 import { installedVersion } from './doctor.mjs';
 import { linuxServiceFile, macServiceFile, officialOrigin } from './env.mjs';
+import { linuxSystemAgentOwned } from './service-linux.mjs';
 import { assertWindowsUpdateLifecycleSafe, currentInstallationInfo, ensureMacCliCommand, ensureServiceIfRecorded, npmGlobalUpdate, persistentServiceExpected, rememberCurrentInstallation, restartPersistentServiceIfInstalled, servicePlatform, serviceInstallationInfo, syncKnownInstallations } from './service.mjs';
 
 const UPDATE_DISCOVERY_TIMEOUT_MS = 5000;
@@ -235,7 +236,7 @@ export async function updateCommand(flags) {
       updateSource: targets.source,
       installable: targets.installable,
       upToDate: alreadyCurrent,
-      managedService: fs.existsSync(linuxServiceFile) || fs.existsSync(macServiceFile),
+      managedService: linuxSystemAgentOwned() || fs.existsSync(linuxServiceFile) || fs.existsSync(macServiceFile),
       supervisor: supervisorRestart() ?? 'none',
     }, null, 2));
     return;

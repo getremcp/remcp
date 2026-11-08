@@ -1,13 +1,12 @@
 {
-  "version": "0.2.237",
-  "title": "Keep Windows Session 0 safe and require verified Linux WebRTC worker exit before acknowledging Stop.",
+  "version": "0.2.238",
+  "title": "Keep headless Linux ReMCP agents online across logout, SSH disconnect and reboot.",
   "changes": [
-    "Distinguish interactive Windows sessions from Session 0 using a bounded process-local readiness probe; unknown readiness fails closed for native UI actions.",
-    "Avoid screenshot, pointer, UIA and recording side effects without an interactive desktop; keep filesystem, terminal, document and independently available browser tools discoverable.",
-    "Cache advertised capability discovery for 2.5 seconds with in-flight coalescing, but recheck readiness on every native desktop mutation or capture.",
-    "Deliver atomic modern MCP tools/list_changed notifications when live capability groups appear or disappear.",
-    "Require the actual Linux WebRTC media worker exit before acknowledging Stop; on an uncertain Stop, deny another capture session and escalate only the owned child after a bounded grace period. The opt-in experimental worker remains disabled by default and has no public media activation.",
-    "Preserve the fleet-safe 0.2.235 updater and 0.2.236 browser readiness/macOS CLI improvements; locked-user secure desktop and background-service transitions remain follow-up validation targets.",
-    "Release only after exact-source public npm/tag parity, native Windows x64/ARM64 verification, protected CI and controlled fleet rollout."
+    "Install privileged new Linux headless agents under system systemd with automatic startup and restarts, without tying the agent to a user's login session.",
+    "Ensure existing per-user Linux systemd services have verified logind lingering; fail explicitly when persistent supervision cannot be established.",
+    "Detect managed system units during status, repair, updates, deferred restarts and uninstall, preserving device pairing and preventing duplicate user agents.",
+    "Provide a stable managed Linux remcp command with the same vetted Node.js binary and npm installation prefix as the agent.",
+    "Add focused lifecycle, ownership and CLI regressions without increasing tool permissions or changing runtime capabilities.",
+    "macOS LaunchAgent and Windows Startup remain login-bound; privileged headless implementations require separate native lifecycle and security validation before being advertised."
   ]
 }

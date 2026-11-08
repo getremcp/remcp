@@ -26,3 +26,11 @@ test/drain.test.mjs:generic-api-key:33
 # Synthetic whsec_synthetic_fixture_123456789 used exclusively by billing mock tests
 # in PR #2217. Allowlist only that historical commit/path/rule/line (not real keys).
 28a59dedca843b800aa51c16342bd1aae574cad4:test/helpers/stripe-billing-fixture.mjs:generic-api-key:9
+
+# Nonfunctional Stripe webhook signing fixture in mocked currency-variant unit tests.
+# Historical SHA/path/rule/line only. Live credentials remain fully scanned.
+7f9c0503eb8a072aef6f00771d2fe6950a9eb7c3:test/stripe-billing-currency-variants.test.mjs:generic-api-key:10
+
+# RFC 6455 example WebSocket handshake key in a dedicated-signaling regression test.
+# It is the public protocol sample, not a credential; exact historical fingerprint only.
+0aa685543663e90e61a4133100bf786ef930b63f:test/webrtc-dedicated-server.test.mjs:generic-api-key:96
