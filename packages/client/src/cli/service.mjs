@@ -18,7 +18,7 @@ import { PACKAGE_NAME, VERSION } from '../version.mjs';
 import { saveConfig } from './config.mjs';
 import { configDir, home, linuxServiceFile, linuxServiceLauncherFile, macServiceFile, macServiceLabel, windowsServiceLauncherFile, windowsStartupScriptFile, windowsTaskName } from './env.mjs';
 import { run } from './shell.mjs';
-import { linuxActiveServiceFile, linuxServiceScope, linuxSystemAgentOwned, linuxSystemServiceFile, ensureLinuxLinger, ensureLinuxCliCommand } from './service-linux.mjs';
+import { linuxActiveServiceFile, linuxServiceScope, linuxSystemAgentOwned, linuxSystemServiceFile, ensureLinuxLinger, ensureLinuxCliCommand, uninstallOwnedLinuxUnits } from './service-linux.mjs';
 import { windowsServiceLauncherText, windowsTaskAbsenceCommand, windowsStartupScriptText, windowsStartupScriptInstalled } from './windows-supervisor.mjs';
 import { ensureWindowsSupervisorKey, windowsSupervisorCommand } from './windows-user-supervisor.mjs';
 
@@ -386,11 +386,7 @@ export function restartPersistentServiceIfInstalled(config, { deferLinux = false
 export function uninstallPersistentService() {
   const platform = servicePlatform();
   if (platform === 'linux') {
-    const scope = linuxServiceScope();
-    const option = scope === 'user' ? ['--user'] : [];
-    spawnSync('systemctl', [...option, 'disable', '--now', 'remcp-agent.service'], { stdio:'inherit' });
-    try { fs.unlinkSync(linuxActiveServiceFile()); } catch {}
-    spawnSync('systemctl', [...option, 'daemon-reload'], { stdio:'inherit' });
+    uninstallOwnedLinuxUnits();
   } else if (platform === 'darwin') {
     const domain = macLaunchDomain();
     spawnSync('launchctl', ['bootout', domain, macServiceFile], { stdio: 'ignore' });

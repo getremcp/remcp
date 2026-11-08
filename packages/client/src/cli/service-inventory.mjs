@@ -29,7 +29,7 @@ export function persistentServiceState(config) {
     const system = linuxSystemAgentOwned();
     const installed = system || fs.existsSync(linuxServiceFile);
     const active = installed && spawnSync('systemctl', [...(system ? [] : ['--user']), 'is-active', '--quiet', 'remcp-agent.service'], { stdio: 'ignore' }).status === 0;
-    return { expected, installed, active, manager:system ? 'systemd-system' : 'systemd-user', name:'remcp-agent.service' };
+    return { expected, installed, active, manager:installed ? (system ? 'systemd-system' : 'systemd-user') : 'none', name:'remcp-agent.service' };
   }
   if (platform === 'darwin') {
     const installed = fs.existsSync(macServiceFile);

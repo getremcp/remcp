@@ -34,3 +34,8 @@ test/drain.test.mjs:generic-api-key:33
 # RFC 6455 example WebSocket handshake key in a dedicated-signaling regression test.
 # It is the public protocol sample, not a credential; exact historical fingerprint only.
 0aa685543663e90e61a4133100bf786ef930b63f:test/webrtc-dedicated-server.test.mjs:generic-api-key:96
+
+# Documentation-only phrase about encrypted K3s storage in PR #2330 triggered
+# generic-api-key despite containing no credential. Suppress only the exact
+# historical merge SHA, file, rule and line; leave future findings enabled.
+3ba5d37fb5fa83b83422d827e56e1c62c1930ea1:docs/ops/webrtc-turn-tls-canary-qa-guard.md:generic-api-key:17

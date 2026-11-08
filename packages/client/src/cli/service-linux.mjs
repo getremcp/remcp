@@ -19,6 +19,76 @@ export function isManagedLinuxSystemUnit(text, launcher = linuxServiceLauncherFi
   return text.split(/\r?\n/).some(line => expected.has(line.trim()));
 }
 
+// Discover BOTH supervisors before uninstalling either. A PID-1 migration may
+// leave a disabled historical user unit behind; removing only the active scope
+// makes status incorrectly report an installed service after uninstall.
+export function discoverOwnedLinuxUnits({
+  systemFile = linuxSystemServiceFile,
+  userFile = linuxServiceFile,
+  launcher = linuxServiceLauncherFile,
+  includeSystem = process.getuid?.() === 0,
+} = {}) {
+  const candidates = [
+    ...(includeSystem ? [{ scope:'system', file:systemFile }] : []),
+    { scope:'user', file:userFile },
+  ];
+  const found = [];
+  for (const unit of candidates) {
+    let stat;
+    try { stat = fs.lstatSync(unit.file); }
+    catch (error) {
+      if (error?.code === 'ENOENT') continue;
+      throw error;
+    }
+    if (!stat.isFile() || stat.isSymbolicLink() ||
+        !isManagedLinuxSystemUnit(fs.readFileSync(unit.file, 'utf8'), launcher)) {
+      throw new Error('Refusing to uninstall an unrecognized ReMCP systemd unit: ' + unit.file);
+    }
+    found.push(unit);
+  }
+  return found;
+}
+
+// Stop and remove all owned scopes, not just the newest one. Require the
+// stop and daemon-reload to succeed; never claim success after a failed stop.
+export function uninstallOwnedLinuxUnits({
+  systemFile = linuxSystemServiceFile,
+  userFile = linuxServiceFile,
+  launcher = linuxServiceLauncherFile,
+  includeSystem = process.getuid?.() === 0,
+  runner = spawnSync,
+} = {}) {
+  const units = discoverOwnedLinuxUnits({ systemFile, userFile, launcher, includeSystem });
+  for (const { scope, file } of units) {
+    const option = scope === 'user' ? ['--user'] : [];
+    const stop = runner('systemctl', [...option, 'disable', '--now', 'remcp-agent.service'],
+      { encoding:'utf8', timeout:20000 });
+    if (stop.status !== 0) {
+      throw new Error('Failed to stop ReMCP ' + scope +
+        ' systemd service; refusing to report a successful uninstall');
+    }
+    const active = runner('systemctl', [...option, 'is-active', '--quiet', 'remcp-agent.service'],
+      { stdio:'ignore', timeout:10000 });
+    if (active.status === 0) {
+      throw new Error('ReMCP ' + scope + ' systemd service remains active after stop');
+    }
+    // Another actor must not replace an owned unit with a symlink or foreign
+    // content between discovery and removal.
+    const stat = fs.lstatSync(file);
+    if (!stat.isFile() || stat.isSymbolicLink() ||
+        !isManagedLinuxSystemUnit(fs.readFileSync(file, 'utf8'), launcher)) {
+      throw new Error('ReMCP systemd unit changed during uninstall: ' + file);
+    }
+    fs.unlinkSync(file);
+    const reload = runner('systemctl', [...option, 'daemon-reload'],
+      { encoding:'utf8', timeout:20000 });
+    if (reload.status !== 0) {
+      throw new Error('Failed to reload ' + scope + ' systemd after removing ReMCP service');
+    }
+  }
+  return units.map(unit => unit.scope);
+}
+
 export function linuxSystemAgentOwned() {
   if (process.platform !== 'linux' || process.getuid?.() !== 0) return false;
   try {

@@ -360,6 +360,7 @@ export async function main(argv = process.argv.slice(2)) {
       },
       agent:{
         mode:service.installed ? 'service' : 'manual',
+        installed:service.installed,
         running:service.active,
         manager:service.manager,
         serviceCliVersion:serviceInstall.cliVersion,
@@ -419,6 +420,9 @@ export async function main(argv = process.argv.slice(2)) {
     if (flags.purge) {
       const specs = [PACKAGE_NAME, ...(cfg?.runtime?.packageName ? [cfg.runtime.packageName] : [])];
       run(npm.command, [...npm.args, 'uninstall', '--global', ...specs, '--no-audit', '--no-fund', '--loglevel=error']);
+      console.log('ReMCP background service removed and global npm packages uninstalled. Device pairing was retained.');
+    } else {
+      console.log('ReMCP background service removed. The CLI, runtime packages and device pairing were retained. Use remcp uninstall --purge to also uninstall global npm packages.');
     }
     return;
   }

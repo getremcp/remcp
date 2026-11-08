@@ -1,11 +1,11 @@
 {
-  "version": "0.2.239",
-  "title": "Make headless Linux service lifecycle checks portable to unregistered CI user IDs.",
+  "version": "0.2.240",
+  "title": "Fix Linux ReMCP uninstall after migration from systemd-user to PID-1 systemd.",
   "changes": [
-    "Preserve the 0.2.238 PID-1 system service, automatic restart, logout independence, and canonical CLI path.",
-    "Ensure test-only synthetic Linux service fixtures do not consult the host passwd database or change logind.",
-    "Keep ordinary service installation fail-closed when system user identity or lingering cannot be verified.",
-    "Retain the checksum-pinned CDN fallback and authenticated exact-byte GitHub Release parity checks.",
-    "Keep macOS LaunchAgent and Windows Startup behavior unchanged; unattended system-level services require separate audited native implementations."
+    "Stop and remove both ReMCP-owned system and legacy user units, rather than leaving a stale user unit behind.",
+    "Preflight both units for ownership, refuse foreign or symlinked unit files, and surface failed service stops or reloads.",
+    "Make status show no supervisor after uninstall and distinguish a retained CLI and pairing from a running agent.",
+    "Show a clear uninstall confirmation; ordinary uninstall keeps paired credentials and CLI, while --purge additionally removes global npm packages.",
+    "Cover dual-supervisor cleanup, foreign-unit protection, failed-stop behavior, symlinks, and an isolated CLI uninstall fixture."
   ]
 }
