@@ -40,13 +40,16 @@ export function linuxActiveServiceFile() {
 // even if systemctl --user enable --now reported success.
 export function ensureLinuxLinger() {
   if (process.platform !== 'linux') return;
-  // Tests isolate HOME in a temporary fixture. Never mutate the real host's loginctl
-  // configuration on behalf of that synthetic service installation.
-  if (path.resolve(home) !== path.resolve(os.userInfo().homedir)) {
-    if (process.env.NODE_ENV === 'test') return;
+  // Test-only synthetic HOME has no logind account and must never mutate the host.
+  // Guard before os.userInfo(): an isolated CI UID may not have a passwd entry.
+  if (process.env.NODE_ENV === 'test' && process.env.REMCP_TEST_PLATFORM === 'linux') return;
+  let account;
+  try { account = os.userInfo(); }
+  catch { throw new Error('ReMCP cannot resolve the current Linux account for persistent systemd supervision.'); }
+  if (path.resolve(home) !== path.resolve(account.homedir)) {
     throw new Error('Refusing a persistent Linux service with HOME different from the account home directory.');
   }
-  const username = os.userInfo().username;
+  const username = account.username;
   const query = () => spawnSync('loginctl', ['show-user', username, '-p', 'Linger', '--value'],
     { encoding:'utf8', timeout:10000 });
   let state = query();

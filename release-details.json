@@ -1,12 +1,11 @@
 {
-  "version": "0.2.238",
-  "title": "Keep headless Linux ReMCP agents online across logout, SSH disconnect and reboot.",
+  "version": "0.2.239",
+  "title": "Make headless Linux service lifecycle checks portable to unregistered CI user IDs.",
   "changes": [
-    "Install privileged new Linux headless agents under system systemd with automatic startup and restarts, without tying the agent to a user's login session.",
-    "Ensure existing per-user Linux systemd services have verified logind lingering; fail explicitly when persistent supervision cannot be established.",
-    "Detect managed system units during status, repair, updates, deferred restarts and uninstall, preserving device pairing and preventing duplicate user agents.",
-    "Provide a stable managed Linux remcp command with the same vetted Node.js binary and npm installation prefix as the agent.",
-    "Add focused lifecycle, ownership and CLI regressions without increasing tool permissions or changing runtime capabilities.",
-    "macOS LaunchAgent and Windows Startup remain login-bound; privileged headless implementations require separate native lifecycle and security validation before being advertised."
+    "Preserve the 0.2.238 PID-1 system service, automatic restart, logout independence, and canonical CLI path.",
+    "Ensure test-only synthetic Linux service fixtures do not consult the host passwd database or change logind.",
+    "Keep ordinary service installation fail-closed when system user identity or lingering cannot be verified.",
+    "Retain the checksum-pinned CDN fallback and authenticated exact-byte GitHub Release parity checks.",
+    "Keep macOS LaunchAgent and Windows Startup behavior unchanged; unattended system-level services require separate audited native implementations."
   ]
 }

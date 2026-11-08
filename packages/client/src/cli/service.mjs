@@ -66,7 +66,9 @@ export function installLinuxService(cliPath = globalCliPath(), nodePath = proces
   const launcherFile = writeLinuxServiceLauncher(cliPath, nodePath);
   // Fresh root installs are boot services owned by PID 1. Legacy per-user units are
   // left under their existing supervisor, but must have linger enabled.
-  const privileged = process.getuid?.() === 0 && path.resolve(home) === path.resolve(os.userInfo().homedir);
+  const syntheticLinuxFixture = process.env.NODE_ENV === 'test' && process.env.REMCP_TEST_PLATFORM === 'linux';
+  const privileged = !syntheticLinuxFixture && process.getuid?.() === 0
+    && path.resolve(home) === path.resolve(os.userInfo().homedir);
   if (privileged && fs.existsSync(linuxSystemServiceFile) && !linuxSystemAgentOwned()) {
     throw new Error('Refusing to replace an unmanaged systemd remcp-agent.service');
   }
