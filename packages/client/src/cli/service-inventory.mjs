@@ -6,7 +6,7 @@ import { PACKAGE_NAME, VERSION } from '../version.mjs';
 import { saveConfig } from './config.mjs';
 import { linuxServiceFile, linuxServiceLauncherFile, macServiceFile, macServiceLabel, windowsStartupScriptFile, windowsTaskName } from './env.mjs';
 import { linuxSystemAgentOwned } from './service-linux.mjs';
-import { servicePlatform, globalCliPath, npmGlobalUpdateForNode } from './npm-global.mjs';
+import { servicePlatform, globalCliPath, npmGlobalUpdateAtPrefix, npmGlobalUpdateForNode } from './npm-global.mjs';
 import { windowsStartupScriptInstalled } from './windows-supervisor.mjs';
 
 export function persistentServiceExpected(config) {
@@ -158,6 +158,25 @@ export function installationVersionsAtCliPath(cliPath, runtimePackageName) {
   };
 }
 
+// Derive the write destination from the launcher actually owned by the
+// supervisor, NOT from the npm prefix of the Node executable. Both prefixes
+// often use the same NVM/Homebrew Node binary.
+export function serviceNpmPrefixFromCliPath(cliPath, platform = servicePlatform()) {
+  const file = String(cliPath || '').trim().replaceAll('\\', '/');
+  const packageSuffix = platform === 'win32'
+    ? '/node_modules/@remcp/remcp/bin/remcp.mjs'
+    : '/lib/node_modules/@remcp/remcp/bin/remcp.mjs';
+  let prefix = file.endsWith(packageSuffix) ? file.slice(0, -packageSuffix.length) : '';
+  if (!prefix && platform === 'win32' && /\/remcp\.cmd$/i.test(file)) {
+    prefix = file.slice(0, -'/remcp.cmd'.length);
+  }
+  const paths = platform === 'win32' ? path.win32 : path.posix;
+  if (!prefix || !paths.isAbsolute(prefix) || paths.parse(prefix).root === prefix) {
+    throw new Error('ReMCP update refused: cannot identify the canonical service npm prefix.');
+  }
+  return paths.normalize(prefix);
+}
+
 export function serviceInstallationInfo(config) {
   if (!persistentServiceExpected(config)) return { cliVersion:null, runtimeVersion:null, cliPath:null, nodePath:null };
   const cliPath = canonicalServiceCliPath(config);
@@ -210,31 +229,57 @@ export function rememberCurrentInstallation(config, { service = false } = {}) {
 
 export function syncKnownInstallations(config, ...specs) {
   const serviceInfo = serviceInstallationInfo(config);
-  const current = currentInstallationInfo(config);
-  // Only the active service installation is mandatory. Other recorded Node manager prefixes
-  // can host unrelated user scripts and must not be mutated by an automatic agent update.
-  const candidates = serviceInfo.nodePath
-    ? [{ nodePath:serviceInfo.nodePath, cliPath:serviceInfo.cliPath, service:true }]
-    : [];
-  const currentNode = (() => { try { return fs.realpathSync(current.nodePath); } catch { return current.nodePath; } })();
-  const seen = new Set();
-  const results = [];
-  for (const candidate of candidates) {
-    const nodePath = String(candidate?.nodePath || '').trim();
-    if (!nodePath || !fs.existsSync(nodePath)) continue;
-    let resolvedNode = nodePath;
-    try { resolvedNode = fs.realpathSync(nodePath); } catch {}
-    if (resolvedNode === currentNode || seen.has(resolvedNode)) continue;
-    seen.add(resolvedNode);
-    const required = Boolean(candidate?.service) || resolvedNode === serviceInfo.nodePath;
+  if (!serviceInfo.nodePath) return [];
+  const runtimePackageName = String(config?.runtime?.packageName || '');
+  if (!runtimePackageName) throw new Error('ReMCP update refused: missing managed runtime package.');
+  const expectedCli = exactPackageSpecVersion(PACKAGE_NAME, specs[0]);
+  const expectedRuntime = exactPackageSpecVersion(runtimePackageName, specs[1]);
+  // The first npm install may already have updated the canonical service prefix.
+  // Compare the actual package pair, never just the Node executable (which can
+  // be shared by an interactive NVM CLI and a separate managed-agent prefix).
+  if (expectedCli && expectedRuntime && serviceInfo.cliVersion === expectedCli
+    && serviceInfo.runtimeVersion === expectedRuntime) return [];
+  // A legacy launcher with no npm packages recorded at its path is repaired
+  // by ensureServiceIfRecorded() after the normal update. Never attempt an
+  // npm write to an unrelated or unrecognizable launcher location.
+  if (!serviceInfo.cliVersion && !serviceInfo.runtimeVersion) {
+    try { serviceNpmPrefixFromCliPath(serviceInfo.cliPath); }
+    catch { return []; }
+  }
+  const nodePath = String(serviceInfo.nodePath).trim();
+  if (!nodePath || !fs.existsSync(nodePath)) {
+    throw new Error('ReMCP update refused: managed service Node executable is missing.');
+  }
+  let resolvedNode = nodePath;
+  try { resolvedNode = fs.realpathSync(nodePath); } catch {}
+  // A legacy, manually requested @latest/custom runtime update does not give
+  // us two exact versions to verify. Preserve its previous Node-manager sync
+  // semantics rather than inventing a canonical package directory from a
+  // mocked or pre-npm bin/remcp launcher. Automatic official updates always
+  // provide BOTH exact versions and take the strict pinned-prefix path below.
+  if (!expectedCli || !expectedRuntime) {
+    const current = currentInstallationInfo(config);
+    let currentNode = current.nodePath;
+    try { currentNode = fs.realpathSync(currentNode); } catch {}
+    if (resolvedNode === currentNode) return [];
     try {
-      npmGlobalUpdateForNode(resolvedNode, [PACKAGE_NAME, config.runtime.packageName], ...specs);
-      results.push({ nodePath:resolvedNode, ok:true, required });
+      npmGlobalUpdateForNode(resolvedNode, [PACKAGE_NAME, runtimePackageName], ...specs);
+      return [{ nodePath:resolvedNode, ok:true, required:true }];
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      results.push({ nodePath:resolvedNode, ok:false, required, error:message });
-      if (required) throw new Error('Could not update canonical ReMCP service installation at ' + resolvedNode + ': ' + message);
+      throw new Error('Could not update legacy ReMCP service installation: ' + (error instanceof Error ? error.message : String(error)));
     }
   }
-  return results;
+  const prefix = serviceNpmPrefixFromCliPath(serviceInfo.cliPath);
+  try {
+    npmGlobalUpdateAtPrefix(resolvedNode, prefix, [PACKAGE_NAME, runtimePackageName], ...specs);
+    const installed = serviceInstallationInfo(config);
+    if ((expectedCli && installed.cliVersion !== expectedCli)
+      || (expectedRuntime && installed.runtimeVersion !== expectedRuntime)) {
+      throw new Error('npm reported success but the canonical service packages are still stale');
+    }
+    return [{ nodePath:resolvedNode, ok:true, required:true }];
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error('Could not update canonical ReMCP service installation at ' + prefix + ': ' + message);
+  }
 }

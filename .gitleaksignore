@@ -39,3 +39,9 @@ test/drain.test.mjs:generic-api-key:33
 # generic-api-key despite containing no credential. Suppress only the exact
 # historical merge SHA, file, rule and line; leave future findings enabled.
 3ba5d37fb5fa83b83422d827e56e1c62c1930ea1:docs/ops/webrtc-turn-tls-canary-qa-guard.md:generic-api-key:17
+
+# Historical false positive: PR #2366 operator-runbook prose describing
+# synthetic Stripe Sandbox event IDs. The flagged line contains no key or
+# credential; preserve all other generic-api-key and Stripe detections.
+# Suppress only this exact historical commit/file/rule/line fingerprint.
+2764336180235e9f9f833f1bb5925c48020a0e5e:docs/ops/STRIPE_SANDBOX_WEBHOOK_PROBE.md:generic-api-key:172

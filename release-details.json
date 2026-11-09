@@ -1,11 +1,11 @@
 {
-  "version": "0.2.241",
-  "title": "Keep browser diagnostics responsive and avoid leaking process arguments in errors.",
+  "version": "0.2.242",
+  "title": "Repair unattended updates when one Node.js executable serves different npm installations.",
   "changes": [
-    "For an explicit browser-readiness-only computer snapshot, skip unrelated native desktop/session, screen, clipboard, cursor and window probes; full UI snapshots remain unchanged.",
-    "When a failed child process has no diagnostic stderr, report a bounded exit status instead of revealing its command line or script arguments.",
-    "Help agents check CDP readiness first and use native Accessibility when no authorized debuggable tab is available; never auto-launch a browser from read-only inspection.",
-    "Preserve the published 0.2.240 dual-supervisor Linux uninstall safeguards, service status semantics, and regression tests.",
-    "Keep loopback, permissions, command policy, authorization, publishing gates, and platform capabilities unchanged."
+    "Identify the running ReMCP supervisor's canonical npm prefix from its owned CLI entry instead of equating identical Node executable paths with identical package installations.",
+    "Install the exact official client and runtime pair into the supervised prefix and re-verify both versions before any service restart. A failed, partial or ambiguous install remains blocked rather than disconnecting the device.",
+    "Preserve existing legacy unpinned/manual update behavior and Windows/macOS update locks; do not touch unrelated Node manager installations.",
+    "Reproduced the 0.2.239-to-0.2.241 split-prefix failure and verified the fixed updater on ASUS: managed service upgraded to 0.2.241/0.2.241, restarted and reconnected.",
+    "Add regression tests for shared-Node/different-prefix, unsafe service paths and idempotent service convergence."
   ]
 }

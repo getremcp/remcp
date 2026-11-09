@@ -262,6 +262,25 @@ export function npmGlobalUpdate(packageNames, ...specs) {
   run(npm.command, [...npm.args, ...npmGlobalInstallArgs(specs, { preferOnline:true })]);
 }
 
+// The service launcher may use the SAME Node executable as the interactive CLI,
+// yet install into a different npm prefix (e.g. NVM vs managed-agent). Pin the
+// destination explicitly, rather than asking that Node's default npm prefix.
+export function npmGlobalUpdateAtPrefix(nodePath, servicePrefix, packageNames, ...specs) {
+  const platform = servicePlatform();
+  const prefix = assertSafeReMcpNpmPrefix(servicePrefix);
+  const resolved = resolveNpm({ nodePath, home, platform });
+  const pinned = { ...resolved, args:[...resolved.args, '--prefix', prefix] };
+  if (platform === 'darwin') {
+    transactionalMacGlobalInstall({ resolved:pinned, prefix, packageNames, specs, preferOnline:true });
+    return;
+  }
+  if (platform === 'win32') {
+    withWindowsUpdateLock(prefix, () => transactionalWindowsGlobalInstall({ resolved:pinned, prefix, packageNames, specs, preferOnline:true }));
+    return;
+  }
+  run(pinned.command, [...pinned.args, ...npmGlobalInstallArgs(specs, { preferOnline:true })]);
+}
+
 export function npmGlobalUpdateForNode(nodePath, packageNames, ...specs) {
   const platform = servicePlatform();
   const resolved = resolveNpm({ nodePath, home, platform });

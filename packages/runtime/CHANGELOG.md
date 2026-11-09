@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.242 — 2026-11-09
+
+- Publish the version-aligned runtime for the ReMCP client 0.2.242 supervised npm-prefix update fix.
+- Runtime behavior and tool schemas remain unchanged from 0.2.241.
+
 ## 0.2.241 — 2026-11-09
 
 - Avoid running unrelated native desktop PowerShell probes for explicit CDP-readiness-only snapshots.
