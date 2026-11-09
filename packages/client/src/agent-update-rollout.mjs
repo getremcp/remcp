@@ -32,8 +32,8 @@ export function updateRolloutEligibility({ deviceId, target, rollout, urgent = f
 
 // Fleet update checks are phased on the wall clock as well. A 100k-device
 // reconnect wave must not turn into 100k immediate manifest GETs or a synchronized
-// 30-minute polling loop. The phase survives agent restarts with no disk state.
-export function nextFleetManifestDelayMs(deviceId, now = Date.now(), intervalMs = 30 * 60 * 1000) {
+// 5-minute polling loop. The phase survives agent restarts with no disk state.
+export function nextFleetManifestDelayMs(deviceId, now = Date.now(), intervalMs = 5 * 60 * 1000) {
   if (!String(deviceId || '').trim() || !Number.isSafeInteger(intervalMs) || intervalMs < 1000) {
     throw new Error('Fleet manifest scheduling requires a paired device and a valid interval');
   }

@@ -24,17 +24,17 @@ test('100k clients deterministically spread downloads over 24 hours', () => {
   assert.equal(hourBins.reduce((sum, n) => sum + n, 0), 100000);
 });
 
-test('100k reconnecting agents spread manifest checks over 30 minutes', () => {
-  const bins = new Uint32Array(1800);
+test('100k reconnecting agents spread manifest checks over five minutes', () => {
+  const bins = new Uint32Array(300);
   const now = start + 333333;
   for (let n = 0; n < 100000; n += 1) {
     const deviceId = 'paired-' + n;
     const delayMs = nextFleetManifestDelayMs(deviceId, now);
     assert.equal(nextFleetManifestDelayMs(deviceId, now), delayMs);
-    assert.ok(delayMs > 0 && delayMs <= 1800000);
+    assert.ok(delayMs > 0 && delayMs <= 300000);
     bins[Math.floor((delayMs - 1) / 1000)]++;
   }
-  assert.ok(Math.max(...bins) < 100, 'no second should receive a reconnect fleet stampede');
+  assert.ok(Math.max(...bins) < 430, 'no second should receive a reconnect fleet stampede');
   assert.equal(bins.reduce((sum,n)=>sum+n,0),100000);
 });
 

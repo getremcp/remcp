@@ -219,7 +219,7 @@ export async function main(argv = process.argv.slice(2)) {
     const action = String(positional[0] || 'status').toLowerCase();
     const cfg = loadConfig(false) || {};
     if (action === 'status') {
-      console.log(JSON.stringify({ autoUpdate: autoUpdateEnabled(cfg), checkIntervalHours: 0.5, fleetRolloutHours:24 }, null, 2));
+      console.log(JSON.stringify({ autoUpdate: autoUpdateEnabled(cfg), checkIntervalMinutes: 5, fleetRollout: 'server-managed' }, null, 2));
       return;
     }
     if (['on', 'enable', 'off', 'disable'].includes(action)) {

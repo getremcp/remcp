@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.243 — 2026-11-09
+
+- Publish the version-aligned runtime for the ReMCP client 0.2.243 five-minute update polling change.
+- Runtime capabilities, tool schemas and security permissions remain unchanged from 0.2.242.
+
 ## 0.2.242 — 2026-11-09
 
 - Publish the version-aligned runtime for the ReMCP client 0.2.242 supervised npm-prefix update fix.

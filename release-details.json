@@ -1,11 +1,11 @@
 {
-  "version": "0.2.242",
-  "title": "Repair unattended updates when one Node.js executable serves different npm installations.",
+  "version": "0.2.243",
+  "title": "Find verified device updates within minutes instead of polling every half hour.",
   "changes": [
-    "Identify the running ReMCP supervisor's canonical npm prefix from its owned CLI entry instead of equating identical Node executable paths with identical package installations.",
-    "Install the exact official client and runtime pair into the supervised prefix and re-verify both versions before any service restart. A failed, partial or ambiguous install remains blocked rather than disconnecting the device.",
-    "Preserve existing legacy unpinned/manual update behavior and Windows/macOS update locks; do not touch unrelated Node manager installations.",
-    "Reproduced the 0.2.239-to-0.2.241 split-prefix failure and verified the fixed updater on ASUS: managed service upgraded to 0.2.241/0.2.241, restarted and reconnected.",
-    "Add regression tests for shared-Node/different-prefix, unsafe service paths and idempotent service convergence."
+    "Check the signed ReMCP version manifest every five minutes, with a stable device-specific phase to avoid synchronized update spikes.",
+    "Recheck a server-gated rollout within five minutes when a device is not yet eligible; never skip rollout admission or integrity verification.",
+    "Make auto-update status reflect the five-minute check interval and the server-managed fleet rollout rather than hardcoding a 24-hour fleet delay.",
+    "Keep exact client/runtime version pairing, service supervision, Windows/macOS update locks and fail-closed verification unchanged.",
+    "Verify deterministic large-fleet phasing and update eligibility with regression tests."
   ]
 }
