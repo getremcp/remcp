@@ -39,10 +39,15 @@ const fs=require('node:fs'),path=require('node:path');
 const args=process.argv.slice(2);
 fs.writeFileSync(process.env.REMCP_PREFIX_TEST_LOG,JSON.stringify(args));
 const p=args[args.indexOf('--prefix')+1];
-if(args.indexOf('--prefix')<0||p!==process.env.REMCP_PREFIX_TEST_EXPECTED)process.exit(23);
+if(args.indexOf('--prefix')<0||fs.realpathSync(p)!==fs.realpathSync(process.env.REMCP_PREFIX_TEST_EXPECTED))process.exit(23);
 for(const [name,version] of [['remcp','0.2.241'],['runtime','0.2.241']]){
-  fs.writeFileSync(path.join(p,'lib/node_modules/@remcp',name,'package.json'),JSON.stringify({name:'@remcp/'+name,version}));
+  const manifest=path.join(p,'lib/node_modules/@remcp',name,'package.json');
+  fs.mkdirSync(path.dirname(manifest),{recursive:true});
+  fs.writeFileSync(manifest,JSON.stringify({name:'@remcp/'+name,version}));
 }
+const entry=path.join(p,'lib/node_modules/@remcp/remcp/bin/remcp.mjs');
+fs.mkdirSync(path.dirname(entry),{recursive:true});
+fs.writeFileSync(entry,'// simulated npm-owned CLI');
 `, {mode:0o755});
   const saved = {npm:process.env.REMCP_NPM,log:process.env.REMCP_PREFIX_TEST_LOG,prefix:process.env.REMCP_PREFIX_TEST_EXPECTED};
   t.after(() => {
@@ -67,7 +72,7 @@ for(const [name,version] of [['remcp','0.2.241'],['runtime','0.2.241']]){
   assert.equal(JSON.parse(fs.readFileSync(runtimeManifest,'utf8')).version,'0.2.241');
   const args=JSON.parse(fs.readFileSync(log,'utf8'));
   assert.ok(args.includes('--prefix'));
-  assert.ok(args.includes(prefix));
+  assert.equal(fs.realpathSync(args[args.indexOf('--prefix')+1]), fs.realpathSync(prefix));
   assert.ok(args.includes('--ignore-scripts'));
   assert.deepEqual(syncKnownInstallations(cfg,...specs),[],'up-to-date managed prefix is not reinstalled');
 });
