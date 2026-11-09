@@ -54,16 +54,27 @@ export async function resolveComputerDesktopSession({
   return windowsProbe();
 }
 
-export async function computerSnapshot(args = {}, { desktopSessionProbe = resolveComputerDesktopSession } = {}) {
-  const desktopSession = await desktopSessionProbe();
+export async function computerSnapshot(args = {}, {
+  desktopSessionProbe = resolveComputerDesktopSession,
+  browserReadinessProbe = probeBrowserReadiness,
+} = {}) {
+  // A CDP health check must not start unrelated OS GUI/PowerShell probes.
+  // This is important on slow Windows machines with no interactive desktop.
+  const readinessOnly = args.browser_readiness === true && args.include_ui === false
+    && args.include_screenshot === false && args.include_browser !== true
+    && args.include_ocr !== true;
+  const desktopSession = readinessOnly
+    ? { status:'unknown', available:null, reason:'not_requested' }
+    : await desktopSessionProbe();
   const desktopAvailable = desktopSession.available !== false;
+  const inspectDesktop = !readinessOnly && desktopAvailable;
   const screenshotRequested = args.include_screenshot !== false || args.include_ocr === true;
   const captureScreenshot = desktopAvailable && screenshotRequested;
   const includeUi = args.include_ui !== false;
   const [windowsResult, displaysResult, uiResult, clipboardResult, cursorResult, shotResult, readinessResult] = await settleComputerSnapshotProbes([
-    () => desktopAvailable ? listWindows() : Promise.resolve(null),
-    () => desktopAvailable ? displayInventory() : Promise.resolve(null),
-    () => includeUi && desktopAvailable
+    () => inspectDesktop ? listWindows() : Promise.resolve(null),
+    () => inspectDesktop ? displayInventory() : Promise.resolve(null),
+    () => includeUi && inspectDesktop
       ? uiSnapshot({
           max_nodes:args.max_ui_nodes || 800,
           max_depth:args.max_ui_depth || 12,
@@ -72,10 +83,10 @@ export async function computerSnapshot(args = {}, { desktopSessionProbe = resolv
           ...(args.ui_browser_dom === true ? { browser_dom:true } : {}),
         })
       : Promise.resolve(null),
-    () => desktopAvailable ? clipboard({ action:'read' }) : Promise.resolve(null),
-    () => desktopAvailable ? cursorPosition() : Promise.resolve(null),
+    () => inspectDesktop ? clipboard({ action:'read' }) : Promise.resolve(null),
+    () => inspectDesktop ? cursorPosition() : Promise.resolve(null),
     () => captureScreenshot ? computerScreenshotTask(args) : Promise.resolve(null),
-    () => args.browser_readiness === true ? probeBrowserReadiness() : Promise.resolve(null),
+    () => args.browser_readiness === true ? browserReadinessProbe() : Promise.resolve(null),
   ]);
   const parse = (result, fallback = null) => {
     if (result.status !== 'fulfilled' || !result.value || result.value.isError === true) return fallback;
@@ -151,8 +162,8 @@ export async function computerSnapshot(args = {}, { desktopSessionProbe = resolv
   } : null;
 
   const activeLabel = [activeApp?.app, activeApp?.window, activeWindow?.app, activeWindow?.title].filter(Boolean).join(' ');
-  const browserRequested = args.include_browser === true
-    || (args.include_browser !== false && /chrome|chromium|edge|brave/i.test(activeLabel));
+  const browserRequested = !readinessOnly && (args.include_browser === true
+    || (args.include_browser !== false && /chrome|chromium|edge|brave/i.test(activeLabel)));
   const readiness = args.browser_readiness === true && readinessResult.status === 'fulfilled'
     ? objectRecord(readinessResult.value) : null;
   let browser = null;

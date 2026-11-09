@@ -1,11 +1,11 @@
 {
-  "version": "0.2.240",
-  "title": "Fix Linux ReMCP uninstall after migration from systemd-user to PID-1 systemd.",
+  "version": "0.2.241",
+  "title": "Keep browser diagnostics responsive and avoid leaking process arguments in errors.",
   "changes": [
-    "Stop and remove both ReMCP-owned system and legacy user units, rather than leaving a stale user unit behind.",
-    "Preflight both units for ownership, refuse foreign or symlinked unit files, and surface failed service stops or reloads.",
-    "Make status show no supervisor after uninstall and distinguish a retained CLI and pairing from a running agent.",
-    "Show a clear uninstall confirmation; ordinary uninstall keeps paired credentials and CLI, while --purge additionally removes global npm packages.",
-    "Cover dual-supervisor cleanup, foreign-unit protection, failed-stop behavior, symlinks, and an isolated CLI uninstall fixture."
+    "For an explicit browser-readiness-only computer snapshot, skip unrelated native desktop/session, screen, clipboard, cursor and window probes; full UI snapshots remain unchanged.",
+    "When a failed child process has no diagnostic stderr, report a bounded exit status instead of revealing its command line or script arguments.",
+    "Help agents check CDP readiness first and use native Accessibility when no authorized debuggable tab is available; never auto-launch a browser from read-only inspection.",
+    "Preserve the published 0.2.240 dual-supervisor Linux uninstall safeguards, service status semantics, and regression tests.",
+    "Keep loopback, permissions, command policy, authorization, publishing gates, and platform capabilities unchanged."
   ]
 }

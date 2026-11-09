@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.241 — 2026-11-09
+
+- Avoid running unrelated native desktop PowerShell probes for explicit CDP-readiness-only snapshots.
+- Redact child-process arguments on failures without stderr while retaining bounded exit diagnostics.
+- Update browser tool-selection guidance to prefer an opt-in readiness probe and native accessibility fallback.
+- Preserve existing CDP loopback protection, authorization checks and ordinary computer snapshot semantics.
+
 ## 0.2.237 — 2026-11-06
 
 - Detect Windows Session 0 without enumerating users or modifying Windows login/security settings, and report native desktop_session unavailable when no interactive process desktop exists.

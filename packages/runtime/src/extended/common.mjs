@@ -56,8 +56,16 @@ export async function runFile(file, args = [], options = {}) {
     if (options.allowFailure) {
       return { stdout: String(error?.stdout || ''), stderr: String(error?.stderr || ''), code: error?.code ?? 1, error };
     }
-    const detail = String(error?.stderr || error?.message || error).trim();
-    throw new ToolError(`${options.label || file} failed: ${detail}`);
+    // execFile's fallback error.message embeds the entire command line, which
+    // can contain a file path, a PowerShell script, or caller-supplied data.
+    // Prefer real stderr; otherwise report a bounded status without arguments.
+    const stderr = String(error?.stderr || '').trim();
+    const code = error?.code;
+    const status = error?.killed ? `timed out after ${timeout} ms`
+      : Number.isInteger(code) ? `exited with code ${code}`
+      : ['ENOENT','EACCES','EPERM','ETIMEDOUT','ENOSPC'].includes(code)
+        ? `OS error ${code}` : 'process failed without diagnostic stderr';
+    throw new ToolError(`${options.label || file} failed: ${stderr ? stderr.slice(0, 2000) : status}`);
   }
 }
 

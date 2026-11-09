@@ -111,7 +111,7 @@ test('computer_snapshot exposes opt-in readiness without defaulting to probe',as
   const definition=extendedToolDefinitions.find(t=>t.name==='computer_snapshot');
   assert.equal(definition.inputSchema.properties.browser_readiness?.type,'boolean');
   const source=readFileSync(new URL('../src/extended/desktop-computer-snapshot.mjs',import.meta.url),'utf8');
-  assert.match(source,/args\.browser_readiness === true \? probeBrowserReadiness\(\) : Promise\.resolve\(null\)/);
+  assert.match(source,/args\.browser_readiness === true \? browserReadinessProbe\(\) : Promise\.resolve\(null\)/);
   assert.match(source,/readiness \? readiness\.ready : await browserCapabilityAvailable/);
 });
 

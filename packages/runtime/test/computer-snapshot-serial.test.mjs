@@ -1,6 +1,27 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { settleComputerSnapshotProbes } from '../src/extended/desktop-computer-snapshot.mjs';
+import { computerSnapshot, settleComputerSnapshotProbes } from '../src/extended/desktop-computer-snapshot.mjs';
+
+test('readiness-only snapshot does not probe an unrelated desktop session', async () => {
+  let sessionProbes = 0;
+  const result = await computerSnapshot({
+    browser_readiness:true,
+    include_ui:false,
+    include_screenshot:false,
+    include_browser:false,
+    include_ocr:false,
+  }, {
+    desktopSessionProbe:async () => { sessionProbes++; throw new Error('desktop is unavailable'); },
+    browserReadinessProbe:async () => ({
+      status:'unavailable',ready:false,candidate_pages:0,next_step:'use_native_accessibility',
+    }),
+  });
+  assert.equal(sessionProbes, 0);
+  assert.equal(result.structuredContent.browser_readiness.status, 'unavailable');
+  assert.deepEqual(result.structuredContent.errors, []);
+  assert.deepEqual(result.structuredContent.windows, []);
+  assert.deepEqual(result.structuredContent.displays, []);
+});
 
 test('serial Windows probes run one at a time and keep rejection results', async () => {
   const order = [];
