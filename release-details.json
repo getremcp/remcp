@@ -1,10 +1,10 @@
 {
-  "version": "0.2.246",
-  "title": "Make Windows updates recoverable and status truthful.",
+  "version": "0.2.247",
+  "title": "Prevent automatic downgrade when repairing a runtime ahead of server rollout.",
   "changes": [
-    "Stage Windows npm updates in a private .remcp-update-stage- directory while the live client and shims stay intact; validate exact package/version identities, command shim ownership and shared dependency parity before promotion.",
-    "Promote vetted packages in a short locked transaction and roll back on error; retain the original backup when rollback cannot restore everything.",
-    "Report the real Windows Startup supervisor state instead of null, and resolve installed npm versions from the Windows layout so update diagnostics no longer print ?.",
-    "Keep macOS/Linux update paths, credentials and service models unchanged."
+    "Keep a verified newer local client/runtime release installed when the production version manifest still advertises an older pair.",
+    "Block runtime-repair from installing an older client or runtime during transient unknown/offline runtime states; also reject invalid client package specs.",
+    "Retain recovery of a broken runtime when the server advertises the matching current release.",
+    "Preserve Windows staged-update locks, service supervision, trusted package validation and all existing tool permissions."
   ]
 }

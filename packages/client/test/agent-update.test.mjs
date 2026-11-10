@@ -73,6 +73,30 @@ test('the agent updates the client, the runtime, or both', () => {
   assert.equal(decide({ advertised: advertised('@remcp/remcp@0.2.6', '@remcp/runtime@0.2.6'), cliVersion: '0.2.7', runtimeVersion: '0.2.7' }).needed, false);
 });
 
+test('runtime recovery must not downgrade a client ahead of the server release', () => {
+  const olderRelease = advertised('@remcp/remcp@0.2.245', '@remcp/runtime@0.2.245');
+  for (const [runtimeVersion, runtimeDown] of [
+    ['unknown', true],
+    ['offline', true],
+    ['0.2.244', false],
+    ['0.2.246', false],
+  ]) {
+    const decision = decide({ advertised: olderRelease, cliVersion: '0.2.246', runtimeVersion, runtimeDown });
+    assert.equal(decision.needed, false, `never install the server's older pair from runtime=${runtimeVersion}`);
+  }
+  const invalidClient = decide({
+    advertised: advertised('@unknown/client@9.9.9', '@remcp/runtime@0.2.245'),
+    cliVersion: '0.2.246', runtimeVersion: 'unknown', runtimeDown: true,
+  });
+  assert.equal(invalidClient.needed, false, 'an invalid CLI spec cannot trigger a downgrade via runtime repair');
+  const sameRelease = decide({
+    advertised: advertised('@remcp/remcp@0.2.246', '@remcp/runtime@0.2.246'),
+    cliVersion: '0.2.246', runtimeVersion: 'unknown', runtimeDown: true,
+  });
+  assert.equal(sameRelease.needed, true, 'a broken runtime can still repair the current release');
+  assert.equal(sameRelease.reason, 'runtime-repair');
+});
+
 test('only a plain version of the configured runtime package is ever installed', async () => {
   const { isRuntimeSpecFor, normalizeRuntime } = await import('../src/runtime.mjs');
   for (const spec of ['@remcp/runtime@0.2.9', '@remcp/runtime@1.0.0-beta.1', '@remcp/runtime@0.2.9+build.4']) {

@@ -114,6 +114,13 @@ export function updateDecision({ advertised, cliVersion, runtimeVersion, runtime
     : '';
   const installedRuntime = String(runtimeVersion || '');
   const runtimeKnown = Boolean(installedRuntime) && !/^unknown$/i.test(installedRuntime);
+  // A public client can precede the server rollout. If its runtime temporarily goes down,
+  // repairing from the older server pair would silently downgrade both installed packages.
+  // Stay on the newer local release until the server catches up.
+  if ((cliSpec && isNewer(cliVersion, cliSpec)) ||
+      (!cliSpec && runtimeSpec && isNewer(cliVersion, runtimeSpec))) {
+    return { needed: false, target: cliSpec, runtime: runtimeSpec, reason: 'current' };
+  }
   if (isNewer(cliSpec, cliVersion)) return { needed: true, target: cliSpec, runtime: runtimeSpec, reason: 'client' };
   if (runtimeSpec && runtimeKnown && isNewer(runtimeSpec, installedRuntime)) {
     return { needed: true, target: cliSpec || `@remcp/remcp@${cliVersion}`, runtime: runtimeSpec, reason: 'runtime' };
