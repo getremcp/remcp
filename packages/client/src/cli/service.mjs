@@ -237,12 +237,19 @@ export function installPersistentAgent(config) {
   if (!['linux', 'darwin', 'win32'].includes(platform)) throw new Error(`Automatic background service installation is not supported on ${platform}`);
   console.log(`Installing ReMCP ${VERSION}…`);
   // A config can legitimately predate runtime metadata (for example a
-  // preferences-only document or a repair after an old unpack). The installer
-  // must repair with the current release pair instead of crashing on undefined.
-  const runtime = config?.runtime || {
-    kind: 'npm', packageName: '@remcp/runtime',
-    packageSpec: `@remcp/runtime@${VERSION}`, entry: 'src/index.mjs',
-  };
+  // preferences-only document or a repair after an old unpack). It can also
+  // carry a first-party runtime pin from an older release. A local repair must
+  // converge to the exact client/runtime pair it is running; custom third-party
+  // runtimes from the pairing server are preserved.
+  const configuredRuntime = config?.runtime;
+  const firstPartyRuntime = !configuredRuntime || configuredRuntime.packageName === '@remcp/runtime';
+  const runtime = firstPartyRuntime
+    ? {
+        kind: 'npm', packageName: '@remcp/runtime',
+        packageSpec: `@remcp/runtime@${VERSION}`,
+        entry: String(configuredRuntime?.entry || 'src/index.mjs'),
+      }
+    : configuredRuntime;
   const effectiveConfig = { ...config, runtime };
   const runningCli = process.argv[1] || '';
   if (!releasePairPresentAtCli(runningCli, effectiveConfig)) {

@@ -198,36 +198,19 @@ function Remove-ReMCPNpmPowerShellShadow {
     throw 'ReMCP refuses to remove an unknown PowerShell launcher.'
   }
   $body = [IO.File]::ReadAllText($ps1)
-  $expected = @'
-# !/usr/bin/env pwsh
-$basedir=Split-Path $MyInvocation.MyCommand.Definition -Parent
-$exe=""
-if ($PSVersionTable.PSVersion -lt "6.0" -or $IsWindows) {
-# Fix case when both the Windows and Linux builds of Node are installed in the same directory
-  $exe=".exe"
-}
-$ret=0
-if (Test-Path "$basedir/node$exe") {
-# Support pipeline input
-  if ($MyInvocation.ExpectingInput) {
-    $input | & "$basedir/node$exe"  "$basedir/node_modules/@remcp/remcp/bin/remcp.mjs" $args
-  } else {
-    & "$basedir/node$exe"  "$basedir/node_modules/@remcp/remcp/bin/remcp.mjs" $args
-  }
-  $ret=$LASTEXITCODE
-} else {
-# Support pipeline input
-  if ($MyInvocation.ExpectingInput) {
-    $input | & "node$exe"  "$basedir/node_modules/@remcp/remcp/bin/remcp.mjs" $args
-  } else {
-    & "node$exe"  "$basedir/node_modules/@remcp/remcp/bin/remcp.mjs" $args
-  }
-  $ret=$LASTEXITCODE
-}
-exit $ret
-'@
-  $normalized = $body.Replace("`r`n", "`n").TrimEnd([char[]]"`r`n")
-  if ($body.Length -gt 16000 -or $normalized -cne $expected.Replace("`r`n", "`n").TrimEnd([char[]]"`r`n")) {
+  $normalized = $body.Replace("`r`n", "`n").Trim()
+  # npm's shim formatting differs between npm versions (the pwsh header and the
+  # two-line node.exe comment are not stable). Accept only a shim that still runs
+  # this package's CLI through the adjacent node binary, and refuse anything that
+  # downloads or starts other code.
+  $isNpmShim = $body.Length -le 16000 -and
+    $normalized -match '(?m)^#\s*!?\s*/usr/bin/env pwsh\s*$' -and
+    $normalized.Contains('$basedir=Split-Path $MyInvocation.MyCommand.Definition -Parent') -and
+    $normalized -match '(?m)^\$exe=""\s*$' -and
+    $normalized -match 'node_modules[\\/]@remcp[\\/]remcp[\\/]bin[\\/]remcp\.mjs' -and
+    $normalized -match '(?m)^exit \$ret\s*$' -and
+    $normalized -notmatch '(?i)(invoke-webrequest|invoke-restmethod|invoke-expression|start-process|start-job|downloadstring|bitsadmin|certutil|curl(\.exe)?|wget)'
+  if (!$isNpmShim) {
     throw 'ReMCP refuses to remove a non-npm PowerShell launcher.'
   }
   if ($CheckOnly) { return }
