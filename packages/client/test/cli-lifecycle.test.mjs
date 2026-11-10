@@ -177,7 +177,7 @@ test('macOS CLI repair never overwrites or deletes an unrelated user-local comma
     'uninstall leaves a non-ReMCP command untouched');
 });
 
-test('macOS install creates an interactive remcp command and uninstall removes only its managed shell block', () => {
+test('macOS install creates an interactive remcp command and uninstall keeps it until --purge', () => {
   const root = mkdtempSync(path.join(os.tmpdir(), 'remcp-cli-path-'));
   const home = path.join(root, 'home');
   const fakeBin = path.join(root, 'bin');
@@ -242,7 +242,13 @@ test('macOS install creates an interactive remcp command and uninstall removes o
 
   const uninstall = spawnSync(process.execPath, [bin, 'uninstall'], { env, encoding:'utf8' });
   assert.equal(uninstall.status, 0, uninstall.stderr || uninstall.stdout);
-  assert.equal(existsSync(shim), false, 'uninstall removes the ReMCP wrapper');
+  assert.equal(existsSync(shim), true, 'ordinary uninstall keeps the managed prompt command for repair');
+  const keptProfile = readFileSync(path.join(home, '.zshrc'), 'utf8');
+  assert.match(keptProfile, /# >>> ReMCP CLI PATH >>>/);
+
+  const purge = spawnSync(process.execPath, [bin, 'uninstall', '--purge'], { env, encoding:'utf8' });
+  assert.equal(purge.status, 0, purge.stderr || purge.stdout);
+  assert.equal(existsSync(shim), false, '--purge removes the ReMCP wrapper');
   const finalProfile = readFileSync(path.join(home, '.zshrc'), 'utf8');
   assert.match(finalProfile, /# user setting/);
   assert.match(finalProfile, /export KEEP_ME=1/);

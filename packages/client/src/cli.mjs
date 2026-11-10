@@ -85,6 +85,14 @@ export async function main(argv = process.argv.slice(2)) {
       installPersistentAgent(previous);
       return;
     }
+    // The official bootstrap always adds --install. Rerunning it on an already
+    // paired machine must repair the local CLI/service even when the old
+    // `remcp` command is missing; otherwise the guidance below is a dead end.
+    if (alreadyPaired && flags['re-pair'] !== true && flags.install === true) {
+      installPersistentAgent(previous);
+      console.log('This computer is already paired. ReMCP was repaired with the existing credentials; the supplied code was not used. Add --re-pair to intentionally replace the pairing.');
+      return;
+    }
     if (alreadyPaired && flags['re-pair'] !== true) {
       throw new Error('This computer is already paired. Use `remcp doctor` or `remcp install` to repair it without changing credentials. To intentionally replace the pairing (possibly moving it to another account), add --re-pair.');
     }
@@ -413,7 +421,7 @@ export async function main(argv = process.argv.slice(2)) {
 
   if (command === 'uninstall') {
     const cfg = loadConfig(false);
-    uninstallPersistentService();
+    uninstallPersistentService({ removeCli: flags.purge === true });
     // Keep the pairing unless --purge was requested, but remember that the owner explicitly removed
     // the supervisor. Future updates must not infer an old service artifact and recreate it.
     if (cfg) saveConfig({ ...cfg, serviceInstalled: false });

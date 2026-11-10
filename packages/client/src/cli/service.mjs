@@ -236,9 +236,17 @@ export function installPersistentAgent(config) {
   const platform = servicePlatform();
   if (!['linux', 'darwin', 'win32'].includes(platform)) throw new Error(`Automatic background service installation is not supported on ${platform}`);
   console.log(`Installing ReMCP ${VERSION}…`);
+  // A config can legitimately predate runtime metadata (for example a
+  // preferences-only document or a repair after an old unpack). The installer
+  // must repair with the current release pair instead of crashing on undefined.
+  const runtime = config?.runtime || {
+    kind: 'npm', packageName: '@remcp/runtime',
+    packageSpec: `@remcp/runtime@${VERSION}`, entry: 'src/index.mjs',
+  };
+  const effectiveConfig = { ...config, runtime };
   const runningCli = process.argv[1] || '';
-  if (!releasePairPresentAtCli(runningCli, config)) {
-    npmGlobalInstall(`${PACKAGE_NAME}@${VERSION}`, config.runtime.packageSpec);
+  if (!releasePairPresentAtCli(runningCli, effectiveConfig)) {
+    npmGlobalInstall(`${PACKAGE_NAME}@${VERSION}`, runtime.packageSpec);
   }
   const cliPath = globalCliPath();
   const cliScript = resolvedCliScript(cliPath);
@@ -246,10 +254,10 @@ export function installPersistentAgent(config) {
   if (platform === 'linux') installLinuxService(cliPath, nodePath);
   else if (platform === 'darwin') {
     installMacService(cliPath, { nodePath });
-    ensureMacCliCommand(config, { cliPath:cliScript, nodePath });
+    ensureMacCliCommand(effectiveConfig, { cliPath:cliScript, nodePath });
   } else installWindowsService(cliPath, { nodePath });
   configurePostInstallAccess();
-  saveConfig({ ...config, serviceInstalled: true, serviceCliPath: cliScript, serviceNodePath: nodePath });
+  saveConfig({ ...effectiveConfig, serviceInstalled: true, serviceCliPath: cliScript, serviceNodePath: nodePath });
   console.log('ReMCP is installed as a background service. Future updates: remcp update');
 }
 
@@ -383,7 +391,7 @@ export function restartPersistentServiceIfInstalled(config, { deferLinux = false
   return null;
 }
 
-export function uninstallPersistentService() {
+export function uninstallPersistentService({ removeCli = false } = {}) {
   const platform = servicePlatform();
   if (platform === 'linux') {
     uninstallOwnedLinuxUnits();
@@ -391,7 +399,9 @@ export function uninstallPersistentService() {
     const domain = macLaunchDomain();
     spawnSync('launchctl', ['bootout', domain, macServiceFile], { stdio: 'ignore' });
     try { fs.unlinkSync(macServiceFile); } catch {}
-    removeMacCliCommand();
+    // Ordinary uninstall keeps the CLI/runtime/pairing so `remcp install`
+    // remains available. Only --purge removes the managed command.
+    if (removeCli) removeMacCliCommand();
   } else if (platform === 'win32') {
     // Refuse before touching any artifact. Scheduler /End and /Delete cannot
     // prove that its detached CMD/Node descendants exited.

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -55,4 +55,11 @@ test('macOS CLI shim is idempotent and uninstall removes only its managed marker
   assert.doesNotMatch(report.cleanedProfile,/ReMCP CLI PATH/);
   assert.equal(report.refused,null);
   assert.equal(report.untouched,true);
+});
+
+test('ordinary uninstall keeps the managed macOS CLI; only purge removes it', () => {
+  const service = readFileSync(new URL('../src/cli/service.mjs', import.meta.url), 'utf8');
+  const cli = readFileSync(new URL('../src/cli.mjs', import.meta.url), 'utf8');
+  assert.match(service, /if \(removeCli\) removeMacCliCommand\(\)/);
+  assert.match(cli, /uninstallPersistentService\(\{ removeCli: flags\.purge === true \}\)/);
 });

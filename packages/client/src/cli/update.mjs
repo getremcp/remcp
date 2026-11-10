@@ -247,6 +247,10 @@ export async function updateCommand(flags) {
   }
 
   if (alreadyCurrent) {
+    // An unchanged release pair can still carry a legacy systemd restriction.
+    // Repair the owner-managed Linux unit and reload its metadata without restarting
+    // the live agent or touching other system services. Older updaters skipped this.
+    if (serviceExpected && servicePlatform() === 'linux') ensureServiceIfRecorded(cfg);
     // `npx @remcp/remcp@latest update` is the recovery path when a Node-manager prefix was never
     // exported into the user's shell. Even with no package delta, repair the stable macOS command.
     ensureMacCliCommand(cfg);

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.244 — 2026-11-10
+
+- Publish the version-aligned runtime for the ReMCP client 0.2.244 install-recovery change.
+- Runtime capabilities, tool schemas and security permissions remain unchanged from 0.2.243.
+
 ## 0.2.243 — 2026-11-09
 
 - Publish the version-aligned runtime for the ReMCP client 0.2.243 five-minute update polling change.
