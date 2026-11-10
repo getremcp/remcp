@@ -177,7 +177,7 @@ test('macOS CLI repair never overwrites or deletes an unrelated user-local comma
     'uninstall leaves a non-ReMCP command untouched');
 });
 
-test('macOS install creates an interactive remcp command and uninstall keeps it until --purge', () => {
+test('macOS uninstall preserves CLI and pairing; purge removes only managed launcher', () => {
   const root = mkdtempSync(path.join(os.tmpdir(), 'remcp-cli-path-'));
   const home = path.join(root, 'home');
   const fakeBin = path.join(root, 'bin');
@@ -242,17 +242,33 @@ test('macOS install creates an interactive remcp command and uninstall keeps it 
 
   const uninstall = spawnSync(process.execPath, [bin, 'uninstall'], { env, encoding:'utf8' });
   assert.equal(uninstall.status, 0, uninstall.stderr || uninstall.stdout);
-  assert.equal(existsSync(shim), true, 'ordinary uninstall keeps the managed prompt command for repair');
-  const keptProfile = readFileSync(path.join(home, '.zshrc'), 'utf8');
-  assert.match(keptProfile, /# >>> ReMCP CLI PATH >>>/);
+  assert.equal(existsSync(shim), true, 'service-only uninstall must retain the ReMCP command');
+  assert.equal(readFileSync(shim, 'utf8'), shimBody, 'uninstall must preserve CLI launcher bytes');
+  assert.match(readFileSync(path.join(home, '.zshrc'), 'utf8'), /ReMCP CLI PATH/,
+    'service-only uninstall must preserve the interactive command PATH');
+  const afterUninstall = JSON.parse(readFileSync(path.join(configDir, 'config.json'), 'utf8'));
+  assert.equal(afterUninstall.deviceToken, 'test', 'uninstall must preserve device credentials');
+  assert.equal(afterUninstall.serviceInstalled, false);
 
   const purge = spawnSync(process.execPath, [bin, 'uninstall', '--purge'], { env, encoding:'utf8' });
   assert.equal(purge.status, 0, purge.stderr || purge.stdout);
-  assert.equal(existsSync(shim), false, '--purge removes the ReMCP wrapper');
+  assert.equal(existsSync(shim), false, 'explicit purge removes only the managed ReMCP wrapper');
+  assert.equal(JSON.parse(readFileSync(path.join(configDir, 'config.json'), 'utf8')).deviceToken, 'test');
   const finalProfile = readFileSync(path.join(home, '.zshrc'), 'utf8');
   assert.match(finalProfile, /# user setting/);
   assert.match(finalProfile, /export KEEP_ME=1/);
   assert.doesNotMatch(finalProfile, /ReMCP CLI PATH/);
+
+  const reinstall = spawnSync(process.execPath, [bin, 'connect', '--server',
+    'https://example.invalid', '--code', 'ALREADY1', '--repair-if-paired'], { env, encoding:'utf8' });
+  assert.equal(reinstall.status, 0, reinstall.stderr || reinstall.stdout);
+  assert.match(reinstall.stdout, /pairing code was not used/i);
+  assert.equal(existsSync(shim), true, 'reinstall recreates the CLI after purge');
+  const again = JSON.parse(readFileSync(path.join(configDir, 'config.json'), 'utf8'));
+  assert.equal(again.deviceToken, 'test', 'reinstall cannot rotate existing credentials');
+  assert.equal(again.serviceInstalled, true);
+  assert.match(readFileSync(path.join(home, '.zshrc'), 'utf8'), /ReMCP CLI PATH/,
+    'reinstall restores the command PATH');
 });
 
 // macOS keeps the interpreter and the CLI path inside the launchd plist, so the same prefix change

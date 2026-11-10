@@ -81,7 +81,22 @@ export async function main(argv = process.argv.slice(2)) {
     // registration failed. Repair the existing credential in place, never initiate another
     // device-authorization flow or replace an already owned computer.
     if (alreadyPaired && flags['repair-if-paired'] === true &&
-        flags['re-pair'] !== true && !flags.code && flags.install !== false) {
+        flags['re-pair'] !== true && flags.install !== false) {
+      // The official installers may be re-run with a workspace pairing code.
+      // Restore the preserved device credential instead of attempting a second pairing.
+      // Never silently transfer ownership or change servers.
+      const requestedServer = assertSecureServerUrl(flags.server || officialOrigin, {
+        allowInsecure: flags['allow-insecure-transport'] === true,
+      });
+      const pairedServer = assertSecureServerUrl(previous.serverUrl || officialOrigin, {
+        allowInsecure: previous.allowInsecureTransport === true,
+      });
+      if (requestedServer !== pairedServer) {
+        throw new Error('ReMCP is paired to another server. Use remcp install to repair it, or explicitly use remcp connect --re-pair to change ownership.');
+      }
+      if (flags.code) {
+        console.log('ReMCP already paired: preserving this device and repairing its background agent. The supplied pairing code was not used; use --re-pair to change accounts.');
+      }
       installPersistentAgent(previous);
       return;
     }

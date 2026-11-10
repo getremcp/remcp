@@ -24,8 +24,13 @@ function macCliShimPath() {
 }
 
 function interactiveShellProfile() {
-  const shell = String(process.env.REMCP_TEST_SHELL || process.env.SHELL || os.userInfo().shell || '/bin/zsh');
-  const name = path.basename(shell);
+  // Some isolated runner/SSH accounts have no passwd record. An unknown login shell
+  // must never abort LaunchAgent repair after the reload handoff was scheduled.
+  let shell = process.env.REMCP_TEST_SHELL || process.env.SHELL || '';
+  if (!shell) {
+    try { shell = os.userInfo().shell || ''; } catch {}
+  }
+  const name = path.basename(shell || '/bin/zsh');
   if (name === 'zsh') return path.join(home, '.zshrc');
   if (name === 'bash') return path.join(home, '.bash_profile');
   return '';

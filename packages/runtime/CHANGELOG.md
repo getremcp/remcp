@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.248 — 2026-11-10
+
+- Publish the version-aligned runtime for the ReMCP client 0.2.248 Windows interrupted-installer and cross-OS lifecycle fix.
+- Runtime capabilities, tool schemas and security permissions remain unchanged from 0.2.247.
+
 ## 0.2.247 — 2026-11-10
 
 - Publish the version-aligned runtime for the ReMCP 0.2.247 automatic downgrade-prevention fix.

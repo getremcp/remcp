@@ -1,10 +1,7 @@
 [CmdletBinding()]
 param(
-  [string]$Server = 'https://remcp.site',
-  [string]$Code = '',
-  [switch]$TrustRuntime,
-  [switch]$RePair,
-  [switch]$ValidateOnly
+  [string]$Server = 'https://remcp.site', [string]$Code = '',
+  [switch]$TrustRuntime, [switch]$RePair, [switch]$ValidateOnly
 )
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
@@ -12,20 +9,13 @@ $officialOrigin = 'https://remcp.site'
 # Keep the Windows execution engine reproducible for the lifetime of this ReMCP release. An upstream Node point release must never change the bytes installed by an already-reviewed ReMCP release.
 $pinnedNodeVersion = '22.23.3'
 $pinnedNodeSha256 = @{
-  x64 = '2b0ff57b049cda1bbcea2240eec20467018713c1efe1f7360c2681859b90ed71'
-  arm64 = '33dad22e4cef5ee8f9fbb1b0d037fdacd0e56d12a4580f0d63f68b894deab535'
+  x64 = '2b0ff57b049cda1bbcea2240eec20467018713c1efe1f7360c2681859b90ed71'; arm64 = '33dad22e4cef5ee8f9fbb1b0d037fdacd0e56d12a4580f0d63f68b894deab535'
   x86 = '1e07ac00e61b41b7ecf242de8e38883d237d5ad3fdcad7c16f2dd3a88670e2b6'
 }
-if ($env:OS -ne 'Windows_NT') {
-  throw 'This installer is for Windows PowerShell only.'
-}
-try {
-  [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-} catch {}
+if ($env:OS -ne 'Windows_NT') { throw 'This installer is for Windows PowerShell only.' }
+try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 } catch {}
 $localAppData = [Environment]::GetFolderPath('LocalApplicationData')
-if ([string]::IsNullOrWhiteSpace($localAppData)) {
-  throw 'Could not resolve LOCALAPPDATA for this Windows account.'
-}
+if ([string]::IsNullOrWhiteSpace($localAppData)) { throw 'Could not resolve LOCALAPPDATA for this Windows account.' }
 # The batch launchers below intentionally use %LOCALAPPDATA% (ASCII-only script text). Normalize this process environment to the OS known-folder path for the initial launch. A future shell gets its own Windows LOCALAPPDATA, independent of display language.
 $env:LOCALAPPDATA = $localAppData
 $root = Join-Path $localAppData 'ReMCP'
@@ -47,10 +37,8 @@ function Get-ReMCPArchitecture {
 function Invoke-ReMCPVersionRequest {
   param([string]$Uri, [int]$TimeoutMilliseconds)
   $requestTimer = [Diagnostics.Stopwatch]::StartNew()
-  $handler = $null
-  $client = $null
-  $cancel = $null
-  $reply = $null
+  $handler = $null; $client = $null
+  $cancel = $null; $reply = $null
   try {
     Add-Type -AssemblyName System.Net.Http
     $handler = New-Object System.Net.Http.HttpClientHandler
@@ -92,8 +80,7 @@ function Get-ReMCPRelease {
 # Only the explicit rollout gate is retryable. Other conflicts, redirects, malformed responses and service failures fail closed without exposing bodies.
   $response = $null
   if (!$Clock) {
-    $started = [DateTime]::UtcNow
-    $timer = [Diagnostics.Stopwatch]::StartNew()
+    $started = [DateTime]::UtcNow; $timer = [Diagnostics.Stopwatch]::StartNew()
     $Clock = { $started.AddMilliseconds($timer.Elapsed.TotalMilliseconds) }.GetNewClosure()
   }
   $deadline = (& $Clock).AddSeconds($MaximumWaitSeconds)
@@ -139,12 +126,9 @@ function Test-ReMCPRelease {
     [Parameter(Mandatory=$true)]$Release,
     [switch]$Explain
   )
-  $node = Join-Path $Directory 'node.exe'
-  $npm = Join-Path $Directory 'npm.cmd'
-  $cli = Join-Path $Directory 'remcp.cmd'
-  $cliEntry = Join-Path $Directory 'node_modules\@remcp\remcp\bin\remcp.mjs'
-  $clientManifest = Join-Path $Directory 'node_modules\@remcp\remcp\package.json'
-  $runtimeManifest = Join-Path $Directory 'node_modules\@remcp\runtime\package.json'
+  $node = Join-Path $Directory 'node.exe'; $npm = Join-Path $Directory 'npm.cmd'
+  $cli = Join-Path $Directory 'remcp.cmd'; $cliEntry = Join-Path $Directory 'node_modules\@remcp\remcp\bin\remcp.mjs'
+  $clientManifest = Join-Path $Directory 'node_modules\@remcp\remcp\package.json'; $runtimeManifest = Join-Path $Directory 'node_modules\@remcp\runtime\package.json'
   foreach ($file in @($node, $npm, $cli, $cliEntry, $clientManifest, $runtimeManifest)) {
     if (!(Test-Path -LiteralPath $file -PathType Leaf)) {
       if ($Explain) { Write-Host "ReMCP verification failed: missing $file" }
@@ -203,20 +187,46 @@ function Remove-ReMCPNpmPowerShellShadow {
   # two-line node.exe comment are not stable). Accept only a shim that still runs
   # this package's CLI through the adjacent node binary, and refuse anything that
   # downloads or starts other code.
+  # A header plus a few expected substrings is not an ownership proof: a user
+  # could add an arbitrary command before/after "exit $ret" and lose their
+  # customized launcher. Refuse anything beyond the known npm cmd-shim command
+  # sequence, while tolerating npm's harmless whitespace/comment variations.
+  $expectedStatements = @(
+    '$basedir=Split-Path $MyInvocation.MyCommand.Definition -Parent', '$exe=""', 'if ($PSVersionTable.PSVersion -lt "6.0" -or $IsWindows) {', '$exe=".exe"',
+    '}', '$ret=0', 'if (Test-Path "$basedir/node$exe") {', 'if ($MyInvocation.ExpectingInput) {',
+    '$input | & "$basedir/node$exe" "$basedir/node_modules/@remcp/remcp/bin/remcp.mjs" $args', '} else {', '& "$basedir/node$exe" "$basedir/node_modules/@remcp/remcp/bin/remcp.mjs" $args', '}',
+    '$ret=$LASTEXITCODE', '} else {', 'if ($MyInvocation.ExpectingInput) {', '$input | & "node$exe" "$basedir/node_modules/@remcp/remcp/bin/remcp.mjs" $args',
+    '} else {', '& "node$exe" "$basedir/node_modules/@remcp/remcp/bin/remcp.mjs" $args', '}', '$ret=$LASTEXITCODE',
+    '}', 'exit $ret'
+  )
+  $actualStatements = @($normalized -split "\n" |
+    Where-Object { $_.Trim() -and $_.Trim() -notmatch '^#' } |
+    ForEach-Object { $_.Trim() -replace '\s+', ' ' })
+  # A user-added comment is also a customization. Permit only the two known
+  # npm cmd-shim comment families (including their documented wording variants).
+  $unknownComments = @($normalized -split "\n" |
+    Where-Object {
+      $line = $_.Trim()
+      $line -match '^#' -and
+      $line -notmatch '^#[ \t]*!?[ \t]*/usr/bin/env pwsh$' -and
+      $line -notmatch '^#[ \t]*Fix case when both (?:the )?Windows and Linux (?:builds of )?Node are installed in (?:the )?same directory$' -and
+      $line -notmatch '^#[ \t]*Fix case when both the Windows and Linux builds of Node$' -and
+      $line -notmatch '^#[ \t]*are installed in the same directory$' -and
+      $line -notmatch '^#[ \t]*Support pipeline input$'
+    })
   $isNpmShim = $body.Length -le 16000 -and
-    $normalized -match '(?m)^#\s*!?\s*/usr/bin/env pwsh\s*$' -and
-    $normalized.Contains('$basedir=Split-Path $MyInvocation.MyCommand.Definition -Parent') -and
-    $normalized -match '(?m)^\$exe=""\s*$' -and
-    $normalized -match 'node_modules[\\/]@remcp[\\/]remcp[\\/]bin[\\/]remcp\.mjs' -and
-    $normalized -match '(?m)^exit \$ret\s*$' -and
-    $normalized -notmatch '(?i)(invoke-webrequest|invoke-restmethod|invoke-expression|start-process|start-job|downloadstring|bitsadmin|certutil|curl(\.exe)?|wget)'
-  if (!$isNpmShim) {
-    throw 'ReMCP refuses to remove a non-npm PowerShell launcher.'
+    $normalized -match '\A#[ \t]*!?[ \t]*/usr/bin/env pwsh[ \t]*\n' -and
+    $normalized -notmatch '(?i)(invoke-webrequest|invoke-restmethod|invoke-expression|start-process|start-job|downloadstring|bitsadmin|certutil|curl(\.exe)?|wget)' -and
+    $unknownComments.Count -eq 0 -and
+    $actualStatements.Count -eq $expectedStatements.Count
+  if ($isNpmShim) {
+    for ($i = 0; $i -lt $expectedStatements.Count; $i++) {
+      if ($actualStatements[$i] -cne $expectedStatements[$i]) { $isNpmShim = $false; break }
+    }
   }
+  if (!$isNpmShim) { throw 'ReMCP refuses to remove a non-npm PowerShell launcher.' }
   if ($CheckOnly) { return }
-  if (!(Test-Path -LiteralPath (Join-Path $Directory 'remcp.cmd') -PathType Leaf)) {
-    throw 'ReMCP cannot prefer the cmd launcher: remcp.cmd is missing.'
-  }
+  if (!(Test-Path -LiteralPath (Join-Path $Directory 'remcp.cmd') -PathType Leaf)) { throw 'ReMCP cannot prefer the cmd launcher: remcp.cmd is missing.' }
 # With Restricted execution policy PowerShell resolves remcp.ps1 before remcp.cmd. Remove only npm's generated private-prefix shim; never change ExecutionPolicy.
   Remove-Item -LiteralPath $ps1 -Force -ErrorAction Stop
 }
@@ -231,17 +241,12 @@ function Invoke-ReMCPQuietNative {
   $child.StartInfo = $start
   try {
     if (!$child.Start()) { throw 'ReMCP could not start a hidden native process.' }
-    $child.WaitForExit()
-    return $child.ExitCode
+    $child.WaitForExit(); return $child.ExitCode
   } finally { $child.Dispose() }
 }
 function Invoke-ReMCPStagedNpm {
-  param(
-    [Parameter(Mandatory=$true)][string]$Node,
-    [Parameter(Mandatory=$true)][string]$NpmCli,
-    [Parameter(Mandatory=$true)][string]$ClientSpec,
-    [Parameter(Mandatory=$true)][string]$RuntimeSpec
-  )
+  param([Parameter(Mandatory=$true)][string]$Node, [Parameter(Mandatory=$true)][string]$NpmCli,
+        [Parameter(Mandatory=$true)][string]$ClientSpec, [Parameter(Mandatory=$true)][string]$RuntimeSpec)
   if (!(Test-Path -LiteralPath $Node -PathType Leaf) -or
       !(Test-Path -LiteralPath $NpmCli -PathType Leaf) -or $NpmCli.Contains('"')) {
     throw ("The staged ReMCP Node/npm executable is missing or invalid. Node={0} Npm={1}" -f $Node, $NpmCli)
@@ -272,20 +277,28 @@ function Get-ReMCPExistingPairing {
             ![string]::IsNullOrWhiteSpace([string]$config.deviceToken))
   } catch { return $false }
 }
-# A running node.exe or a cmd.exe that launched remcp.cmd keeps the runtime directory locked. Task Scheduler /End does not cover the per-user Startup supervisor, so stop only processes whose executable or command line is inside this exact ReMCP runtime before the transactional directory swap.
+
+# A ReMCP-owned Node/launcher process may hold its runtime files open after
+# Task Scheduler /End. Never kill an unrelated script merely because it uses
+# the bundled node.exe: a foreign process must cause a safe swap refusal instead.
 function Stop-ReMCPRuntimeProcesses {
   $prefix = $runtimeDir.TrimEnd('\') + '\'
+  $packageRoot = Join-Path $runtimeDir 'node_modules\@remcp\'
+  $runtimeLauncher = Join-Path $runtimeDir 'remcp.cmd'
   try { $processes = @(Get-CimInstance -ClassName Win32_Process -ErrorAction Stop) }
   catch { return }
   foreach ($process in $processes) {
     if (!$process -or !$process.ProcessId -or $process.ProcessId -eq $PID) { continue }
     $exe = [string]$process.ExecutablePath
-    $command = [string]$process.CommandLine
+    $command = ([string]$process.CommandLine).Replace('/', '\')
     $name = [string]$process.Name
-    $owned = ($exe -and $exe.StartsWith($prefix, [StringComparison]::OrdinalIgnoreCase)) -or
-      ($command -and $command.IndexOf($prefix, [StringComparison]::OrdinalIgnoreCase) -ge 0 -and
-       ($name -ieq 'cmd.exe' -or $name -ieq 'node.exe' -or $name -ieq 'wscript.exe'))
-    if (!$owned) { continue }
+    $nodeOwned = $name -ieq 'node.exe' -and
+      $exe.StartsWith($prefix, [StringComparison]::OrdinalIgnoreCase) -and
+      $command.IndexOf($packageRoot, [StringComparison]::OrdinalIgnoreCase) -ge 0
+    $launcherOwned = ($name -ieq 'cmd.exe' -or $name -ieq 'wscript.exe') -and
+      ($command.IndexOf($wrapper, [StringComparison]::OrdinalIgnoreCase) -ge 0 -or
+       $command.IndexOf($runtimeLauncher, [StringComparison]::OrdinalIgnoreCase) -ge 0)
+    if (!$nodeOwned -and !$launcherOwned) { continue }
     try {
       Stop-Process -Id $process.ProcessId -Force -ErrorAction Stop
       Write-Host ("Stopped existing ReMCP process {0}." -f $process.ProcessId)
@@ -293,10 +306,7 @@ function Stop-ReMCPRuntimeProcesses {
   }
 }
 function Initialize-ReMCPStage {
-  param(
-    [Parameter(Mandatory=$true)][string]$Destination,
-    [Parameter(Mandatory=$true)]$Release
-  )
+  param([Parameter(Mandatory=$true)][string]$Destination, [Parameter(Mandatory=$true)]$Release)
   $arch = Get-ReMCPArchitecture
   Write-Host 'Preparing ReMCP...'
   $nodeVersion = $pinnedNodeVersion
@@ -355,12 +365,9 @@ function Write-ReMCPWrapper {
   $escapedRuntime = '%LOCALAPPDATA%\ReMCP\runtime'
   $escapedCli = '%LOCALAPPDATA%\ReMCP\runtime\remcp.cmd'
   $content = @(
-    '@echo off',
-    'setlocal DisableDelayedExpansion',
-    "set `"NPM_CONFIG_PREFIX=$escapedRuntime`"",
-    "set `"PATH=$escapedRuntime;%PATH%`"",
-    "call `"$escapedCli`" %*",
-    'exit /b %ERRORLEVEL%',
+    '@echo off', 'setlocal DisableDelayedExpansion',
+    "set `"NPM_CONFIG_PREFIX=$escapedRuntime`"", "set `"PATH=$escapedRuntime;%PATH%`"",
+    "call `"$escapedCli`" %*", 'exit /b %ERRORLEVEL%',
     ''
   ) -join "`r`n"
   [IO.File]::WriteAllText($wrapper, $content, (New-Object Text.UTF8Encoding($false)))
@@ -376,39 +383,62 @@ function Write-ReMCPWrapper {
   }
 }
 function Restore-ReMCPBackup {
-  if (!(Test-Path -LiteralPath $backup -PathType Container)) { return $false }
+  param([string]$Snapshot = $backup)
+  if (!(Test-Path -LiteralPath $Snapshot -PathType Container)) { return $false }
   try { Invoke-ReMCPLegacyTask -Action End } catch {}
   Remove-Item -LiteralPath $runtimeDir -Recurse -Force -ErrorAction SilentlyContinue
-  Move-Item -LiteralPath $backup -Destination $runtimeDir -Force
+  Move-Item -LiteralPath $Snapshot -Destination $runtimeDir -Force
   Write-ReMCPWrapper
   try { Invoke-ReMCPLegacyTask -Action Run } catch {}
+  $node = Join-Path $runtimeDir 'node.exe'
+  $entry = Join-Path $runtimeDir 'node_modules\@remcp\remcp\bin\remcp.mjs'
+  if ((Test-Path -LiteralPath $node) -and (Test-Path -LiteralPath $entry)) {
+    try { & $node $entry install | Out-Null } catch { Write-Warning 'ReMCP rollback restored files, but agent restart failed.' }
+  }
   return $true
 }
-if ($ValidateOnly) {
-  Write-Output ("ReMCP Windows installer validation OK ({0})." -f (Get-ReMCPArchitecture))
-  exit 0
-}
+if ($ValidateOnly) { Write-Output ("ReMCP Windows installer validation OK ({0})." -f (Get-ReMCPArchitecture)); exit 0 }
 # If a previous process died between the directory swap and its final cleanup, prefer the active runtime when it exists; otherwise restore the rollback copy before attempting another install.
 New-Item -ItemType Directory -Force -Path $root | Out-Null
-if (!(Test-Path -LiteralPath $runtimeDir -PathType Container) -and (Test-Path -LiteralPath $backup -PathType Container)) {
-  Move-Item -LiteralPath $backup -Destination $runtimeDir -Force
-}
+if (!(Test-Path -LiteralPath $runtimeDir -PathType Container) -and (Test-Path -LiteralPath $backup -PathType Container)) { Move-Item -LiteralPath $backup -Destination $runtimeDir -Force }
 $release = Get-ReMCPRelease
 $swapped = $false
+# Never discard a previous rollback after an interrupted upgrade. Give this attempt its
+# own uniquely named recovery snapshot instead of overwriting runtime.old.
+$priorRecoveryBackup = Test-Path -LiteralPath $backup
+$attemptSnapshot = if ($priorRecoveryBackup) { "$runtimeDir.recovery-$([Guid]::NewGuid().ToString('N'))" } else { $backup }
 if (!(Test-ReMCPRelease -Directory $runtimeDir -Release $release)) {
 # A successful swap deletes its rollback copy. Refuse user launchers before staging or moving the old runtime; validation must not remove its npm shim.
   Remove-ReMCPNpmPowerShellShadow -Directory $runtimeDir -CheckOnly
-  Initialize-ReMCPStage -Destination $staged -Release $release
-# Only stop a running agent after the complete replacement has downloaded, installed and passed verification. The offline window is therefore just two local directory moves.
+  # Each attempt uses its own staging path. A previous interrupted installer may have
+  # left a complete runtime.new; copy and re-verify those bytes instead of moving them
+  # or allowing two simultaneous installers to overwrite each other's stage.
+  $legacyStaged = "$runtimeDir.new"
+  if ((Test-ReMCPRelease -Directory $legacyStaged -Release $release) -and
+      (Test-Path -LiteralPath (Join-Path $legacyStaged 'remcp.cmd') -PathType Leaf)) {
+    Copy-Item -LiteralPath $legacyStaged -Destination $staged -Recurse -ErrorAction Stop
+    if (Test-ReMCPRelease -Directory $staged -Release $release) {
+      Remove-ReMCPNpmPowerShellShadow -Directory $staged
+      Write-Host 'Reusing an already verified staged ReMCP release from the interrupted update.'
+    } else {
+      Remove-Item -LiteralPath $staged -Recurse -Force -ErrorAction SilentlyContinue
+      Initialize-ReMCPStage -Destination $staged -Release $release
+    }
+  } else {
+    Initialize-ReMCPStage -Destination $staged -Release $release
+  }
+  if ($priorRecoveryBackup) { Write-Warning 'A previous ReMCP rollback is present. This upgrade will preserve it unchanged.' }
+
+  # Only stop a running agent after the complete replacement has downloaded, installed and passed
+  # verification. The offline window is therefore just two local directory moves.
   try { Invoke-ReMCPLegacyTask -Action End } catch {}
   Stop-ReMCPRuntimeProcesses
   Start-Sleep -Milliseconds 250
-  Remove-Item -LiteralPath $backup -Recurse -Force -ErrorAction SilentlyContinue
   if (Test-Path -LiteralPath $runtimeDir -PathType Container) {
     $moved = $false
     for ($attempt = 0; $attempt -lt 12; $attempt++) {
       try {
-        Move-Item -LiteralPath $runtimeDir -Destination $backup -Force -ErrorAction Stop
+        Move-Item -LiteralPath $runtimeDir -Destination $attemptSnapshot -ErrorAction Stop
         $moved = $true
         break
       } catch {
@@ -421,19 +451,17 @@ if (!(Test-ReMCPRelease -Directory $runtimeDir -Release $release)) {
   }
   try {
     Move-Item -LiteralPath $staged -Destination $runtimeDir -Force
-    if (!(Test-ReMCPRelease -Directory $runtimeDir -Release $release)) {
-      throw 'The promoted ReMCP release failed verification.'
-    }
+    if (!(Test-ReMCPRelease -Directory $runtimeDir -Release $release)) { throw 'The promoted ReMCP release failed verification.' }
     $swapped = $true
   } catch {
-    Restore-ReMCPBackup | Out-Null
+    Restore-ReMCPBackup -Snapshot $attemptSnapshot | Out-Null
     throw
   }
 } else {
 # A verified current release may still contain an npm .ps1 shadow created by an older installer or update; repair it without changing installed bytes.
   Remove-ReMCPNpmPowerShellShadow -Directory $runtimeDir
-# A verified current release makes any leftover rollback directory stale.
-  Remove-Item -LiteralPath $backup -Recurse -Force -ErrorAction SilentlyContinue
+  # Never discard an existing recovery copy without an explicit verified recovery.
+  if (Test-Path -LiteralPath $backup) { Write-Warning 'Preserving an existing ReMCP recovery backup.' }
 }
 Write-ReMCPWrapper
 $env:NPM_CONFIG_PREFIX = $runtimeDir
@@ -450,27 +478,21 @@ if ($existingPairing -and !$RePair) {
   if ($RePair) { $arguments += '--re-pair' }
 # A previous run may have completed browser pairing before Task Scheduler denied startup. Repair that existing device without requesting another approval or rotating its token.
   if ([string]::IsNullOrWhiteSpace($Code) -and !$RePair) { $arguments += '--repair-if-paired' }
-  if (![string]::IsNullOrWhiteSpace($Server) -and $Server.TrimEnd('/') -ne $officialOrigin) {
-    $arguments += @('--server', $Server.TrimEnd('/'))
-  }
-  if (![string]::IsNullOrWhiteSpace($Code)) {
-    $arguments += @('--code', ($Code -replace '\s+', '').ToUpperInvariant(), '--install')
-  }
+  if (![string]::IsNullOrWhiteSpace($Server) -and $Server.TrimEnd('/') -ne $officialOrigin) { $arguments += @('--server', $Server.TrimEnd('/')) }
+  if (![string]::IsNullOrWhiteSpace($Code)) { $arguments += @('--code', ($Code -replace '\s+', '').ToUpperInvariant(), '--install') }
   if ($TrustRuntime) { $arguments += '--trust-runtime' }
 }
-if ($arguments[0] -eq 'install') {
-  Write-Host 'Repairing ReMCP with the existing pairing...'
-} else {
-  Write-Host 'Starting ReMCP pairing...'
-}
+if ($arguments[0] -eq 'install') { Write-Host 'Repairing ReMCP with the existing pairing...' }
+else { Write-Host 'Starting ReMCP pairing...' }
 & $node $cliEntry @arguments
 $pairingExit = $LASTEXITCODE
 if ($pairingExit -ne 0) {
-# Keep a fresh first install available for a simple retry. On an upgrade, however, restore the already-working agent if pairing/service setup failed after the atomic swap.
-  if ($swapped -and (Test-Path -LiteralPath $backup -PathType Container)) {
-    Restore-ReMCPBackup | Out-Null
-  }
+  # Keep a fresh first install available for a simple retry. On an upgrade, however, restore the
+  # already-working agent if pairing/service setup failed after the atomic swap.
+  if ($swapped -and (Test-Path -LiteralPath $attemptSnapshot -PathType Container)) { Restore-ReMCPBackup -Snapshot $attemptSnapshot | Out-Null }
   throw "ReMCP pairing failed with exit code $pairingExit."
 }
-Remove-Item -LiteralPath $backup -Recurse -Force -ErrorAction SilentlyContinue
+
+if ($priorRecoveryBackup) { Write-Warning 'Preserved the earlier rollback and this upgrade recovery snapshot for safe inspection.' }
+else { Remove-Item -LiteralPath $attemptSnapshot -Recurse -Force -ErrorAction SilentlyContinue }
 Write-Host ("ReMCP {0} is ready." -f [string]$release.cliVersion)

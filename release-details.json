@@ -1,10 +1,11 @@
 {
-  "version": "0.2.247",
-  "title": "Prevent automatic downgrade when repairing a runtime ahead of server rollout.",
+  "version": "0.2.248",
+  "title": "Recover interrupted Windows installations without removing foreign launchers or rollback data.",
   "changes": [
-    "Keep a verified newer local client/runtime release installed when the production version manifest still advertises an older pair.",
-    "Block runtime-repair from installing an older client or runtime during transient unknown/offline runtime states; also reject invalid client package specs.",
-    "Retain recovery of a broken runtime when the server advertises the matching current release.",
-    "Preserve Windows staged-update locks, service supervision, trusted package validation and all existing tool permissions."
+    "Resume Windows installer recovery through uniquely verified staging directories; preserve existing rollback snapshots and the device's original pairing across failures.",
+    "Restrict Windows runtime stopping to proven ReMCP-owned processes; never stop unrelated Node workloads or remove user-customized PowerShell launchers.",
+    "Accept canonical npm 7 PowerShell launcher formatting while rejecting inserted commands and unrecognized comments.",
+    "Keep Linux/macOS already-paired repair flows intact; preserve managed CLI/PATH on ordinary uninstall and require explicit purge for removal.",
+    "Keep runtime tool definitions, authorization, security permissions and release verification unchanged."
   ]
 }
