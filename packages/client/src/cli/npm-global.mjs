@@ -184,6 +184,71 @@ function transactionalMacGlobalInstall({ resolved, prefix, packageNames, specs, 
   }
 }
 
+// Fetch and validate a complete release in a private npm prefix before touching
+// live Windows shims/packages. Crash during a registry download must not leave
+// remcp.cmd and the live agent missing.
+function stageWindowsGlobalInstall({ resolved, prefix, packageNames, specs, preferOnline }) {
+  const root = path.join(prefix, `.remcp-update-stage-${process.pid}-${Date.now()}`);
+  fs.mkdirSync(root, { recursive:false, mode:0o700 });
+  try {
+    // This explicit final --prefix overrides an inherited NPM_CONFIG_PREFIX and
+    // a service-pinned --prefix argument without changing their configurations.
+    run(resolved.command, [...resolved.args, '--prefix', root,
+      ...npmGlobalInstallArgs(specs, { preferOnline })]);
+    const names = [...new Set(packageNames)];
+    for (const name of names) {
+      const directory = globalPackagePath(root, name, 'win32');
+      const metadata = fs.lstatSync(directory);
+      if (!metadata.isDirectory() || metadata.isSymbolicLink()) {
+        throw new Error('Windows staged update package is not an ordinary directory: ' + name);
+      }
+      const manifest = JSON.parse(fs.readFileSync(path.join(directory, 'package.json'), 'utf8'));
+      const exact = specs.find(spec => String(spec).startsWith(name + '@'))?.slice(name.length + 1);
+      if (manifest.name !== name || typeof manifest.version !== 'string' ||
+        !manifest.version || (exact && /^\d+\.\d+\.\d+(?:[-+][\w.-]+)?$/.test(exact) && manifest.version !== exact)) {
+        throw new Error('Windows staged update package identity or version mismatch: ' + name);
+      }
+    }
+
+    // npm hoists global dependencies. Refuse a promotion that would require
+    // silently replacing unrelated packages, npm itself, or shared dependencies.
+    // A release with dependency changes needs a separately reviewed migration.
+    const stageModules = path.join(root, 'node_modules');
+    const liveModules = path.join(prefix, 'node_modules');
+    const checkShared = relative => {
+      const named = relative.split(path.sep).join('/');
+      if (names.includes(named)) return;
+      const staged = JSON.parse(fs.readFileSync(path.join(stageModules, relative, 'package.json'), 'utf8'));
+      const live = JSON.parse(fs.readFileSync(path.join(liveModules, relative, 'package.json'), 'utf8'));
+      if (staged.name !== live.name || staged.version !== live.version) {
+        throw new Error('Windows staged release changes a shared npm dependency: ' + named);
+      }
+    };
+    for (const entry of fs.readdirSync(stageModules, { withFileTypes:true })) {
+      if (entry.name.startsWith('.') || entry.name === '.bin') continue;
+      if (!entry.isDirectory() || entry.isSymbolicLink()) throw new Error('Unexpected staged npm entry');
+      if (entry.name.startsWith('@')) {
+        for (const scoped of fs.readdirSync(path.join(stageModules, entry.name), { withFileTypes:true })) {
+          if (!scoped.isDirectory() || scoped.isSymbolicLink()) throw new Error('Unexpected staged scoped package');
+          checkShared(path.join(entry.name, scoped.name));
+        }
+      } else checkShared(entry.name);
+    }
+    if (names.includes(PACKAGE_NAME)) {
+      const cmd = path.join(root, 'remcp.cmd');
+      const metadata = fs.lstatSync(cmd);
+      if (!metadata.isFile() || metadata.isSymbolicLink()) throw new Error('Windows staged remcp.cmd is missing');
+      // Any generated PowerShell shim must be npm-owned, not a custom script.
+      assertWindowsNpmPowerShellShimOwned(root);
+    }
+    return root;
+  } catch (error) {
+    try { fs.rmSync(root, { recursive:true, force:true }); }
+    catch (cleanupError) { console.error('ReMCP staged npm cleanup failed:', cleanupError?.message); }
+    throw error;
+  }
+}
+
 function transactionalWindowsGlobalInstall({ resolved, prefix, packageNames, specs, preferOnline = false }) {
   prefix = String(prefix || '').trim();
   if (!path.isAbsolute(prefix)) throw new Error(`npm global prefix must be absolute for a Windows update: ${prefix || '(empty)'}`);
@@ -192,57 +257,82 @@ function transactionalWindowsGlobalInstall({ resolved, prefix, packageNames, spe
     return;
   }
 
-  // The transaction deletes its previous shim backup after success. Reject a
-  // user-created remcp.ps1 before touching npm or moving any existing files.
+  // Do not remove the live package or shims during network downloads.
+  // The complete replacement must pass local verification before promotion.
   if (packageNames.includes(PACKAGE_NAME)) assertWindowsNpmPowerShellShimOwned(prefix);
+  fs.mkdirSync(prefix, { recursive:true });
+  const uniqueNames = [...new Set(packageNames.map(name => String(name || '').trim()).filter(Boolean))];
+  const stagedRoot = stageWindowsGlobalInstall({ resolved, prefix, packageNames:uniqueNames, specs, preferOnline });
   const backupRoot = path.join(prefix, `.remcp-update-backup-${process.pid}-${Date.now()}`);
   const moved = [];
+  const promoted = [];
   const moveAside = (source, label) => {
     if (!pathEntryExists(source)) return;
     const backup = path.join(backupRoot, label);
     fs.renameSync(source, backup);
     moved.push({ source, backup });
   };
-  const restore = originalError => {
+  const promote = (source, target) => {
+    if (!pathEntryExists(source)) return;
+    if (pathEntryExists(target)) throw new Error('Windows update refused to overwrite an unexpected npm entry');
+    fs.mkdirSync(path.dirname(target), { recursive:true });
+    fs.renameSync(source, target);
+    promoted.push(target);
+  };
+  const rollback = originalError => {
     let rollbackError = null;
+    for (const target of [...promoted].reverse()) {
+      try { if (pathEntryExists(target)) fs.rmSync(target, { recursive:true, force:true }); }
+      catch (error) { rollbackError ??= error; }
+    }
     for (const item of [...moved].reverse()) {
       try {
-        if (pathEntryExists(item.source)) fs.rmSync(item.source, { recursive:true, force:true });
+        if (pathEntryExists(item.source)) throw new Error('Unexpected replacement in Windows rollback destination');
         fs.mkdirSync(path.dirname(item.source), { recursive:true });
         fs.renameSync(item.backup, item.source);
-      } catch (error) {
-        rollbackError ??= error;
-      }
+      } catch (error) { rollbackError ??= error; }
     }
-    try { fs.rmSync(backupRoot, { recursive:true, force:true }); } catch (error) { rollbackError ??= error; }
     if (rollbackError) {
+      // On any rollback error retain the only copies of the original files.
       throw new Error(
-        `ReMCP update failed and the previous Windows installation could not be fully restored: ${rollbackError instanceof Error ? rollbackError.message : String(rollbackError)}`,
+        `ReMCP Windows update requires manual recovery; original backup preserved at ${backupRoot}: ${rollbackError.message}`,
         { cause:originalError },
       );
     }
+    try { fs.rmSync(backupRoot, { recursive:true, force:true }); }
+    catch (error) { console.error('Could not remove restored Windows backup:', error?.message); }
   };
 
-  fs.mkdirSync(prefix, { recursive:true });
-  fs.mkdirSync(backupRoot, { recursive:false, mode:0o700 });
   try {
-    const uniqueNames = [...new Set(packageNames.map(name => String(name || '').trim()).filter(Boolean))];
+    fs.mkdirSync(backupRoot, { recursive:false, mode:0o700 });
     uniqueNames.forEach((name, index) => moveAside(globalPackagePath(prefix, name, 'win32'), `package-${index}`));
     if (uniqueNames.includes(PACKAGE_NAME)) {
-      for (const shim of ['remcp', 'remcp.cmd', 'remcp.ps1']) moveAside(path.join(prefix, shim), `bin-${shim}`);
+      for (const shim of ['remcp', 'remcp.cmd', 'remcp.ps1']) {
+        moveAside(path.join(prefix, shim), `bin-${shim}`);
+      }
     }
-    run(resolved.command, [...resolved.args, ...npmGlobalInstallArgs(specs, { preferOnline })]);
-    if (uniqueNames.includes(PACKAGE_NAME)) preferWindowsCmdShim(prefix);
+    for (const name of uniqueNames) {
+      promote(globalPackagePath(stagedRoot, name, 'win32'), globalPackagePath(prefix, name, 'win32'));
+    }
+    if (uniqueNames.includes(PACKAGE_NAME)) {
+      for (const shim of ['remcp', 'remcp.cmd', 'remcp.ps1']) {
+        promote(path.join(stagedRoot, shim), path.join(prefix, shim));
+      }
+      preferWindowsCmdShim(prefix);
+    }
   } catch (error) {
-    restore(error);
+    if (moved.length || promoted.length) rollback(error);
+    else if (pathEntryExists(backupRoot)) {
+      try { fs.rmSync(backupRoot, { recursive:true, force:true }); }
+      catch (cleanupError) { console.error('Windows empty backup cleanup failed:', cleanupError?.message); }
+    }
     throw error;
+  } finally {
+    try { fs.rmSync(stagedRoot, { recursive:true, force:true }); }
+    catch (cleanupError) { console.error('Windows staged npm cleanup failed:', cleanupError?.message); }
   }
-
-  try {
-    fs.rmSync(backupRoot, { recursive:true, force:true });
-  } catch (error) {
-    console.error(`ReMCP update: could not remove Windows rollback backup ${backupRoot}: ${error instanceof Error ? error.message : String(error)}`);
-  }
+  try { fs.rmSync(backupRoot, { recursive:true, force:true }); }
+  catch (error) { console.error('ReMCP Windows backup cleanup failed:', error?.message); }
 }
 
 // Release updates use exact versions that may have been published only moments ago. npm can keep a

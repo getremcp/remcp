@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.246 — 2026-11-10
+
+- Publish the version-aligned runtime for the ReMCP client 0.2.246 Windows staged-update and status fix.
+- Runtime capabilities, tool schemas and security permissions remain unchanged from 0.2.245.
+
 ## 0.2.245 — 2026-11-10
 
 - Publish the version-aligned runtime for the ReMCP client 0.2.245 install convergence fix.

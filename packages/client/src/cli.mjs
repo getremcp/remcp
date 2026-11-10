@@ -12,7 +12,7 @@ import { autoUpdateEnabled, ensureMachineId, loadConfig, readJsonFile, saveConfi
 import { assertRuntimeTrust, assertSecureServerUrl, pairWithDeviceCode } from './cli/connect.mjs';
 import { diagnoseLocalRuntime, installedVersion, runtimeAllowedRoots } from './cli/doctor.mjs';
 import { configFile, npm, officialOrigin, runtimeConfigFile } from './cli/env.mjs';
-import { currentInstallationInfo, ensureMacCliCommand, installPersistentAgent, persistentServiceState, servicePlatform, rememberCurrentInstallation, restartPersistentServiceIfInstalled, serviceInstallationInfo, uninstallPersistentService } from './cli/service.mjs';
+import { currentInstallationInfo, ensureMacCliCommand, installPersistentAgent, persistentServiceState, persistentServiceStatus, servicePlatform, rememberCurrentInstallation, restartPersistentServiceIfInstalled, serviceInstallationInfo, uninstallPersistentService } from './cli/service.mjs';
 import { auditKnownInstallations } from './cli/installation-audit.mjs';
 import { scheduleMacTemperatureRepair } from './cli/mac-native-temperature.mjs';
 import { guardSupervisorDisconnect } from './cli/supervised-agent-lifecycle.mjs';
@@ -314,7 +314,7 @@ export async function main(argv = process.argv.slice(2)) {
         .catch(() => null),
     ]);
     const telemetry = telemetryState();
-    const service = persistentServiceState(cfg);
+    const service = await persistentServiceStatus(cfg);
     const currentInstall = currentInstallationInfo(cfg);
     const serviceInstall = serviceInstallationInfo(cfg);
     // Prefer the runtime installed beside this CLI. npm may resolve a different
@@ -371,6 +371,9 @@ export async function main(argv = process.argv.slice(2)) {
         installed:service.installed,
         running:service.active,
         manager:service.manager,
+        ...(service.statusSource ? { runningSource:service.statusSource } : {}),
+        ...(service.statusReason ? { runningReason:service.statusReason } : {}),
+        ...(service.restartPending ? { restartPending:true } : {}),
         serviceCliVersion:serviceInstall.cliVersion,
         serviceRuntimeVersion:serviceInstall.runtimeVersion,
       },

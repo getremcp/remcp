@@ -1,9 +1,10 @@
 {
-  "version": "0.2.245",
-  "title": "Repair installs with the exact client/runtime pair, even from an older release.",
+  "version": "0.2.246",
+  "title": "Make Windows updates recoverable and status truthful.",
   "changes": [
-    "Converge a local remcp install to the runtime paired with the running client when the saved first-party pin is stale; custom runtime packages remain untouched.",
-    "Keep the Windows bootstrap compatible with npm-generated PowerShell shims across npm formatting changes, refusing only foreign or downloading launchers.",
-    "Keep exact client/runtime pairing, service supervision and update locks unchanged."
+    "Stage Windows npm updates in a private .remcp-update-stage- directory while the live client and shims stay intact; validate exact package/version identities, command shim ownership and shared dependency parity before promotion.",
+    "Promote vetted packages in a short locked transaction and roll back on error; retain the original backup when rollback cannot restore everything.",
+    "Report the real Windows Startup supervisor state instead of null, and resolve installed npm versions from the Windows layout so update diagnostics no longer print ?.",
+    "Keep macOS/Linux update paths, credentials and service models unchanged."
   ]
 }

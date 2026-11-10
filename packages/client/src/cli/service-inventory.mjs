@@ -8,6 +8,7 @@ import { linuxServiceFile, linuxServiceLauncherFile, macServiceFile, macServiceL
 import { linuxSystemAgentOwned } from './service-linux.mjs';
 import { servicePlatform, globalCliPath, npmGlobalUpdateAtPrefix, npmGlobalUpdateForNode } from './npm-global.mjs';
 import { windowsStartupScriptInstalled } from './windows-supervisor.mjs';
+import { windowsSupervisorRequest } from './windows-user-supervisor.mjs';
 
 export function persistentServiceExpected(config) {
   if (config?.serviceInstalled === false) return false;
@@ -50,6 +51,26 @@ export function persistentServiceState(config) {
     return { expected, installed, active, manager:'schtasks', name:windowsTaskName };
   }
   return { expected:false, installed:false, active:false, manager:null, name:null };
+}
+
+// Startup-folder registration proves only that an agent SHOULD launch at logon.
+// Query the existing authenticated supervisor to distinguish a live child from
+// an offline/stalled installation. Never start or repair a service in status.
+export async function persistentServiceStatus(config) {
+  const state = persistentServiceState(config);
+  if (servicePlatform() !== 'win32' || state.manager !== 'startup-user') return state;
+  try {
+    const reply = await windowsSupervisorRequest('status', { timeoutMs:1500 });
+    if (typeof reply.running !== 'boolean') {
+      return { ...state, statusSource:'authenticated_supervisor', statusReason:'invalid_supervisor_status' };
+    }
+    return { ...state, active:reply.running, statusSource:'authenticated_supervisor',
+      restartPending:reply.restartPending === true };
+  } catch (error) {
+    const absent = ['ENOENT', 'ECONNREFUSED', 'EPIPE'].includes(error?.code);
+    return { ...state, active:absent ? false : null, statusSource:'authenticated_supervisor',
+      statusReason:absent ? 'supervisor_unavailable' : 'supervisor_probe_failed' };
+  }
 }
 
 function inferServiceIdentity() {

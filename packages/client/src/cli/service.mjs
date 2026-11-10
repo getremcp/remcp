@@ -1,7 +1,7 @@
 import { servicePlatform, globalPrefix, globalCliPath, npmGlobalInstall, npmGlobalUpdate, npmGlobalUpdateForNode } from './npm-global.mjs';
-import { persistentServiceExpected, persistentServiceState, releasePairPresentAtCli, installationVersionsAtCliPath, serviceInstallationInfo, currentInstallationInfo, rememberCurrentInstallation, syncKnownInstallations, canonicalServiceCliPath, canonicalServiceNodePath } from './service-inventory.mjs';
+import { persistentServiceExpected, persistentServiceState, persistentServiceStatus, releasePairPresentAtCli, installationVersionsAtCliPath, serviceInstallationInfo, currentInstallationInfo, rememberCurrentInstallation, syncKnownInstallations, canonicalServiceCliPath, canonicalServiceNodePath } from './service-inventory.mjs';
 export { servicePlatform, globalPrefix, globalCliPath, npmGlobalInstall, npmGlobalUpdate, npmGlobalUpdateForNode };
-export { persistentServiceExpected, persistentServiceState, releasePairPresentAtCli, installationVersionsAtCliPath, serviceInstallationInfo, currentInstallationInfo, rememberCurrentInstallation, syncKnownInstallations };
+export { persistentServiceExpected, persistentServiceState, persistentServiceStatus, releasePairPresentAtCli, installationVersionsAtCliPath, serviceInstallationInfo, currentInstallationInfo, rememberCurrentInstallation, syncKnownInstallations };
 // Installing, repairing and removing the background agent: one supervisor per platform, plus the
 // write-access tweaks a fresh install needs. Service maintenance follows local OS permissions.
 import fs from 'node:fs';

@@ -10,6 +10,7 @@ import { npmVersion, resolveNpm } from '../npm.mjs';
 import { PACKAGE_NAME, VERSION } from '../version.mjs';
 
 import { npm, runtimeConfigFile } from './env.mjs';
+import { servicePlatform } from './npm-global.mjs';
 
 // when it really owns this process: a terminal gets an explicit instruction instead of a silent exit
 // that would take the device offline.
@@ -107,9 +108,27 @@ export function runtimeAllowedRoots() {
   return [os.homedir()];
 }
 
+// Windows global npm installs packages directly under prefix/node_modules.
+// Unix global installs use prefix/lib/node_modules. Read only the selected
+// package manifest; never trust a non-package name to escape the npm prefix.
+export function globalPackageVersionAtPrefix(packageName, prefix, platform = servicePlatform()) {
+  const name = String(packageName || '').trim();
+  const parts = name.split('/');
+  const valid = (parts.length === 1 && /^[a-z0-9][a-z0-9._-]*$/i.test(parts[0]))
+    || (parts.length === 2 && /^@[a-z0-9][a-z0-9._-]*$/i.test(parts[0])
+      && /^[a-z0-9][a-z0-9._-]*$/i.test(parts[1]));
+  if (!valid || !path.isAbsolute(String(prefix || ''))) return null;
+  const modules = platform === 'win32' ? ['node_modules'] : ['lib', 'node_modules'];
+  const manifest = path.join(prefix, ...modules, ...parts, 'package.json');
+  try {
+    const version = JSON.parse(fs.readFileSync(manifest, 'utf8')).version;
+    return typeof version === 'string' && version.trim() ? version : null;
+  } catch { return null; }
+}
+
 export function installedVersion(packageName) {
-  const prefix = spawnSync(npm.command, [...npm.args, 'prefix', '--global'], { encoding: 'utf8', windowsHide: true });
+  const prefix = spawnSync(npm.command, [...npm.args, 'prefix', '--global'], { encoding:'utf8',
+    windowsHide:true, timeout:15000, maxBuffer:4096 });
   if (prefix.error || prefix.status !== 0) return null;
-  const manifest = path.join(String(prefix.stdout || '').trim(), 'lib', 'node_modules', ...packageName.split('/'), 'package.json');
-  try { return JSON.parse(fs.readFileSync(manifest, 'utf8')).version || null; } catch { return null; }
+  return globalPackageVersionAtPrefix(packageName, String(prefix.stdout || '').trim());
 }
