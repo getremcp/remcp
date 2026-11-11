@@ -1,11 +1,10 @@
 {
-  "version": "0.2.248",
-  "title": "Recover interrupted Windows installations without removing foreign launchers or rollback data.",
+  "version": "0.2.249",
+  "title": "Keep ReMCP devices connected across one missed relay heartbeat.",
   "changes": [
-    "Resume Windows installer recovery through uniquely verified staging directories; preserve existing rollback snapshots and the device's original pairing across failures.",
-    "Restrict Windows runtime stopping to proven ReMCP-owned processes; never stop unrelated Node workloads or remove user-customized PowerShell launchers.",
-    "Accept canonical npm 7 PowerShell launcher formatting while rejecting inserted commands and unrecognized comments.",
-    "Keep Linux/macOS already-paired repair flows intact; preserve managed CLI/PATH on ordinary uninstall and require explicit purge for removal.",
-    "Keep runtime tool definitions, authorization, security permissions and release verification unchanged."
+    "Retry one unanswered WebSocket ping before closing the session, reducing unnecessary disconnects during brief network packet loss.",
+    "Close genuinely silent half-open links after the second missed heartbeat check and reconnect with the existing bounded backoff.",
+    "Preserve device revocation, duplicate-agent protection, authentication and other tool permissions; no server or runtime tool surface changes.",
+    "Align the public dependency lockfile with the patched fast-xml-parser 5.12.0 already locked by the runtime; keep npm audit strict."
   ]
 }

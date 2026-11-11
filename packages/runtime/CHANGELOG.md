@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.249 — 2026-11-11
+
+- Publish the version-aligned runtime alongside the ReMCP client 0.2.249 single-lost-pong recovery fix.
+- Runtime tool capabilities, schemas and permissions are unchanged from 0.2.248.
+
 ## 0.2.248 — 2026-11-10
 
 - Publish the version-aligned runtime for the ReMCP client 0.2.248 Windows interrupted-installer and cross-OS lifecycle fix.

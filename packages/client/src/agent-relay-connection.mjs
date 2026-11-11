@@ -10,6 +10,9 @@ const RECONNECT_BASE_MS = 2_000;
 const RECONNECT_FIRST_MS = 500;
 const RECONNECT_MAX_MS = 60_000;
 const HEARTBEAT_INTERVAL_MS = 15_000;
+// Retry one unanswered ping before declaring the socket stale. A single lost
+// pong must not create a new device session during transient NIC packet loss.
+const HEARTBEAT_MAX_MISSED_TICKS = 2;
 const HANDSHAKE_TIMEOUT_MS = 12_000;
 // Higher-level agent owns runtime supervision/telemetry; this controller owns only relay transport.
 export function createAgentRelayConnection({
@@ -84,6 +87,7 @@ export function createAgentRelayConnection({
     activeSocket = ws;
     let heartbeatTimer = null;
     let awaitingPong = false;
+    let missedPongTicks = 0;
     function clearHeartbeat() {
       if (heartbeatTimer) clearInterval(heartbeatTimer);
       heartbeatTimer = null;
@@ -137,12 +141,14 @@ export function createAgentRelayConnection({
       // Probe relay liveness client-side and terminate a stale socket to reconnect.
       heartbeatTimer = setInterval(() => {
         if (ws.readyState !== WebSocket.OPEN) return;
-        if (awaitingPong) {
+        if (awaitingPong && ++missedPongTicks >= HEARTBEAT_MAX_MISSED_TICKS) {
           console.error('ReMCP relay heartbeat timeout; terminating stale connection.');
           ws.terminate();
           return;
         }
         awaitingPong = true;
+        // Retry a missing pong once; the next missed tick still forces a
+        // bounded reconnect instead of retaining an indefinitely stale socket.
         try { ws.ping(); } catch {
           console.error('ReMCP relay ping failed; terminating stale connection.');
           ws.terminate();
@@ -169,7 +175,11 @@ export function createAgentRelayConnection({
       if (checkUpdatesOnConnect) void checkForUpdate();
       schedulePostConnectUpdateChecks();
     });
-    ws.on('pong', () => { if (activeSocket === ws) awaitingPong = false; });
+    ws.on('pong', () => {
+      if (activeSocket !== ws) return;
+      awaitingPong = false;
+      missedPongTicks = 0;
+    });
     ws.on('message', raw => {
       if (activeSocket !== ws) return;
       let message;
