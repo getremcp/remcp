@@ -51,7 +51,7 @@ jobs:
           trap 'rm -rf -- "$stage"' EXIT
           gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" > "$stage/release.json"
           mkdir -p "$stage/assets"
-          gh release download "$RELEASE_TAG" --dir "$stage/assets"
+          gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --dir "$stage/assets"
 
           files=(chatgpt-app-submission.json remcp-openai-existing-plugin.zip remcp-plugin.zip remcp-skills-only.zip)
           for name in "${files[@]}"; do
@@ -96,6 +96,6 @@ jobs:
             --bundle "$stage/assets/SHA256SUMS.sigstore.json" \
             --certificate-identity "https://github.com/$GITHUB_REPOSITORY/.github/workflows/release-signatures.yml@refs/heads/main" \
             --certificate-oidc-issuer "https://token.actions.githubusercontent.com"
-          gh release upload "$RELEASE_TAG" \
+          gh release upload "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" \
             "$stage/assets/SHA256SUMS" "$stage/assets/SHA256SUMS.sigstore.json"
           echo "Uploaded keyless signature for exact existing release payloads: $RELEASE_TAG"
