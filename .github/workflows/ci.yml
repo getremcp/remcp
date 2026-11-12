@@ -234,10 +234,24 @@ jobs:
           }
           registry_repository() {
             local encoded="$1"
-            curl --fail --silent --show-error \
-              --header 'Cache-Control: no-cache' \
-              "https://registry.npmjs.org/$encoded/$version" |
-              node -e 'let raw="";process.stdin.on("data",c=>raw+=c).on("end",()=>console.log(JSON.parse(raw).repository?.url || ""))'
+            # Metadata is untrusted JSON, never executable script content.
+            # Fetch through the pinned Node runtime without curl-to-interpreter
+            # pipelines that supply-chain scanners could mistake for executing downloads.
+            node --input-type=module - "$encoded" "$version" <<'REGISTRY_METADATA'
+          const [encoded, version] = process.argv.slice(2);
+          if (!['@remcp%2Fruntime', '@remcp%2Fremcp'].includes(encoded) ||
+              !/^\d+\.\d+\.\d+$/.test(version)) {
+            throw new Error('Unexpected npm registry lookup');
+          }
+          const url = `https://registry.npmjs.org/${encoded}/${version}`;
+          const response = await fetch(url, {
+            headers: { 'Cache-Control': 'no-cache' },
+            signal: AbortSignal.timeout(15_000),
+          });
+          if (!response.ok) throw new Error('npm metadata HTTP ' + response.status);
+          const metadata = await response.json();
+          console.log(metadata.repository?.url ?? '');
+          REGISTRY_METADATA
           }
           for encoded in '@remcp%2Fruntime' '@remcp%2Fremcp'; do
             actual="$(registry_repository "$encoded")"
@@ -529,10 +543,24 @@ jobs:
           done
           registry_repository() {
             local encoded="$1"
-            curl --fail --silent --show-error \
-              --header 'Cache-Control: no-cache' \
-              "https://registry.npmjs.org/$encoded/$version" |
-              node -e 'let raw="";process.stdin.on("data",c=>raw+=c).on("end",()=>console.log(JSON.parse(raw).repository?.url || ""))'
+            # Metadata is untrusted JSON, never executable script content.
+            # Fetch through the pinned Node runtime without curl-to-interpreter
+            # pipelines that supply-chain scanners could mistake for executing downloads.
+            node --input-type=module - "$encoded" "$version" <<'REGISTRY_METADATA'
+          const [encoded, version] = process.argv.slice(2);
+          if (!['@remcp%2Fruntime', '@remcp%2Fremcp'].includes(encoded) ||
+              !/^\d+\.\d+\.\d+$/.test(version)) {
+            throw new Error('Unexpected npm registry lookup');
+          }
+          const url = `https://registry.npmjs.org/${encoded}/${version}`;
+          const response = await fetch(url, {
+            headers: { 'Cache-Control': 'no-cache' },
+            signal: AbortSignal.timeout(15_000),
+          });
+          if (!response.ok) throw new Error('npm metadata HTTP ' + response.status);
+          const metadata = await response.json();
+          console.log(metadata.repository?.url ?? '');
+          REGISTRY_METADATA
           }
           for encoded in '@remcp%2Fruntime' '@remcp%2Fremcp'; do
             actual="$(registry_repository "$encoded")"
