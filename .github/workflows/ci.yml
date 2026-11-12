@@ -142,18 +142,26 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 22
+          node-version: 24.22.1 # fixed Node 24 LTS toolchain; bundled npm 11.19.1 supports OIDC
           cache: npm
           registry-url: https://registry.npmjs.org
       - run: npm ci --no-audit --no-fund
       - run: npm test
-      # Trusted publishing needs npm 11.5.1 or newer; the npm bundled with Node 22 is
-      # 10.9.x, which signs provenance but cannot exchange the OIDC token, so the registry
-      # answers an unauthenticated PUT with 404.
-      - name: Use an npm that supports trusted publishing
+      # Trusted publishing requires npm >=11.5.1. The fixed Node 24 LTS
+      # toolchain already bundles npm 11.19.1, so there is no extra mutable
+      # global npm installation or unverified CI setup script.
+      - name: Verify bundled npm supports trusted publishing
+        shell: bash
         run: |
-          npm install --global npm@11.5.1
-          npm --version
+          set -Eeuo pipefail
+          npm_version="$(npm --version)"
+          [[ "$npm_version" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)$ ]] || exit 1
+          (( BASH_REMATCH[1] > 11 || (BASH_REMATCH[1] == 11 &&
+             (BASH_REMATCH[2] > 5 || (BASH_REMATCH[2] == 5 && BASH_REMATCH[3] >= 1))) )) || {
+            echo "Bundled npm $npm_version does not support trusted publishing" >&2
+            exit 1
+          }
+          echo "Node $(node --version), trusted publishing npm $npm_version"
       - name: Align npm provenance repository metadata
         shell: bash
         run: |
@@ -333,7 +341,7 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 22
+          node-version: 24.22.1 # fixed Node 24 LTS toolchain; bundled npm 11.19.1 supports OIDC
           cache: npm
           registry-url: https://registry.npmjs.org
       - name: Validate immutable repair target
@@ -475,10 +483,18 @@ jobs:
           echo "MCP Registry release is still absent after bounded recovery attempts" >&2
           exit 1
       - run: npm ci --no-audit --no-fund
-      - name: Use an npm that supports trusted publishing
+      - name: Verify bundled npm supports trusted publishing
+        shell: bash
         run: |
-          npm install --global npm@11.5.1
-          npm --version
+          set -Eeuo pipefail
+          npm_version="$(npm --version)"
+          [[ "$npm_version" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)$ ]] || exit 1
+          (( BASH_REMATCH[1] > 11 || (BASH_REMATCH[1] == 11 &&
+             (BASH_REMATCH[2] > 5 || (BASH_REMATCH[2] == 5 && BASH_REMATCH[3] >= 1))) )) || {
+            echo "Bundled npm $npm_version does not support trusted publishing" >&2
+            exit 1
+          }
+          echo "Node $(node --version), trusted publishing npm $npm_version"
       - name: Align npm provenance repository metadata
         shell: bash
         run: |
