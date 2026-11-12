@@ -79,9 +79,10 @@ test('Windows supervisor refuses stop and restart after losing an unacknowledged
     setInterval(()=>{if(fs.existsSync(${JSON.stringify(stop)}))process.exit(0);},50);`);
   const env={...process.env,REMCP_CONFIG_DIR:path.join(root,'config')};
   const fixture=path.join(root,'fixture'); fs.mkdirSync(fixture);
-  for(const name of ['windows-owned-job.mjs','windows-owned-job-source.mjs']) {
+  for(const name of ['windows-owned-job.mjs','windows-owned-job-source.mjs','windows-interop.mjs']) {
     fs.copyFileSync(path.resolve('src/cli',name),path.join(fixture,name));
   }
+  fs.cpSync(path.resolve('src/cli/native'),path.join(fixture,'native'),{recursive:true});
   const supervisor=path.join(fixture,'windows-user-supervisor.mjs');
   const source=fs.readFileSync(path.resolve('src/cli/windows-user-supervisor.mjs'),'utf8');
   const injection=`const ownChild = child;

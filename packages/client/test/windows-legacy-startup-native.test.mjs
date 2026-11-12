@@ -27,9 +27,10 @@ test('native Windows startup installs and stops only an isolated owned agent', {
     "fs.writeFileSync(process.env.REMCP_QA_OWNED_PID, String(process.pid));\n" +
     "setInterval(() => {}, 500);\n");
   for(const file of ['windows-user-supervisor.mjs','windows-owned-job.mjs',
-    'windows-owned-job-source.mjs']) {
+    'windows-owned-job-source.mjs','windows-interop.mjs']) {
     fs.copyFileSync(path.resolve('src/cli',file),path.join(entry,file));
   }
+  fs.cpSync(path.resolve('src/cli/native'),path.join(entry,'native'),{recursive:true});
   const script=[
     "import fs from 'node:fs';",
     "import assert from 'node:assert/strict';",

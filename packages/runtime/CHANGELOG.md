@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.251 — 2026-11-12
+
+- Align native helper installation-store metadata with the verified 0.2.251 client/runtime pair.
+- Retain the fixed precompiled helper bytes and all Windows integrity, UIA and process-ownership checks from 0.2.250.
+
 ## 0.2.250 — 2026-11-12
 
 - Respect system PowerShell execution policy for inline runtime helper invocations on Windows.
