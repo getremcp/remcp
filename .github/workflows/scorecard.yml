@@ -1,6 +1,6 @@
 # Generated release-only workflow. The source of truth is
 # antonbaider/remcp-full:docs/public-repo-scorecard.yml.
-# Keep permissions scoped to this single public-repository analysis job.
+# Keep publish permissions scoped to Scorecard; verification uses read-only access.
 name: OpenSSF Scorecard
 
 on:
@@ -35,6 +35,36 @@ jobs:
           results_format: sarif
           publish_results: true
       - name: Upload security findings to GitHub Code Scanning
-        uses: github/codeql-action/upload-sarif@5895b2c9be147bc7f1c75ce72c5cb577febb1907 # v4
+        uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
         with:
           sarif_file: scorecard-results.sarif
+  verify-publication:
+    name: Verify public Scorecard result was actually published
+    needs: scorecard
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Require Scorecard API to report this exact commit
+        shell: bash
+        env:
+          EXPECTED_SHA: ${{ github.sha }}
+          EXPECTED_REPO: ${{ github.repository }}
+        run: |
+          set -Eeuo pipefail
+          api="https://api.scorecard.dev/projects/github.com/${EXPECTED_REPO}"
+          for attempt in $(seq 1 20); do
+            payload="$(curl --silent --fail --max-time 8 "$api" || true)"
+            if [[ -n "$payload" ]]; then
+              actual_sha="$(printf '%s' "$payload" | jq -r '.repo.commit // empty')"
+              actual_repo="$(printf '%s' "$payload" | jq -r '.repo.name // empty')"
+              if [[ "$actual_sha" == "$EXPECTED_SHA" && "$actual_repo" == "github.com/$EXPECTED_REPO" ]]; then
+                echo "OpenSSF Scorecard published for $actual_repo at $actual_sha"
+                exit 0
+              fi
+            fi
+            sleep 6
+          done
+          echo "OpenSSF Scorecard was not published for current commit $EXPECTED_SHA" >&2
+          exit 1
