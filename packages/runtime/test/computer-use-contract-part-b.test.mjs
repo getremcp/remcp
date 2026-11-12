@@ -335,6 +335,7 @@ test('Linux direct app launch honors cwd rather than silently accepting it', { s
 
 test('Windows adapter source keeps the rich UIA/MSAA path compatible with Windows PowerShell 5.1', async () => {
   const windowsSource = (await readFile(new URL('../src/extended/desktop-windows.mjs', import.meta.url), 'utf8')) + (await readFile(new URL('../src/extended/desktop-windows-msaa.mjs', import.meta.url), 'utf8'));
+  const nativeSource = (await Promise.all(['msaa','window-action','displays'].map(id => readFile(new URL('../src/native/windows/'+id+'.cs', import.meta.url),'utf8')))).join('\n');
   const commonSource = await readFile(new URL('../src/extended/common.mjs', import.meta.url), 'utf8');
 
   for (const marker of [
@@ -351,7 +352,7 @@ test('Windows adapter source keeps the rich UIA/MSAA path compatible with Window
     'RangeValuePattern',
     'SelectionItemPattern',
     'ExpandCollapsePattern',
-  ]) assert.ok(windowsSource.includes(marker), `Windows adapter missing ${marker}`);
+  ]) assert.ok((windowsSource + nativeSource).includes(marker), `Windows adapter missing ${marker}`);
 
   assert.ok(commonSource.includes("WindowsPowerShell', 'v1.0', 'powershell.exe'"), 'runtime must keep the Windows PowerShell 5.1 execution path');
   assert.equal(/\$[A-Za-z_][\w.]*\s*\?\?/.test(windowsSource), false, 'embedded PowerShell must not contain PS7-only null-coalescing syntax');

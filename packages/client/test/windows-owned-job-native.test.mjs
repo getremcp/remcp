@@ -77,12 +77,14 @@ test('Windows job tolerates slow PowerShell initialization before its bounded ha
   const root=fs.mkdtempSync(path.join(os.tmpdir(),'remcp-slow-owned-job-'));
   const sourceFile=path.resolve('src/cli/windows-owned-job-source.mjs');
   const source=fs.readFileSync(sourceFile,'utf8');
-  const marker="Add-Type -TypeDefinition @'";
-  assert.equal(source.split(marker).length,2,'expected one compilation boundary');
+  const marker='$job = New-Object ReMcpOwnedJob';
+  assert.equal(source.split(marker).length,2,'expected one owned-job construction boundary');
   fs.writeFileSync(path.join(root,'windows-owned-job-source.mjs'),
     source.replace(marker,'Start-Sleep -Milliseconds 17000\n'+marker));
   fs.copyFileSync(path.resolve('src/cli/windows-owned-job.mjs'),
     path.join(root,'windows-owned-job.mjs'));
+  fs.copyFileSync(path.resolve('src/cli/windows-interop.mjs'), path.join(root,'windows-interop.mjs'));
+  fs.cpSync(path.resolve('src/cli/native'),path.join(root,'native'),{recursive:true});
   const child=path.join(root,'child.mjs');
   fs.writeFileSync(child,'setTimeout(()=>process.exit(0),100);');
   let owner;
@@ -100,4 +102,27 @@ test('Windows job tolerates slow PowerShell initialization before its bounded ha
     await new Promise(resolve=>setTimeout(resolve,200));
     fs.rmSync(root,{recursive:true,force:true,maxRetries:20,retryDelay:100});
   }
+});
+
+test('loaded helper assets allow package promotion while the owned job is active', {
+ skip:process.platform!=='win32',timeout:90000,
+},async()=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'remcp-loaded-helper-'));
+ const pkg=path.join(root,'package');fs.mkdirSync(pkg);
+ for(const name of ['windows-owned-job.mjs','windows-owned-job-source.mjs','windows-interop.mjs'])
+  fs.copyFileSync(path.resolve('src/cli',name),path.join(pkg,name));
+ fs.cpSync(path.resolve('src/cli/native'),path.join(pkg,'native'),{recursive:true});
+ const child=path.join(root,'child.mjs');fs.writeFileSync(child,'setInterval(()=>{},100);');
+ const {spawnWindowsOwnedJob:spawnLocal}=await import(pathToFileURL(path.join(pkg,'windows-owned-job.mjs')).href);
+ const owner=spawnLocal(process.execPath,[child],{cwd:root,log:path.join(root,'log')});
+ try{
+  await owner.ownedJob.ready;
+  fs.renameSync(pkg,pkg+'.old');
+  await owner.ownedJob.stop();
+  assert.equal(owner.ownedJob.confirmedEmpty,true);
+ }finally{
+  if(owner.exitCode===null&&owner.signalCode===null)owner.kill('SIGKILL');
+  await new Promise(resolve=>setTimeout(resolve,200));
+  fs.rmSync(root,{recursive:true,force:true,maxRetries:20,retryDelay:100});
+ }
 });

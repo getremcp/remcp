@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.2.250 — 2026-11-12
+
+- Respect system PowerShell execution policy for inline runtime helper invocations on Windows.
+- Preserve Unicode and noninteractive I/O; no new tools or capability permissions.
+- Replace inline C# interop compilation with packaged .NET assemblies and verify their SHA-256 before advertising Windows tools.
+- Load validated helpers from an immutable per-release store; reject missing or altered helpers without recompiling a replacement.
+- Handle managed UIA builds without LegacyIAccessiblePattern; retain UIA/MSAA, monitor, input and CoreAudio operations.
+- Authenticode signing is not present in these artifacts. Antivirus compatibility and vendor classification are not certified.
+
 ## 0.2.249 — 2026-11-11
 
 - Publish the version-aligned runtime alongside the ReMCP client 0.2.249 single-lost-pong recovery fix.

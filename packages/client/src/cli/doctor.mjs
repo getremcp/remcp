@@ -31,6 +31,16 @@ export async function doctorDeadline(promise, timeoutMs) {
   }
 }
 
+// Missing files may have been quarantined. Do not recommend a blind update on
+// Windows before the operator has checked the security product's event history.
+export function missingRuntimeHint(platform = process.platform) {
+  const repair = `npx --yes ${PACKAGE_NAME}@latest update`;
+  if (platform !== 'win32') return `Reinstall with: ${repair}`;
+  return 'Windows runtime missing: first inspect antivirus quarantine and package integrity. ' +
+    'Keep protection enabled; do not restore flagged files or add broad exclusions. ' +
+    `After the cause is verified and an approved release is available, repair with: ${repair} --repair --no-restart. Run remcp doctor before starting the bridge.`;
+}
+
 export async function diagnoseLocalRuntime(cfg) {
   const packageName = cfg.runtime?.packageName || '';
   const diagnosis = {
@@ -55,12 +65,12 @@ export async function diagnoseLocalRuntime(cfg) {
     diagnosis.entryExists = false;
     diagnosis.verdict = 'runtime-not-installed';
     diagnosis.error = error instanceof Error ? error.message : String(error);
-    diagnosis.hint = `Reinstall with: npx --yes ${PACKAGE_NAME}@latest update`;
+    diagnosis.hint = missingRuntimeHint();
     return diagnosis;
   }
   if (!diagnosis.entryExists) {
     diagnosis.verdict = 'runtime-entry-missing';
-    diagnosis.hint = `Reinstall with: npx --yes ${PACKAGE_NAME}@latest update`;
+    diagnosis.hint = missingRuntimeHint();
     return diagnosis;
   }
   try {

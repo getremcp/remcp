@@ -1,3 +1,4 @@
+import { windowsInteropLoad } from './windows-interop.mjs';
 import { clamp, runPowerShell, escapePowerShellSingle, optionalString } from './common.mjs';
 
 export async function msaaBrowserSnapshot(args = {}) {
@@ -6,21 +7,7 @@ export async function msaaBrowserSnapshot(args = {}) {
   const script = String.raw`
 Add-Type -AssemblyName UIAutomationClient;Add-Type -AssemblyName UIAutomationTypes;Add-Type -AssemblyName Accessibility
 ${windowsUiRootScript(args)}
-Add-Type @'
-using System;
-using System.Runtime.InteropServices;
-public static class RMAcc {
- [DllImport("oleacc.dll")]
- public static extern int AccessibleObjectFromWindow(IntPtr hwnd,uint dwId,ref Guid riid,[MarshalAs(UnmanagedType.Interface)] out object ppvObject);
- public static object FromWindow(IntPtr hwnd) {
-  Guid iid=new Guid("618736E0-3C3D-11CF-810C-00AA00389B71");
-  object value=null;
-  int hr=AccessibleObjectFromWindow(hwnd,0xFFFFFFFCu,ref iid,out value);
-  if(hr<0) Marshal.ThrowExceptionForHR(hr);
-  return value;
- }
-}
-'@
+${windowsInteropLoad('msaa')}
 $rootAcc=[Accessibility.IAccessible][RMAcc]::FromWindow($h)
 $nodes=New-Object System.Collections.ArrayList
 $seen=0
@@ -86,12 +73,7 @@ export function windowsUiRootScript(args = {}) {
     ? `$p=Get-Process|Where-Object{$_.MainWindowHandle -ne 0 -and (${pid} -eq 0 -or $_.Id -eq ${pid}) -and ('${app}' -eq '' -or $_.ProcessName -like '*${app}*') -and ('${title}' -eq '' -or $_.MainWindowTitle -like '*${title}*')}|Select-Object -First 1;if(-not $p){throw 'No matching UI window found'};$h=$p.MainWindowHandle`
     : '$h=[RMFG]::GetForegroundWindow()';
   return String.raw`
-Add-Type @'
-using System;using System.Runtime.InteropServices;
-public static class RMFG{
- [DllImport("user32.dll")]public static extern IntPtr GetForegroundWindow();
-}
-'@
+${windowsInteropLoad('foreground')}
 $h=[IntPtr]::Zero
 ${selector}
 if($h -eq [IntPtr]::Zero){throw 'No foreground UI window is available'}

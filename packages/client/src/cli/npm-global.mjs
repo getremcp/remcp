@@ -3,6 +3,7 @@ import path from 'node:path';
 import process from 'node:process';
 import { resolveNpm } from '../npm.mjs';
 import { PACKAGE_NAME } from '../version.mjs';
+import { assertWindowsPackagePayload } from './installation-payload.mjs';
 import { home, npm } from './env.mjs';
 import { buildVettedMacTemperatureAddon } from './mac-native-temperature.mjs';
 import { output, run } from './shell.mjs';
@@ -210,6 +211,8 @@ function stageWindowsGlobalInstall({ resolved, prefix, packageNames, specs, pref
       }
     }
 
+    assertWindowsPackagePayload(root, names);
+
     // npm hoists global dependencies. Refuse a promotion that would require
     // silently replacing unrelated packages, npm itself, or shared dependencies.
     // A release with dependency changes needs a separately reviewed migration.
@@ -320,6 +323,9 @@ function transactionalWindowsGlobalInstall({ resolved, prefix, packageNames, spe
       }
       preferWindowsCmdShim(prefix);
     }
+    // Real-time protection may remove a file between staging and promotion.
+    // Reject before discarding the previous installation or restarting a service.
+    assertWindowsPackagePayload(prefix, uniqueNames);
   } catch (error) {
     if (moved.length || promoted.length) rollback(error);
     else if (pathEntryExists(backupRoot)) {

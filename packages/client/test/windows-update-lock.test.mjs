@@ -126,7 +126,7 @@ npmGlobalInstall('@remcp/remcp@9.9.9', '@remcp/runtime@9.9.9');`;
   });
 });
 
-function runManualUpdate(t, { task = 'PRESENT', status = 0, check = false, current = false } = {}) {
+function runManualUpdate(t, { task = 'PRESENT', status = 0, check = false, current = false, repair = false, noRestart = false, npmSuccess = false, missingRuntime = false } = {}) {
   const root = fixture(t);
   const prefix = path.join(root, 'prefix');
   const config = path.join(root, 'config');
@@ -138,6 +138,9 @@ function runManualUpdate(t, { task = 'PRESENT', status = 0, check = false, curre
       const dir = path.join(prefix, layout, '@remcp', name);
       fs.mkdirSync(dir, { recursive:true });
       fs.writeFileSync(path.join(dir, 'package.json'), JSON.stringify({ version }));
+      const entry = path.join(dir, name === 'remcp' ? 'bin/remcp.mjs' : 'src/index.mjs');
+      fs.mkdirSync(path.dirname(entry), { recursive:true });
+      if (name !== 'runtime' || !missingRuntime) fs.writeFileSync(entry, '// fixture');
     }
   }
   fs.writeFileSync(path.join(prefix, 'remcp.cmd'), 'original fixture shim');
@@ -158,7 +161,7 @@ cp.spawnSync = (command, args=[]) => {
   if (command === 'qa-npm' && args[0] === 'prefix') return {status:0,stdout:prefix};
   if (command === 'qa-npm' && args[0] === 'install') {
     result.npmMutations++;
-    return {status:1,error:new Error('QA_NPM_MUTATION_BOUNDARY')};
+    return ${npmSuccess ? "{status:0,stdout:''}" : "{status:1,error:new Error('QA_NPM_MUTATION_BOUNDARY')}"};
   }
   if (command === 'powershell.exe') {
     result.taskQueries++;
@@ -177,7 +180,7 @@ for (const name of ['writeFileSync','renameSync','mkdirSync','rmSync','unlinkSyn
 }
 syncBuiltinESMExports();
 const { updateCommand } = await import(${JSON.stringify(new URL('../src/cli/update.mjs', import.meta.url).href)});
-try { await updateCommand({client:'@remcp/remcp@${target}',runtime:'@remcp/runtime@${target}',check:${check}}); }
+try { await updateCommand({client:'@remcp/remcp@${target}',runtime:'@remcp/runtime@${target}',check:${check},repair:${repair},'no-restart':${noRestart}}); }
 catch(error) { result.error=error.message; }
 process.stdout.write('QA_RESULT:'+JSON.stringify(result)+'\\n');`;
   const child = spawnSync(process.execPath, ['--input-type=module', '-e', script], {
@@ -230,3 +233,21 @@ for (const scenario of [{check:true},{current:true}]) {
     assert.equal(result.taskChanges, 0);
   });
 }
+
+test('explicit repair reinstalls an unchanged release without starting the bridge', t => {
+  const result = runManualUpdate(t, { task:'ABSENT', current:true, repair:true, noRestart:true, npmSuccess:true });
+  assert.equal(result.error, null);
+  assert.equal(result.npmMutations, 1);
+  assert.equal(result.taskQueries, 1, 'lifecycle is checked before mutation; no restart follows');
+  assert.equal(result.taskChanges, 0);
+});
+
+test('fresh CLI fallback inspects global payload rather than its intentional runtime-free cache', t => {
+  const healthy = runManualUpdate(t, { current:true });
+  assert.equal(healthy.error, null);
+  assert.equal(healthy.npmMutations, 0);
+  const quarantined = runManualUpdate(t, { current:true, missingRuntime:true });
+  assert.match(quarantined.error, /files are missing despite matching versions/);
+  assert.equal(quarantined.npmMutations, 0);
+  assert.equal(quarantined.taskChanges, 0);
+});

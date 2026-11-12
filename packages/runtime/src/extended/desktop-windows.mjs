@@ -1,3 +1,4 @@
+import { windowsInteropLoad } from './windows-interop.mjs';
 import { msaaBrowserSnapshot, windowsUiRootScript } from './desktop-windows-msaa.mjs';
 import { quoteWindowsArgument } from './windows-argv.mjs';
 import path from 'node:path';
@@ -19,22 +20,12 @@ import {
 
 export async function listWindows() {
   const script=String.raw`
-Add-Type @'
-using System;using System.Runtime.InteropServices;
-public static class RM {
- [StructLayout(LayoutKind.Sequential)] public struct RECT{public int Left,Top,Right,Bottom;}
- [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h,out RECT r);
- [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr h);
- [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
- [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr h);
- [DllImport("user32.dll")] public static extern bool IsZoomed(IntPtr h);
-}
-'@
+${windowsInteropLoad('window-list')}
 $o=@();Get-Process|Where-Object{$_.MainWindowHandle -ne 0}|ForEach-Object{
  $h=$_.MainWindowHandle;if([RM]::IsWindowVisible($h)){$r=New-Object RM+RECT;[void][RM]::GetWindowRect($h,[ref]$r);
  $o += [pscustomobject]@{id=('0x{0:X}' -f $h.ToInt64());pid=$_.Id;app=$_.ProcessName;title=$_.MainWindowTitle;active=($h -eq [RM]::GetForegroundWindow());minimized=[RM]::IsIconic($h);maximized=[RM]::IsZoomed($h);x=$r.Left;y=$r.Top;width=$r.Right-$r.Left;height=$r.Bottom-$r.Top}}
 };$o|ConvertTo-Json -Compress`;
-  const {stdout}=await runPowerShell(script,{label:'list windows'});
+  const {stdout}=await runPowerShell(script,{label:'list windows',timeout:30_000});
   const parsed=stdout.trim()?JSON.parse(stdout):[];
   return jsonResult(Array.isArray(parsed)?parsed:[parsed]);
 }
@@ -52,40 +43,7 @@ export async function windowAction(args = {}) {
   const action=requireEnum(args.action,'action',['focus','minimize','maximize','restore','move','resize','move_resize','close']);
   const x=Number(args.x),y=Number(args.y),width=Number(args.width),height=Number(args.height);
   const script=String.raw`
-Add-Type @'
-using System;using System.Runtime.InteropServices;
-public static class RM {
- [StructLayout(LayoutKind.Sequential)] public struct RECT{public int Left,Top,Right,Bottom;}
- [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h,int c);
- [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
- [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
- [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr h,IntPtr p);
- [DllImport("user32.dll")] public static extern bool AttachThreadInput(uint from,uint to,bool attach);
- [DllImport("kernel32.dll")] public static extern uint GetCurrentThreadId();
- [DllImport("user32.dll")] public static extern bool BringWindowToTop(IntPtr h);
- [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr h,IntPtr after,int x,int y,int cx,int cy,uint flags);
- [DllImport("user32.dll")] public static extern bool AllowSetForegroundWindow(int pid);
- [DllImport("user32.dll")] public static extern bool MoveWindow(IntPtr h,int x,int y,int w,int h2,bool r);
- [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h,out RECT r);
- [DllImport("user32.dll")] public static extern bool PostMessage(IntPtr h,uint m,IntPtr w,IntPtr l);
- public static bool FocusWindow(IntPtr h){
-  uint current=GetCurrentThreadId(),target=GetWindowThreadProcessId(h,IntPtr.Zero);
-  IntPtr fg=GetForegroundWindow();uint foreground=fg==IntPtr.Zero?0:GetWindowThreadProcessId(fg,IntPtr.Zero);
-  bool attachTarget=false,attachForeground=false;
-  try{
-   if(target!=0&&current!=target)attachTarget=AttachThreadInput(current,target,true);
-   if(foreground!=0&&current!=foreground&&foreground!=target)attachForeground=AttachThreadInput(current,foreground,true);
-   ShowWindow(h,9);AllowSetForegroundWindow(-1);BringWindowToTop(h);
-   // HWND_TOP preserves the window's existing topmost status.
-   SetWindowPos(h,IntPtr.Zero,0,0,0,0,0x0001|0x0002|0x0010|0x0040);
-   return SetForegroundWindow(h);
-  }finally{
-   if(attachForeground)AttachThreadInput(current,foreground,false);
-   if(attachTarget)AttachThreadInput(current,target,false);
-  }
- }
-}
-'@
+${windowsInteropLoad('window-action')}
 ${selectorScript(args)}
 $r=New-Object RM+RECT;[void][RM]::GetWindowRect($h,[ref]$r)
 switch('${action}'){
@@ -145,9 +103,10 @@ $cache.TreeScope=[System.Windows.Automation.TreeScope]::Element
  [System.Windows.Automation.ExpandCollapsePattern]::Pattern,
  [System.Windows.Automation.RangeValuePattern]::Pattern,
  [System.Windows.Automation.ScrollPattern]::Pattern,
- [System.Windows.Automation.ScrollItemPattern]::Pattern,
- [System.Windows.Automation.LegacyIAccessiblePattern]::Pattern
+ [System.Windows.Automation.ScrollItemPattern]::Pattern
 )|ForEach-Object{try{$cache.Add($_)}catch{}}
+# LegacyIAccessiblePattern is absent from some managed .NET UIA builds.
+try{$cache.Add([System.Windows.Automation.LegacyIAccessiblePattern]::Pattern)}catch{}
 try{$root=$root.GetUpdatedCache($cache)}catch{}
 $q=New-Object System.Collections.Queue
 $q.Enqueue([pscustomobject]@{e=$root;d=0;parent=$null})
@@ -215,13 +174,7 @@ export async function uiAction(args = {}, { runPowerShellFn = runPowerShell } = 
   const script = String.raw`
 Add-Type -AssemblyName UIAutomationClient;Add-Type -AssemblyName UIAutomationTypes
 ${windowsUiRootScript(args)}
-Add-Type @'
-using System;using System.Runtime.InteropServices;
-public static class RMMouse{
- [DllImport("user32.dll")]public static extern bool SetCursorPos(int x,int y);
- [DllImport("user32.dll")]public static extern void mouse_event(uint f,uint x,uint y,uint d,UIntPtr i);
-}
-'@
+${windowsInteropLoad('ui-mouse')}
 $q=New-Object System.Collections.Queue;$q.Enqueue($root);$found=$null;$visited=0
 while($q.Count -gt 0 -and -not $found -and $visited -lt 10000){
  $e=$q.Dequeue();$visited++
@@ -339,9 +292,7 @@ export async function typeTextKeys(value) {
 function mousePrelude() {
   // dwData is a signed wheel delta. Declaring it as uint made the generated
   // negative literal cast throw before the wheel event was sent.
-  return String.raw`Add-Type @'
-using System;using System.Runtime.InteropServices;public static class RMMouse{[DllImport("user32.dll")]public static extern bool SetCursorPos(int x,int y);[DllImport("user32.dll")]public static extern void mouse_event(uint f,uint x,uint y,int d,UIntPtr i);}
-'@`;
+  return String.raw`${windowsInteropLoad('pointer')}`;
 }
 
 function flags(button='left') {
@@ -379,34 +330,19 @@ export async function scroll(args = {}) {
 }
 
 export async function cursorPosition() {
-  const script=String.raw`Add-Type @'
-using System;using System.Runtime.InteropServices;public static class RMCursor{[StructLayout(LayoutKind.Sequential)]public struct POINT{public int X;public int Y;}[DllImport("user32.dll")]public static extern bool GetCursorPos(out POINT p);}
-'@;$p=New-Object RMCursor+POINT;if(-not [RMCursor]::GetCursorPos([ref]$p)){throw 'GetCursorPos failed'};[pscustomobject]@{x=$p.X;y=$p.Y}|ConvertTo-Json -Compress`;
+  const script=String.raw`${windowsInteropLoad('cursor')};$p=New-Object RMCursor+POINT;if(-not [RMCursor]::GetCursorPos([ref]$p)){throw 'GetCursorPos failed'};[pscustomobject]@{x=$p.X;y=$p.Y}|ConvertTo-Json -Compress`;
   const raw=(await runPowerShell(script,{label:'cursor position'})).stdout.trim();
   return jsonResult(raw?JSON.parse(raw):{x:null,y:null});
 }
 
 export async function displayInventory() {
   const script=String.raw`Add-Type -AssemblyName System.Windows.Forms
-Add-Type @'
-using System;using System.Runtime.InteropServices;
-public static class RMDisplay{
- [StructLayout(LayoutKind.Sequential)]public struct POINT{public int X;public int Y;public POINT(int x,int y){X=x;Y=y;}}
- [DllImport("user32.dll")]public static extern uint GetDpiForSystem();
- [DllImport("user32.dll")]public static extern IntPtr MonitorFromPoint(POINT pt,uint flags);
- [DllImport("Shcore.dll")]public static extern int GetDpiForMonitor(IntPtr monitor,int type,out uint x,out uint y);
- public static uint DpiAt(int x,int y){
-  uint fallback=GetDpiForSystem();
-  try{IntPtr h=MonitorFromPoint(new POINT(x,y),2);uint dx,dy;if(h!=IntPtr.Zero&&GetDpiForMonitor(h,0,out dx,out dy)==0&&dx>0)return dx;}catch{}
-  return fallback;
- }
-}
-'@
+${windowsInteropLoad('displays')}
 [System.Windows.Forms.Screen]::AllScreens|ForEach-Object{
  $cx=$_.Bounds.X+[int]($_.Bounds.Width/2);$cy=$_.Bounds.Y+[int]($_.Bounds.Height/2);$dpi=[RMDisplay]::DpiAt($cx,$cy);$scale=[Math]::Round($dpi/96.0,3)
  [pscustomobject]@{name=$_.DeviceName;display_name=$_.DeviceName;primary=$_.Primary;x=$_.Bounds.X;y=$_.Bounds.Y;width=$_.Bounds.Width;height=$_.Bounds.Height;pixel_width=$_.Bounds.Width;pixel_height=$_.Bounds.Height;workingX=$_.WorkingArea.X;workingY=$_.WorkingArea.Y;workingWidth=$_.WorkingArea.Width;workingHeight=$_.WorkingArea.Height;scale=$scale;dpi=$dpi}
 }|ConvertTo-Json -Compress`;
-  const raw=(await runPowerShell(script,{label:'display inventory'})).stdout.trim();
+  const raw=(await runPowerShell(script,{label:'display inventory',timeout:30_000})).stdout.trim();
   const parsed=raw?JSON.parse(raw):[];
   return jsonResult(Array.isArray(parsed)?parsed:[parsed]);
 }

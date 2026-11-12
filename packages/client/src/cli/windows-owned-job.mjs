@@ -7,6 +7,12 @@ function quote(value) {
   return '"' + value.replace(/(\\*)"/g, '$1$1\\"').replace(/(\\+)$/, '$1$1') + '"';
 }
 
+// Keep trusted source visible to normal PowerShell/AMSI inspection. Application
+// arguments still travel over stdin; never interpolate them into executable code.
+export function windowsOwnedJobArguments() {
+  return ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command', windowsOwnedJobScript];
+}
+
 // The helper owns an unnamed kernel job; no PID enumeration or taskkill is used.
 // Acknowledgement is emitted only after the job's ActiveProcesses count reaches zero.
 export function spawnWindowsOwnedJob(application, args, { cwd, log, env = process.env } = {}) {
@@ -17,8 +23,7 @@ export function spawnWindowsOwnedJob(application, args, { cwd, log, env = proces
   const command = [application, ...args].map(quote).join(' ');
   if (command.length > 32766) throw new Error('Owned-job command line is too long');
   const powershell = path.join(process.env.SystemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
-  const helper = spawn(powershell, ['-NoProfile', '-NonInteractive', '-EncodedCommand',
-    Buffer.from(windowsOwnedJobScript, 'utf16le').toString('base64')], {
+  const helper = spawn(powershell, windowsOwnedJobArguments(), {
     cwd:path.dirname(powershell), env, windowsHide:true, stdio:['pipe','pipe','pipe'],
   });
   let output = '', stderr = '', started = false, empty = false, settled = false, sawReady = false;
@@ -28,7 +33,7 @@ export function spawnWindowsOwnedJob(application, args, { cwd, log, env = proces
   // Callers may observe readiness and completion separately; suppress unhandled rejection noise.
   ready.catch(() => {}); done.catch(() => {});
   const fail = error => { rejectReady(error); rejectDone(error); };
-  // Windows PowerShell 5.1 compiles this P/Invoke helper via Add-Type on every launch.
+  // The precompiled helper is integrity-checked and loaded before readiness.
   // Resource-constrained ARM64 VMs can need more than 15 seconds. Keep one bounded
   // deadline for the complete handshake, without weakening job ownership checks.
   const timer = setTimeout(() => {

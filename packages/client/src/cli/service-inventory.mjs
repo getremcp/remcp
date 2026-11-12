@@ -9,6 +9,7 @@ import { linuxSystemAgentOwned } from './service-linux.mjs';
 import { servicePlatform, globalCliPath, npmGlobalUpdateAtPrefix, npmGlobalUpdateForNode } from './npm-global.mjs';
 import { windowsStartupScriptInstalled } from './windows-supervisor.mjs';
 import { windowsSupervisorRequest } from './windows-user-supervisor.mjs';
+import { installationPayloadAtCliPath } from './installation-payload.mjs';
 
 export function persistentServiceExpected(config) {
   if (config?.serviceInstalled === false) return false;
@@ -165,7 +166,8 @@ export function releasePairPresentAtCli(cliPath, config) {
   const expectedRuntimeVersion = exactPackageSpecVersion(runtimePackageName, config?.runtime?.packageSpec);
   if (!cliPath || !runtimePackageName || !expectedRuntimeVersion) return false;
   return packageVersionForCli(cliPath, PACKAGE_NAME) === VERSION
-    && packageVersionForCli(cliPath, runtimePackageName) === expectedRuntimeVersion;
+    && packageVersionForCli(cliPath, runtimePackageName) === expectedRuntimeVersion
+    && (servicePlatform() !== 'win32' || installationPayloadAtCliPath(cliPath, config?.runtime).payloadReady);
 }
 
 export function installationVersionsAtCliPath(cliPath, runtimePackageName) {
@@ -209,6 +211,7 @@ export function serviceInstallationInfo(config) {
     runtimeVersion:packageVersionForCli(resolvedCliPath, config?.runtime?.packageName),
     cliPath:resolvedCliPath || cliPath,
     nodePath,
+    ...(servicePlatform() === 'win32' ? installationPayloadAtCliPath(resolvedCliPath || cliPath, config?.runtime) : {}),
   };
 }
 
@@ -220,6 +223,7 @@ export function currentInstallationInfo(config) {
     runtimeVersion:config?.runtime?.packageName ? packageVersionForCli(cliPath, config.runtime.packageName) : null,
     cliPath:cliPath || null,
     nodePath:process.execPath,
+    ...(servicePlatform() === 'win32' ? installationPayloadAtCliPath(cliPath, config?.runtime) : {}),
   };
 }
 
@@ -259,7 +263,7 @@ export function syncKnownInstallations(config, ...specs) {
   // Compare the actual package pair, never just the Node executable (which can
   // be shared by an interactive NVM CLI and a separate managed-agent prefix).
   if (expectedCli && expectedRuntime && serviceInfo.cliVersion === expectedCli
-    && serviceInfo.runtimeVersion === expectedRuntime) return [];
+    && serviceInfo.runtimeVersion === expectedRuntime && serviceInfo.payloadReady !== false) return [];
   // A legacy launcher with no npm packages recorded at its path is repaired
   // by ensureServiceIfRecorded() after the normal update. Never attempt an
   // npm write to an unrelated or unrecognizable launcher location.

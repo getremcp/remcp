@@ -3,6 +3,8 @@
 // installable, so a server cannot point this machine at a different package or a git/URL/tag spec.
 import fs from 'node:fs';
 import process from 'node:process';
+import path from 'node:path';
+import { installationPayloadAtCliPath } from './installation-payload.mjs';
 
 import { supervisorRestart } from '../agent.mjs';
 import { isRuntimeSpecFor, normalizeRuntime } from '../runtime.mjs';
@@ -11,8 +13,13 @@ import { PACKAGE_NAME, VERSION } from '../version.mjs';
 import { loadConfig, saveConfig } from './config.mjs';
 import { assertSecureServerUrl } from './connect.mjs';
 import { installedVersion } from './doctor.mjs';
+import { globalPrefix } from './npm-global.mjs';
+import { clearRecoveryHold } from '../windows-recovery-state.mjs';
+import { recoverWindowsUpdateLock } from './windows-update-lock.mjs';
+import { serviceNpmPrefixFromCliPath } from './service-inventory.mjs';
 import { linuxServiceFile, macServiceFile, officialOrigin } from './env.mjs';
 import { linuxSystemAgentOwned } from './service-linux.mjs';
+import { withWindowsInteropRepair } from './windows-interop-payload.mjs';
 import { assertWindowsUpdateLifecycleSafe, currentInstallationInfo, ensureMacCliCommand, ensureServiceIfRecorded, npmGlobalUpdate, persistentServiceExpected, rememberCurrentInstallation, restartPersistentServiceIfInstalled, servicePlatform, serviceInstallationInfo, syncKnownInstallations } from './service.mjs';
 
 const UPDATE_DISCOVERY_TIMEOUT_MS = 5000;
@@ -179,6 +186,7 @@ export function updateAlreadyCurrent({ cfg, targets, currentInstall, serviceInst
   const targetClientVersion = specVersion(PACKAGE_NAME, targets?.clientSpec);
   const targetRuntimeVersion = specVersion(cfg?.runtime?.packageName, targets?.runtimeSpec);
   if (!targetClientVersion || !targetRuntimeVersion) return false;
+  if (currentInstall?.payloadReady === false || (serviceExpected && serviceInstall?.payloadReady === false)) return false;
 
   const currentClientVersion = String(currentInstall?.cliVersion || '').trim();
   const currentRuntimeVersion = String(currentInstall?.runtimeVersion || '').trim();
@@ -195,6 +203,9 @@ export function updateAlreadyCurrent({ cfg, targets, currentInstall, serviceInst
 }
 
 export function verifyManagedServiceReleasePair(serviceInstall, clientSpec, runtimePackageName, runtimeSpec) {
+  if (serviceInstall?.payloadReady === false) {
+    throw new Error('ReMCP update refused to restart: executable payload is missing. Review antivirus quarantine, then repair an approved exact release; keep protection enabled.');
+  }
   const expectedClient = specVersion(PACKAGE_NAME, clientSpec);
   const expectedRuntime = specVersion(runtimePackageName, runtimeSpec);
   if (!expectedClient || !expectedRuntime || serviceInstall?.cliVersion !== expectedClient || serviceInstall?.runtimeVersion !== expectedRuntime) {
@@ -216,10 +227,17 @@ export async function updateCommand(flags) {
   if (targets.warning) console.error(`ReMCP update: ${targets.warning}`);
 
   const currentInstall = currentInstallationInfo(cfg);
-  if (!currentInstall.runtimeVersion) currentInstall.runtimeVersion = installedVersion(cfg.runtime.packageName);
+  if (!currentInstall.runtimeVersion) {
+    currentInstall.runtimeVersion = installedVersion(cfg.runtime.packageName);
+    // npx intentionally installs only the CLI in its cache. When the runtime
+    // version comes from the global prefix, inspect that same installation.
+    if (servicePlatform() === 'win32' && currentInstall.runtimeVersion) {
+      Object.assign(currentInstall, installationPayloadAtCliPath(path.join(globalPrefix(), 'remcp.cmd'), cfg.runtime));
+    }
+  }
   const serviceExpected = persistentServiceExpected(cfg);
   const serviceInstall = serviceInstallationInfo(cfg);
-  const alreadyCurrent = targets.installable && updateAlreadyCurrent({
+  const alreadyCurrent = flags.repair !== true && targets.installable && updateAlreadyCurrent({
     cfg,
     targets,
     currentInstall,
@@ -236,6 +254,9 @@ export async function updateCommand(flags) {
       updateSource: targets.source,
       installable: targets.installable,
       upToDate: alreadyCurrent,
+      ...(servicePlatform() === 'win32' ? { payloadReady:currentInstall.payloadReady,
+        managedPayloadReady:serviceInstall.payloadReady,
+        repairRequired:currentInstall.payloadReady === false || serviceInstall.payloadReady === false } : {}),
       managedService: linuxSystemAgentOwned() || fs.existsSync(linuxServiceFile) || fs.existsSync(macServiceFile),
       supervisor: supervisorRestart() ?? 'none',
     }, null, 2));
@@ -259,7 +280,7 @@ export async function updateCommand(flags) {
     }
     const currentRuntimeVersion = String(currentInstall.runtimeVersion || specVersion(cfg.runtime.packageName, targets.runtimeSpec) || '?');
     console.log(`ReMCP is already up to date (client ${currentInstall.cliVersion || VERSION}, runtime ${currentRuntimeVersion}).`);
-    if (shouldApplyAlreadyInstalledWindowsRelease({ platform: servicePlatform(), serviceExpected, flags })) {
+    if (flags['no-restart'] !== true && shouldApplyAlreadyInstalledWindowsRelease({ platform: servicePlatform(), serviceExpected, flags })) {
       // This CLI may be newer than its still-running parent agent. The canonical
       // service files are correct, but the existing Windows task must hand over.
       const restarted = restartPersistentServiceIfInstalled(cfg, { deferWindows: true });
@@ -269,18 +290,33 @@ export async function updateCommand(flags) {
     return;
   }
 
+  if (servicePlatform() === 'win32' && !flags.repair &&
+      (currentInstall.payloadReady === false || serviceInstall.payloadReady === false) &&
+      currentInstall.cliVersion === specVersion(PACKAGE_NAME, targets.clientSpec) &&
+      currentInstall.runtimeVersion === specVersion(cfg.runtime.packageName, targets.runtimeSpec)) {
+    throw new Error('ReMCP files are missing despite matching versions. Check antivirus reports before retrying this same release with update --repair. Do not restore quarantine or disable protection.');
+  }
+
   // Legacy Scheduled Task /End can orphan an already running agent. Refuse the
   // update before touching npm or package state until ownership is verifiable.
   // An old task may survive an explicit service opt-out. Its ownership must be
   // checked independently of that preference before replacing either package.
   assertWindowsUpdateLifecycleSafe();
+  if (servicePlatform() === 'win32' && flags.repair === true) {
+    const prefixes = new Set([globalPrefix()]);
+    if (serviceExpected) prefixes.add(serviceNpmPrefixFromCliPath(serviceInstall.cliPath, 'win32'));
+    for (const prefix of prefixes) {
+      const archived = recoverWindowsUpdateLock(prefix);
+      if (archived) console.log('ReMCP interrupted update lock archived at ' + archived + '; original stages and backups preserved.');
+    }
+  }
   const before = { cli: VERSION, runtime: installedVersion(cfg.runtime.packageName) };
   console.log(`Updating ReMCP to ${targets.clientSpec} with ${targets.runtimeSpec}…`);
-  npmGlobalUpdate([PACKAGE_NAME, cfg.runtime.packageName], targets.clientSpec, targets.runtimeSpec);
-
-  // Converge only the canonical service installation. Never update secondary nvm/Hermes/
-  // Homebrew installations implicitly: they may be managed by other applications.
-  const synced = syncKnownInstallations(cfg, targets.clientSpec, targets.runtimeSpec);
+  const synced = withWindowsInteropRepair(servicePlatform() === 'win32' && flags.repair === true, () => {
+    npmGlobalUpdate([PACKAGE_NAME, cfg.runtime.packageName], targets.clientSpec, targets.runtimeSpec);
+    // Converge only the canonical service installation, preserving unrelated prefixes.
+    return syncKnownInstallations(cfg, targets.clientSpec, targets.runtimeSpec);
+  });
   for (const item of synced) {
     if (!item.ok) console.error(`ReMCP update: could not sync secondary installation at ${item.nodePath}: ${item.error}`);
   }
@@ -302,6 +338,11 @@ export async function updateCommand(flags) {
   if (targets.persistRuntime) {
     saveConfig({ ...cfg, runtime:{ ...cfg.runtime, packageSpec:targets.runtimeSpec } });
     cfg = loadConfig();
+  }
+  if (servicePlatform() === 'win32' && flags.repair === true) clearRecoveryHold();
+  if (flags['no-restart'] === true) {
+    console.log('ReMCP packages installed; restart was not requested. Run remcp doctor and review antivirus reports before starting the bridge.');
+    return;
   }
   const restartAlreadyScheduled = ensureServiceIfRecorded(cfg);
   cfg = loadConfig();

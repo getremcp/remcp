@@ -9,11 +9,13 @@ import { describeConfig, configurationError, runtimeConfigDir } from './config.m
 import { shutdownSessions, startSessionSweeper } from './sessions.mjs';
 import { flush, setTelemetrySink, shutdownTelemetry, telemetryEnabled } from './telemetry.mjs';
 import { VERSION } from './version.mjs';
+import { verifyWindowsInterop } from './native/windows/verify.mjs';
 
 const args = process.argv.slice(2);
 const allToolDefinitions = [...coreToolDefinitions, ...extendedToolDefinitions];
 
 async function advertisedRuntimeTools() {
+  verifyWindowsInterop();
   const { core, extended } = await supportedRuntimeToolDefinitions();
   return [...core, ...extended];
 }
@@ -68,6 +70,7 @@ if (args.includes('--describe')) {
   process.exit(0);
 }
 
+verifyWindowsInterop();
 const configProblem = configurationError();
 if (configProblem) {
   console.error(`ReMCP runtime refuses to start: ${configProblem}`);

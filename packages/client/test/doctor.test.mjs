@@ -49,3 +49,16 @@ test('diagnostic deadline rejects stalled handshakes without AbortSignal coopera
   await assert.rejects(doctorDeadline(new Promise(() => {}), 30), /timed out/);
   assert.ok(Date.now() - started < 500);
 });
+
+test('Windows missing-runtime diagnosis is quarantine-aware without bypassing AV', async () => {
+  const { missingRuntimeHint } = await import('../src/cli/doctor.mjs');
+  const windows = missingRuntimeHint('win32');
+  assert.match(windows, /antivirus quarantine/i);
+  assert.match(windows, /Keep protection enabled/);
+  assert.match(windows, /do not restore flagged files/i);
+  assert.match(windows, /update --repair --no-restart/);
+  assert.match(windows, /approved release/);
+  assert.ok(windows.indexOf('antivirus') < windows.indexOf('repair with:'));
+  const linux = missingRuntimeHint('linux');
+  assert.match(linux, /^Reinstall with: npx --yes @remcp\/remcp@latest update$/);
+});

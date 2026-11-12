@@ -1,0 +1,1 @@
+using System;using System.Runtime.InteropServices;public static class RMMouse{[DllImport("user32.dll")]public static extern bool SetCursorPos(int x,int y);[DllImport("user32.dll")]public static extern void mouse_event(uint f,uint x,uint y,int d,UIntPtr i);}

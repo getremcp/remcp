@@ -129,7 +129,8 @@ function Test-ReMCPRelease {
   $node = Join-Path $Directory 'node.exe'; $npm = Join-Path $Directory 'npm.cmd'
   $cli = Join-Path $Directory 'remcp.cmd'; $cliEntry = Join-Path $Directory 'node_modules\@remcp\remcp\bin\remcp.mjs'
   $clientManifest = Join-Path $Directory 'node_modules\@remcp\remcp\package.json'; $runtimeManifest = Join-Path $Directory 'node_modules\@remcp\runtime\package.json'
-  foreach ($file in @($node, $npm, $cli, $cliEntry, $clientManifest, $runtimeManifest)) {
+  $runtimeEntry = Join-Path $Directory 'node_modules\@remcp\runtime\src\index.mjs'
+  foreach ($file in @($node, $npm, $cli, $cliEntry, $clientManifest, $runtimeManifest, $runtimeEntry)) {
     if (!(Test-Path -LiteralPath $file -PathType Leaf)) {
       if ($Explain) { Write-Host "ReMCP verification failed: missing $file" }
       return $false
@@ -167,6 +168,7 @@ function Test-ReMCPRelease {
       if ($Explain) { Write-Host "ReMCP verification failed: CLI version expected=$expectedVersion actual='$reported' exit=$cliExit." }
       return $false
     }
+    if ($client.remcpWindowsInterop -eq 1) { $verified = [string](& $node $cliEntry doctor --integrity-only 2>$null); if ($LASTEXITCODE -ne 0 -or $verified.Trim() -ne 'verified') { return $false } }
     return $true
   } catch {
     if ($Explain) { Write-Host ("ReMCP verification failed: " + [string]$_.Exception.Message) }

@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 
 import { windowsAudioPowerShell } from '../src/extended/diagnostics.mjs';
 
@@ -30,7 +31,10 @@ test('Windows CoreAudio commands are deterministic and never use mute toggles', 
     '[Console]::Out.WriteLine([ReMCP.WindowsAudio]::GetStateJson())',
   ]);
 
-  const script = windowsAudioPowerShell('status');
+  const invocation = windowsAudioPowerShell('status');
+  assert.match(invocation, /audio\.dll/);
+  assert.doesNotMatch(invocation, /Add-Type|TypeDefinition/);
+  const script = readFileSync(new URL('../src/native/windows/audio.cs', import.meta.url), 'utf8');
   assert.match(script, /GetDefaultAudioEndpoint/);
   assert.match(script, /SetMasterVolumeLevelScalar/);
   assert.match(script, /GetMasterVolumeLevelScalar/);
@@ -39,14 +43,12 @@ test('Windows CoreAudio commands are deterministic and never use mute toggles', 
   assert.doesNotMatch(script, /VOLUME_MUTE|SendKeys|WScript\.Shell/);
 });
 
-test('Windows CoreAudio interop compiles with the inbox PowerShell Add-Type compiler', { skip: process.platform !== 'win32' }, () => {
-  const script = windowsAudioPowerShell('status', 50, { compileOnly:true });
+test('Windows CoreAudio interop loads its checked precompiled assembly', { skip: process.platform !== 'win32' }, () => {
+  const script = windowsAudioPowerShell('status', 50, { loadOnly:true });
   const result = spawnSync('powershell.exe', [
     '-NoLogo',
     '-NoProfile',
     '-NonInteractive',
-    '-ExecutionPolicy',
-    'Bypass',
     '-Command',
     script,
   ], {
@@ -56,5 +58,5 @@ test('Windows CoreAudio interop compiles with the inbox PowerShell Add-Type comp
   });
   assert.equal(result.error, undefined);
   assert.equal(result.status, 0, result.stderr || result.stdout);
-  assert.match(result.stdout, /compiled/);
+  assert.match(result.stdout, /loaded/);
 });

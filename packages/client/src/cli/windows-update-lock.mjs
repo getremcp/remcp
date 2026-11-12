@@ -41,6 +41,40 @@ function removeOwnedLock(directory, token) {
   }
 }
 
+// Explicit local repair only. Preserve evidence rather than deleting an interrupted
+// transaction. A failed/denied PID query is not proof that the owner exited.
+export function recoverWindowsUpdateLock(prefix) {
+  if (!path.isAbsolute(prefix)) throw new Error('Windows repair requires an absolute npm prefix.');
+  const directory = path.join(prefix, LOCK_NAME);
+  let stat;
+  try { stat = fs.lstatSync(directory); }
+  catch (error) { if (error.code === 'ENOENT') return null; throw error; }
+  if (!stat.isDirectory() || stat.isSymbolicLink()) throw new Error('Unsafe Windows update lock metadata.');
+  const entries = fs.readdirSync(directory);
+  if (entries.length !== 1 || entries[0] !== OWNER_NAME) throw new Error('Unexpected Windows update lock contents; manual review required.');
+  const file = lockOwnerFile(directory);
+  const metadata = fs.lstatSync(file);
+  if (!metadata.isFile() || metadata.isSymbolicLink() || metadata.size > 4096) throw new Error('Unsafe Windows update owner metadata.');
+  const raw = fs.readFileSync(file, 'utf8');
+  let owner;
+  try { owner = JSON.parse(raw); } catch { throw new Error('Invalid Windows update owner metadata.'); }
+  if (!Number.isSafeInteger(owner.pid) || owner.pid <= 0 || typeof owner.token !== 'string' ||
+      !owner.token || !Number.isFinite(owner.startedAt)) throw new Error('Invalid Windows update owner metadata.');
+  try {
+    process.kill(owner.pid, 0);
+    throw new Error('Windows update owner is still active; repair refused.');
+  } catch (error) {
+    if (error.code !== 'ESRCH') throw error;
+  }
+  // Fail closed if another actor changed ownership while it was inspected.
+  if (fs.readFileSync(file, 'utf8') !== raw || fs.readdirSync(directory).length !== 1) {
+    throw new Error('Windows update owner changed during repair.');
+  }
+  const archived = path.join(prefix, '.remcp-update-lock-recovered-' + crypto.randomUUID());
+  fs.renameSync(directory, archived);
+  return archived;
+}
+
 export function withWindowsUpdateLock(prefix, operation) {
   if (!path.isAbsolute(prefix)) throw new Error('Windows update lock requires an absolute npm prefix.');
   if (typeof operation !== 'function') throw new TypeError('Windows update operation is required.');

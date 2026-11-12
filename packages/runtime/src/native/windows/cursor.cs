@@ -1,0 +1,1 @@
+using System;using System.Runtime.InteropServices;public static class RMCursor{[StructLayout(LayoutKind.Sequential)]public struct POINT{public int X;public int Y;}[DllImport("user32.dll")]public static extern bool GetCursorPos(out POINT p);}
