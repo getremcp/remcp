@@ -1,0 +1,23 @@
+# Public ReMCP is a generated, release-only projection of the reviewed
+# private source repository antonbaider/remcp-full.
+# Dependabot suggestions are security/dependency triage signals ONLY.
+# Never merge its PRs into this public repository or deploy from them.
+# Validate and implement updates on ASUS in the private source repository;
+# publish approved results through the existing immutable release process.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 2
+    groups:
+      production-patches:
+        applies-to: version-updates
+        update-types:
+          - patch
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 1

@@ -1,0 +1,101 @@
+# Release-only signing; developed and reviewed in antonbaider/remcp-full.
+# This signs the exact existing GitHub release payload checksums with GitHub OIDC.
+# It does NOT claim retroactive build provenance or modify release binaries.
+name: Sign existing ReMCP release assets
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Existing immutable release tag, e.g. v0.2.251"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: remcp-release-signature-${{ inputs.release_tag }}
+  cancel-in-progress: false
+
+jobs:
+  sign-existing-release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      - name: Install verified Sigstore Cosign
+        uses: sigstore/cosign-installer@ba7bc0a3fef59531c69a25acd34668d6d3fe6f22 # v4.1.0
+      - name: Verify release bytes, sign manifest, verify identity, publish bundle
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          set -Eeuo pipefail
+          [[ "$GITHUB_REPOSITORY" == "getremcp/remcp" ]] || {
+            echo "Unexpected release repository; refusing to sign" >&2
+            exit 1
+          }
+          [[ "$GITHUB_REF" == "refs/heads/main" ]] || {
+            echo "Only vetted public main can sign existing release artifacts" >&2
+            exit 1
+          }
+          [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
+            echo "Expected an exact SemVer vX.Y.Z release tag" >&2
+            exit 1
+          }
+          stage="$(mktemp -d)"
+          trap 'rm -rf -- "$stage"' EXIT
+          gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" > "$stage/release.json"
+          mkdir -p "$stage/assets"
+          gh release download "$RELEASE_TAG" --dir "$stage/assets"
+
+          files=(chatgpt-app-submission.json remcp-openai-existing-plugin.zip remcp-plugin.zip remcp-skills-only.zip)
+          for name in "${files[@]}"; do
+            [[ -s "$stage/assets/$name" ]] || {
+              echo "Missing required release payload: $name" >&2
+              exit 1
+            }
+            expected="$(jq -r --arg n "$name" '.assets[] | select(.name == $n) | .digest // empty' "$stage/release.json")"
+            [[ "$expected" =~ ^sha256:[0-9a-f]{64}$ ]] || {
+              echo "GitHub release digest missing for $name" >&2
+              exit 1
+            }
+            actual="sha256:$(sha256sum "$stage/assets/$name" | cut -d ' ' -f1)"
+            [[ "$expected" == "$actual" ]] || {
+              echo "Release asset digest mismatch for $name" >&2
+              exit 1
+            }
+          done
+
+          (
+            cd "$stage/assets"
+            sha256sum "${files[@]}" | LC_ALL=C sort -k2 > "$stage/expected-SHA256SUMS"
+          )
+          if [[ -e "$stage/assets/SHA256SUMS" || -e "$stage/assets/SHA256SUMS.sigstore.json" ]]; then
+            [[ -s "$stage/assets/SHA256SUMS" && -s "$stage/assets/SHA256SUMS.sigstore.json" ]] || {
+              echo "Incomplete existing signatures; refusing overwrite" >&2
+              exit 1
+            }
+            cmp "$stage/expected-SHA256SUMS" "$stage/assets/SHA256SUMS"
+            cosign verify-blob "$stage/assets/SHA256SUMS" \
+              --bundle "$stage/assets/SHA256SUMS.sigstore.json" \
+              --certificate-identity "https://github.com/$GITHUB_REPOSITORY/.github/workflows/release-signatures.yml@refs/heads/main" \
+              --certificate-oidc-issuer "https://token.actions.githubusercontent.com"
+            echo "Already signed with verified project identity; no changes"
+            exit 0
+          fi
+
+          mv "$stage/expected-SHA256SUMS" "$stage/assets/SHA256SUMS"
+          cosign sign-blob --yes "$stage/assets/SHA256SUMS" \
+            --bundle "$stage/assets/SHA256SUMS.sigstore.json"
+          cosign verify-blob "$stage/assets/SHA256SUMS" \
+            --bundle "$stage/assets/SHA256SUMS.sigstore.json" \
+            --certificate-identity "https://github.com/$GITHUB_REPOSITORY/.github/workflows/release-signatures.yml@refs/heads/main" \
+            --certificate-oidc-issuer "https://token.actions.githubusercontent.com"
+          gh release upload "$RELEASE_TAG" \
+            "$stage/assets/SHA256SUMS" "$stage/assets/SHA256SUMS.sigstore.json"
+          echo "Uploaded keyless signature for exact existing release payloads: $RELEASE_TAG"

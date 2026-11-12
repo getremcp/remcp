@@ -36,6 +36,7 @@
   <a href="https://remcp.site/docs">Docs</a> ·
   <a href="docs/TOOLS.md">Tool reference</a> ·
   <a href="https://remcp.site/security">Security</a> ·
+  <a href="docs/VERIFY_RELEASE_SIGNATURES.md">Verify release signatures</a> ·
   <a href="https://remcp.site/privacy">Privacy</a> ·
   <a href="https://remcp.site/support">Support</a>
 </p>
