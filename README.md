@@ -12,6 +12,7 @@
   <img alt="Node.js" src="https://img.shields.io/node/v/%40remcp/remcp?style=flat-square&label=node">
   <a href="./LICENSE"><img alt="license" src="https://img.shields.io/npm/l/%40remcp%2Fremcp?style=flat-square"></a>
   <a href="https://github.com/getremcp/remcp/stargazers"><img alt="GitHub stars" src="https://img.shields.io/github/stars/getremcp/remcp?style=flat-square"></a>
+  <a href="https://scorecard.dev/viewer/?uri=github.com/getremcp/remcp"><img alt="OpenSSF Scorecard" src="https://api.scorecard.dev/projects/github.com/getremcp/remcp/badge"></a>
 </p>
 
 <!-- Canonical distribution badges: scripts/build-public-repo.mjs projects this block into the public README. -->
