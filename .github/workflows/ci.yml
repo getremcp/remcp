@@ -135,6 +135,7 @@ jobs:
     permissions:
       contents: write
       id-token: write
+      actions: write # dispatch the separately verified public release signer
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -279,12 +280,27 @@ jobs:
             echo "Both packages are published with a signed provenance statement."
           } > "$notes"
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            if gh release view "$GITHUB_REF_NAME" --json assets --jq '.assets[].name' | grep -Eq '^SHA256SUMS(\.sigstore\.json)?$'; then
+              echo "Signed release assets are immutable; publish a new version rather than overwriting" >&2
+              exit 1
+            fi
             gh release upload "$GITHUB_REF_NAME" submission/remcp-plugin.zip submission/remcp-openai-existing-plugin.zip submission/remcp-skills-only.zip chatgpt-app-submission.json --clobber
             gh release edit "$GITHUB_REF_NAME" --title "$title" --notes-file "$notes"
           else
             gh release create "$GITHUB_REF_NAME" submission/remcp-plugin.zip submission/remcp-openai-existing-plugin.zip submission/remcp-skills-only.zip chatgpt-app-submission.json --title "$title" --notes-file "$notes" --verify-tag
           fi
-
+      - name: Dispatch keyless signing of the exact published release assets
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -Eeuo pipefail
+          [[ "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || exit 1
+          # GITHUB_TOKEN can dispatch workflow_dispatch runs, but not ordinary
+          # release webhooks. An explicit dispatch is required here.
+          gh workflow run release-signatures.yml \
+            --repo "$GITHUB_REPOSITORY" --ref main \
+            -f release_tag="$GITHUB_REF_NAME"
 
   repair-release:
     name: repair partial npm/GitHub release
@@ -295,6 +311,7 @@ jobs:
     permissions:
       contents: write
       id-token: write
+      actions: write # dispatch the separately verified public release signer
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -559,12 +576,27 @@ jobs:
             echo "Both packages are published with a signed provenance statement."
           } > "$notes"
           if gh release view "$tag" >/dev/null 2>&1; then
+            if gh release view "$tag" --json assets --jq '.assets[].name' | grep -Eq '^SHA256SUMS(\.sigstore\.json)?$'; then
+              echo "Signed release assets are immutable; publish a new version rather than overwriting" >&2
+              exit 1
+            fi
             gh release upload "$tag" submission/remcp-plugin.zip submission/remcp-openai-existing-plugin.zip submission/remcp-skills-only.zip chatgpt-app-submission.json --clobber
             gh release edit "$tag" --title "$title" --notes-file "$notes"
           else
             gh release create "$tag" submission/remcp-plugin.zip submission/remcp-openai-existing-plugin.zip submission/remcp-skills-only.zip chatgpt-app-submission.json \
               --title "$title" --notes-file "$notes" --verify-tag
           fi
+      - name: Dispatch keyless signing after repaired release publication
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPAIR_VERSION: ${{ inputs.repair_release }}
+        run: |
+          set -Eeuo pipefail
+          [[ "$REPAIR_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || exit 1
+          gh workflow run release-signatures.yml \
+            --repo "$GITHUB_REPOSITORY" --ref main \
+            -f release_tag="v$REPAIR_VERSION"
 
   publish-mcp-registry:
     name: publish to official MCP Registry

@@ -13,6 +13,7 @@
   <a href="./LICENSE"><img alt="license" src="https://img.shields.io/npm/l/%40remcp%2Fremcp?style=flat-square"></a>
   <a href="https://github.com/getremcp/remcp/stargazers"><img alt="GitHub stars" src="https://img.shields.io/github/stars/getremcp/remcp?style=flat-square"></a>
   <a href="https://scorecard.dev/viewer/?uri=github.com/getremcp/remcp"><img alt="OpenSSF Scorecard" src="https://api.scorecard.dev/projects/github.com/getremcp/remcp/badge"></a>
+  <a href="https://www.bestpractices.dev/en/projects/16621"><img alt="OpenSSF Best Practices (in progress)" src="https://www.bestpractices.dev/projects/16621/badge"></a>
 </p>
 
 <!-- Canonical distribution badges: scripts/build-public-repo.mjs projects this block into the public README. -->
@@ -34,6 +35,7 @@
   <a href="https://remcp.site">Website</a> ·
   <a href="https://remcp.site/plugins">Plugins</a> ·
   <a href="https://remcp.site/docs">Docs</a> ·
+  <a href="CHANGELOG.md">Changelog</a> ·
   <a href="docs/TOOLS.md">Tool reference</a> ·
   <a href="https://remcp.site/security">Security</a> ·
   <a href="docs/VERIFY_RELEASE_SIGNATURES.md">Verify release signatures</a> ·

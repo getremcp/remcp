@@ -21,6 +21,8 @@ npm pack --dry-run --workspace @remcp/remcp
 npm pack --dry-run --workspace @remcp/runtime
 ```
 
+**Test policy:** Each substantial new feature, changed security boundary, and security fix must add or update automated tests covering the intended behavior and relevant failure/permission cases. Execute `npm run check` and `npm test` against the exact candidate in the private development repository; validate native Windows/macOS behavior on suitable devices when applicable. Review test evidence before promoting a public release, and describe user-visible behavior and security fixes in the corresponding GitHub Release notes. Changes to release-only metadata must have public export/CI contract tests.
+
 The public repository does not contain the hosted ReMCP server or its Docker image, so server/Docker checks do not apply here.
 
 ## Change proposals
