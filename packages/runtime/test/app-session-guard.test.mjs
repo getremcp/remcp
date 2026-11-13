@@ -22,7 +22,13 @@ test('Linux without X11 or Wayland and macOS without console owner refuse GUI na
 });
 
 test('Linux current environment is checked without launching anything', {skip:process.platform!=='linux'}, async () => {
-  const result = await requireInteractiveGuiSession();
+  const expected=classifyGuiSession('linux',{env:process.env});
+  if(!expected.interactive){
+    await assert.rejects(()=>requireInteractiveGuiSession(),
+      /GUI navigation unavailable: no_display.*no keys or app launches were dispatched/);
+    return;
+  }
+  const result=await requireInteractiveGuiSession();
   assert.equal(result.interactive,true);
-  assert.equal(result.reason,'display_advertised');
+  assert.equal(result.reason,expected.reason);
 });
