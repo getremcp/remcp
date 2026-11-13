@@ -4,6 +4,7 @@ import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 
 import { windowsAudioPowerShell } from '../src/extended/diagnostics.mjs';
+import { WINDOWS_INTEROP } from '../src/native/windows/manifest.mjs';
 
 function invocationTail(action, volume = 50) {
   return windowsAudioPowerShell(action, volume).split('\n').slice(-2);
@@ -32,8 +33,15 @@ test('Windows CoreAudio commands are deterministic and never use mute toggles', 
   ]);
 
   const invocation = windowsAudioPowerShell('status');
-  assert.match(invocation, /audio\.dll/);
-  assert.doesNotMatch(invocation, /Add-Type|TypeDefinition/);
+  if(WINDOWS_INTEROP.audio.file.endsWith('.cs')){
+    assert.match(invocation,/audio\.cs/);
+    assert.match(invocation,/ComputeHash\(\$remcpBytes\)/);
+    assert.match(invocation,/Add-Type -TypeDefinition/);
+    assert.doesNotMatch(invocation,/Assembly\]::LoadFrom|audio\.dll/);
+  }else{
+    assert.match(invocation,/audio\.dll/);
+    assert.doesNotMatch(invocation,/Add-Type|TypeDefinition/);
+  }
   const script = readFileSync(new URL('../src/native/windows/audio.cs', import.meta.url), 'utf8');
   assert.match(script, /GetDefaultAudioEndpoint/);
   assert.match(script, /SetMasterVolumeLevelScalar/);

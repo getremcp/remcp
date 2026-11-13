@@ -31,8 +31,8 @@ node ./src/compact.mjs --print-tools  # compact local façade for scanners/local
 
 ## Tools
 
-87 tools are implemented in this repository: the original 44 filesystem/search/terminal/process tools
-plus 40 computer-use, browser, diagnostics, and document tools. The release contract contains all 84;
+91 tools are implemented in this development branch: the original 44 filesystem/search/terminal/process tools
+plus 46 computer-use, browser, diagnostics, document and unified application tools. The published package contract remains pinned separately to @remcp/runtime@0.2.249 until the verified package-first release;
 the live local MCP `tools/list` omits optional platform-specific tools that the current computer cannot
 support and emits `notifications/tools/list_changed` when that capability set changes. The stdio server is dual-era: existing 2025-era clients continue to work unchanged, while clients that negotiate MCP `2026-07-28` use `server/discover`, cache hints, unrestricted structured output validation, and `subscriptions/listen` for list-change delivery.
 
@@ -47,15 +47,15 @@ support and emits `notifications/tools/list_changed` when that capability set ch
 | Search | `start_search`, `get_more_search_results`, `stop_search`, `list_searches` |
 | Processes | `start_process`, `read_process_output`, `wait_for_process_output`, `interact_with_process`, `force_terminate`, `list_sessions`, `list_processes`, `kill_process` |
 | Runtime | `get_system_info`, `get_runtime_info`, `get_runtime_stats`, `set_config_value` |
-| Computer use | `computer_snapshot`, `computer_action`, `list_windows`, `window_action`, `launch_app`, `ui_snapshot`, `ui_find`, `ui_action`, `type_text`, `keyboard`, `pointer`, `drag_drop`, `scroll`, `wait_for_ui`, `clipboard`, `display_inventory`, `screenshot_region`, `open_path`, `reveal_path`, `notification` |
+| Computer use | `computer_snapshot`, `computer_action`, `list_windows`, `window_action`, `launch_app`, `app_catalog`, `app_navigate`, `app_task`, `ui_snapshot`, `ui_find`, `ui_action`, `type_text`, `keyboard`, `pointer`, `drag_drop`, `scroll`, `wait_for_ui`, `clipboard`, `display_inventory`, `screenshot_region`, `open_path`, `reveal_path`, `notification` |
 | Browser | `browser_tabs`, `browser_navigate`, `browser_snapshot`, `browser_find`, `browser_action`, `browser_wait`, `browser_evaluate` |
 | Diagnostics | `service`, `event_log`, `network`, `installed_apps`, `environment`, `audio`, `power_action`, `record_screen` — `audio` returns stable structured `volume`, `muted`, `action`, and `backend` fields across supported OS backends |
 | Documents | `read_document`, `edit_spreadsheet`, `edit_document`, `pdf_action` |
 
-The hosted ReMCP endpoint does not append those 87 granular operation names to its discovery list.
+The hosted ReMCP endpoint does not append those 91 granular runtime operations from this development branch to its discovery list.
 Current production runs with `REMCP_CUSTOM_WIDGETS_ENABLED=false` and exposes **10 hosted tool definitions**,
 all model-visible: 8 device-facing façade tools plus 2 account/fleet tools. Those compact definitions route
-to the same **87 granular runtime operations** after the selected computer's live capabilities are checked.
+to its pinned **published runtime operations** after the selected computer's live capabilities are checked; the extra development operations require a later package-first release.
 If custom widgets are explicitly re-enabled, hosted discovery expands to **15 definitions** by adding
 **5 app-only** UI helpers. Cached legacy clients can still call supported granular aliases without inflating
 discovery for new clients.
@@ -77,7 +77,7 @@ system tools such as qpdf/poppler when present. PDF text reading uses the built-
 `sharp`, or `exceljs`.
 
 `--print-tools` prints the exact JSON contract (schemas and annotations) the runtime advertises, and
-`src/catalog.mjs` plus `src/extended/catalog.mjs` are the source of truth for the 84-tool release surface.
+`src/catalog.mjs` plus `src/extended/catalog.mjs` are the source of truth for the 91-tool development surface; the published release catalog stays pinned until package-first validation.
 A running device can advertise a smaller capability-aware subset; the runtime declares
 `tools.listChanged`, emits `notifications/tools/list_changed` when dynamic capabilities change, and the
 agent forwards the refreshed tool names to the hosted relay. Browser/CDP tools are the primary dynamic
@@ -90,7 +90,7 @@ errors. Linux `display_inventory` follows the real monitor backend chain (GNOME 
 backend (Wayland grim/GNOME/portal path or X11 ImageMagick), not merely because `ffmpeg` is installed.
 
 The generated hosted reference covers the current **10 hosted production definitions**, all model-visible
-and routing to the 87 granular runtime operations described above; the optional widget-enabled surface is 15.
+and routing to the pinned published runtime operations described above; the optional widget-enabled surface is 15.
 The separate compact local stdio entrypoint advertises `read_file` plus up to seven domain tools
 (up to 8 tools total) and keeps those groups capability-aware at runtime with `tools/list_changed`; the paired agent keeps using the capability-aware granular runtime.
 See https://remcp.site/docs#tools and public `docs/TOOLS.md`.

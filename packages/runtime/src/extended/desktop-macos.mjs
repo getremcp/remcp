@@ -1,6 +1,7 @@
 import { macWindowTargets, MAC_WINDOW_TARGET_TTL_MS, rememberMacWindowTarget, macWindowId, normalizeMacWindowTarget } from './desktop-macos-windows.mjs';
 export { macWindowId, normalizeMacWindowTarget };
 import path from 'node:path';
+import { MAC_AX_FOREGROUND_SOURCE, MAC_AX_READBACK_SOURCE, MAC_AX_ACTION_HELPERS_SOURCE } from './desktop-macos-ax-guards.mjs';
 
 import { image, multi, text } from '../util.mjs';
 import {
@@ -35,12 +36,17 @@ tell application "System Events"
   try
    set appName to name of p
    set appPid to unix id of p
+   set appFrontmost to false
+   try
+    set appFrontmost to frontmost of p
+   end try
    set windowIndex to 0
    repeat with w in windows of p
     try
      set pos to position of w
      set sz to size of w
-     set output to output & appPid & tab & windowIndex & tab & appName & tab & (name of w) & tab & (item 1 of pos) & tab & (item 2 of pos) & tab & (item 1 of sz) & tab & (item 2 of sz) & linefeed
+     set isActive to (appFrontmost is true) and (windowIndex is 0)
+     set output to output & appPid & tab & windowIndex & tab & appName & tab & (name of w) & tab & isActive & tab & (item 1 of pos) & tab & (item 2 of pos) & tab & (item 1 of sz) & tab & (item 2 of sz) & linefeed
     end try
     set windowIndex to windowIndex + 1
    end repeat
@@ -51,8 +57,9 @@ return output`;
   const { stdout } = await runOsa(script, { label: 'list windows' });
   macWindowGeneration += 1;
   const generation = macWindowGeneration;
-  const rows = parseTsv(stdout, ['pid','window_index','app','title','x','y','width','height']).map(row=>({
+  const rows = parseTsv(stdout, ['pid','window_index','app','title','active','x','y','width','height']).map(row=>({
     id:macWindowId(row.pid,row.window_index,generation),pid:Number(row.pid),app:row.app,title:row.title,
+    active:row.active === 'true',
     x:Number(row.x),y:Number(row.y),width:Number(row.width),height:Number(row.height),
   }));
   for (const [id,cached] of macWindowTargets.entries()) {
@@ -235,8 +242,10 @@ const windowName=safeName(win);
 const out=[];
 const winProps=props(win);
 const winPos=vector(winProps.position),winSize=vector(winProps.size);
+${MAC_AX_FOREGROUND_SOURCE}
+const foregroundVerified=axWindowForeground(proc,win,safeWindows);
 out.push({
-  id:'mac:'+appPid+':r',parent_id:null,index:0,depth:0,pid:appPid,app:appName,window:windowName,active:true,
+  id:'mac:'+appPid+':r',parent_id:null,index:0,depth:0,pid:appPid,app:appName,window:windowName,active:foregroundVerified,
   role:'Window',localized_role:'window',name:windowName,value:'',focused:Boolean(winProps.focused),enabled:winProps.enabled!==false,
   selected:Boolean(winProps.selected),frameworkId:'AX',x:Number(winPos[0]||0),y:Number(winPos[1]||0),width:Number(winSize[0]||0),height:Number(winSize[1]||0)
 });
@@ -249,12 +258,12 @@ while(stack.length && out.length<${maxNodes}){
   const role=String(scalar(p.role)).replace(/^AX/,'');
   const subrole=String(scalar(p.subrole));
   const name=scalar(p.title)||scalar(p.name)||scalar(p.accessibilityDescription)||scalar(p.description);
-  const rawValue=scalar(p.value);
+  const protectedValue=/secure|password|passphrase|passcode|secret|token|otp|recovery.*code|\bpin\b/i.test(role+' '+subrole+' '+name);const rawValue=protectedValue?'':scalar(p.value);
   const id='mac:'+appPid+':'+item.path;
   out.push({
-    id,parent_id:item.parent,index,depth:item.depth,pid:appPid,app:appName,window:windowName,active:true,
-    role,localized_role:scalar(p.roleDescription),subrole,name,value:/secure/i.test(subrole)?'':rawValue,
-    focused:Boolean(p.focused),enabled:p.enabled!==false,selected:Boolean(p.selected),password:/secure/i.test(subrole),
+    id,parent_id:item.parent,index,depth:item.depth,pid:appPid,app:appName,window:windowName,active:foregroundVerified,
+    role,localized_role:scalar(p.roleDescription),subrole,name,value:rawValue,
+    focused:Boolean(p.focused),enabled:p.enabled!==false,selected:Boolean(p.selected),password:protectedValue,
     help_text:scalar(p.help),range_min:scalar(p.minimumValue),range_max:scalar(p.maximumValue),frameworkId:'AX',
     x:Number(pos[0]||0),y:Number(pos[1]||0),width:Number(size[0]||0),height:Number(size[1]||0)
   });
@@ -285,6 +294,7 @@ export async function uiAction(args = {}) {
   const name=JSON.stringify(optionalString(args.name)||'');
   const role=JSON.stringify(optionalString(args.role)||'');
   const value=JSON.stringify(String(args.value??''));
+  const expectedValue=args.strict_target_id===true&&action==='set_value'&&typeof args.expected_value==='string'?JSON.stringify(args.expected_value):'null';
   const numericValue=Number(args.value);
   if(action==='set_range_value'&&!Number.isFinite(numericValue))throw new Error('set_range_value requires a finite numeric value');
   const script=`(function(){
@@ -296,6 +306,7 @@ const wantedName=${name};
 const wantedRole=${role};
 const action=${JSON.stringify(action)};
 const inputValue=${value};
+const expectedValue=${expectedValue};
 const numericValue=${Number.isFinite(numericValue)?numericValue:'null'};
 function scalar(v){if(v===null||v===undefined)return '';if(typeof v==='string'||typeof v==='number'||typeof v==='boolean')return v;try{return String(v)}catch(e){return ''}}
 function vector(v){try{return Array.isArray(v)?v:(v==null?[]:[v])}catch(e){return []}}
@@ -320,6 +331,10 @@ function resolvePath(){
 }
 function findTarget(){
   const byPath=resolvePath();if(byPath)return byPath;
+  // Guided atomic actions must never retarget another element after an
+  // Accessibility tree reflow; stale IDs fail instead of falling back.
+  if(${args.strict_target_id === true ? 'true' : 'false'} && wantedPath)
+    throw new Error('Exact accessibility element path is stale');
   const stack=[];const roots=children(win);for(let i=roots.length-1;i>=0;i--)stack.push(roots[i]);
   let seen=0;
   while(stack.length&&seen<5000){
@@ -330,22 +345,22 @@ function findTarget(){
   }
   return null;
 }
-function perform(e,wanted){
-  let acts=[];try{acts=e.actions()}catch(_){}
-  for(let i=0;i<acts.length;i++){let n='';try{n=String(acts[i].name())}catch(_){}if(n===wanted){acts[i].perform();return true}}
-  return false;
-}
-function setAttribute(e,n,v){try{e.attributes.byName(n).value=v;return true}catch(_){return false}}
-function coordinateClick(e){
-  const m=meta(e);if(!(m.width>0&&m.height>0))throw new Error('UI element has no clickable bounds');
-  const p=$.CGPointMake(m.x+m.width/2,m.y+m.height/2);
-  function post(t){const ev=$.CGEventCreateMouseEvent(null,t,p,$.kCGMouseButtonLeft);$.CGEventPost($.kCGHIDEventTap,ev)}
-  post($.kCGEventLeftMouseDown);post($.kCGEventLeftMouseUp);return 'coordinate';
-}
+${MAC_AX_ACTION_HELPERS_SOURCE}
+${MAC_AX_FOREGROUND_SOURCE}
+${MAC_AX_READBACK_SOURCE}
 const target=findTarget();if(!target)throw new Error('UI element not found');
+if(${args.strict_target_id === true ? 'true' : 'false'}) {
+  // A stale foreground/window selection must fail closed before mutation.
+  if(!axWindowForeground(proc,win,safeWindows))
+    throw new Error('Native guided action refused: target window is not foreground');
+  const exact=meta(target);
+  if(exact.name.trim().toLowerCase()!==wantedName.trim().toLowerCase() ||
+    exact.role.trim().toLowerCase()!==wantedRole.trim().toLowerCase())
+    throw new Error('Accessibility element identity changed before action');
+}
 let backend='accessibility';
 if(action==='focus'){target.focused=true}
-else if(action==='set_value'){target.value=inputValue}
+else if(action==='set_value'){if(expectedValue!==null&&String(scalar(props(target).value))!==expectedValue)throw new Error('Native text value changed before write');target.value=inputValue}
 else if(action==='set_range_value'){target.value=numericValue}
 else if(action==='select'){if(!perform(target,'AXPick')){try{target.selected=true}catch(_){if(!perform(target,'AXPress'))throw new Error('Selection action unavailable')}}}
 else if(action==='add_to_selection'){try{target.selected=true}catch(_){throw new Error('Selection add unavailable')}}
@@ -360,11 +375,15 @@ else if(action==='click'||action==='invoke'||action==='toggle'){
   }
 }
 const m=meta(target);
-return JSON.stringify({id:${JSON.stringify(id||'')},action,backend,name:m.name,role:m.role,x:m.x,y:m.y,width:m.width,height:m.height,pid:Number(proc.unixId()),app:safeName(proc),window:safeName(win)});
+const attested=axActionReadback(proc,win,target,action,inputValue,props,scalar,safeWindows);
+return JSON.stringify({id:${JSON.stringify(id||'')},action,backend,name:m.name,role:m.role,
+  x:m.x,y:m.y,width:m.width,height:m.height,pid:Number(proc.unixId()),
+  app:safeName(proc),window:safeName(win),...attested});
 })()`;
   const {stdout}=await runOsa(script,{javascript:true,label:'UI action',timeout:30_000});
   let parsed;
-  try{parsed=JSON.parse(stdout.trim());}catch{parsed={action,backend:'accessibility'};}
+  try{parsed=JSON.parse(stdout.trim());}catch{throw new Error('macOS accessibility action returned invalid result');}
+  if (!parsed || typeof parsed!=='object') throw new Error('macOS accessibility action returned no structured result');
   return jsonResult(parsed);
 }
 

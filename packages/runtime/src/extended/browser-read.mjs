@@ -339,8 +339,25 @@ export function findExpression(args) {
       }
       return '';
     }
+    function accessibleName(el) {
+      const direct = String(el.getAttribute('aria-label') || '').trim();
+      if (direct) return direct;
+      const labelledBy = String(el.getAttribute('aria-labelledby') || '').trim();
+      if (labelledBy && typeof document.getElementById === 'function') {
+        const named = labelledBy.split(/\\s+/).slice(0, 12).map(id =>
+          document.getElementById(id)?.textContent?.trim() || '').filter(Boolean).join(' ');
+        if (named) return named;
+      }
+      if (el.labels && el.labels.length) {
+        const labels = Array.from(el.labels).slice(0, 12).map(label =>
+          String(label.textContent || '').trim()).filter(Boolean).join(' ');
+        if (labels) return labels;
+      }
+      return String(el.getAttribute('placeholder') || el.getAttribute('title') ||
+        el.getAttribute('name') || '').trim();
+    }
     function visibleText(el) {
-      return (el.innerText || el.textContent || el.getAttribute('aria-label') || '').trim();
+      return String(el.innerText || el.textContent || '').trim() || accessibleName(el);
     }
     function textQuality(value) {
       if (!wanted) return 0;
@@ -364,7 +381,7 @@ export function findExpression(args) {
       // still required so hidden descendants do not become false positives.
       if (wanted) {
         const raw = String(el.textContent || '').toLowerCase();
-        const aria = String(el.getAttribute('aria-label') || '').toLowerCase();
+        const aria = String(accessibleName(el) || '').toLowerCase();
         // CSS layout can insert line breaks absent from textContent. Compare
         // whitespace-free forms as a fallback to avoid missing those matches.
         if (!raw.includes(wanted) && !aria.includes(wanted)
@@ -411,7 +428,7 @@ export function findExpression(args) {
     return selected.map(({ el }) => {
       const b = el.getBoundingClientRect();
       const sensitive = isSensitiveControl(el);
-      return { selector: cssPath(el), tag: el.tagName.toLowerCase(), role: semanticRole(el), name: el.getAttribute('aria-label') || el.getAttribute('name') || '', text: sensitive ? '' : visibleText(el).slice(0, 500), value: !sensitive && 'value' in el ? String(el.value).slice(0, 500) : '', x: b.x, y: b.y, width: b.width, height: b.height, disabled: Boolean(el.disabled) };
+      return { selector: cssPath(el), tag: el.tagName.toLowerCase(), role: semanticRole(el), name: accessibleName(el).slice(0, 500), text: sensitive ? '' : visibleText(el).slice(0, 500), value: !sensitive && 'value' in el ? String(el.value).slice(0, 500) : '', x: b.x, y: b.y, width: b.width, height: b.height, disabled: Boolean(el.disabled) };
     });
   })()`;
 }

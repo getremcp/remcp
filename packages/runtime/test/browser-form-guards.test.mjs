@@ -12,7 +12,8 @@ const input = (type='text') => ({
 });
 function run(fields, elements) {
   return runInNewContext('('+PAGE_FILL_FORM+')('+JSON.stringify(fields)+')',{
-    document:{querySelector(selector){return elements[selector]||null;}},
+    document:{querySelector(selector){return elements[selector]||null;},
+      querySelectorAll(selector){return elements[selector]?[elements[selector]]:[];}},
     Event:class {constructor(type){this.type=type;}},
   });
 }

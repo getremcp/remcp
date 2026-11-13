@@ -98,11 +98,14 @@ async function waitForStep(session, step, started, expectedOrigin) {
 }
 
 export async function executeBrowserWorkflow(session, steps, {
-  pageElementAction, pageFillForm,
+  pageElementAction, pageFillForm, pageVerifyForm, expectedOrigin=null,
 }) {
+  if(expectedOrigin!=null && (typeof expectedOrigin!=='string'||
+      !/^https?:\/\/[^\s/]+$/i.test(expectedOrigin)))
+    throw new Error('Browser workflow requires a valid exact origin');
   const started = Date.now();
   const completed = [];
-  let boundOrigin = null;
+  let boundOrigin = expectedOrigin;
   for (let index = 0; index < steps.length; index++) {
     const step = steps[index];
     if (Date.now() - started > 12000) throw new Error('Workflow exceeded 12 second budget after '+completed.length+' steps');
@@ -113,6 +116,8 @@ export async function executeBrowserWorkflow(session, steps, {
       if (boundOrigin === null) boundOrigin = currentOrigin;
       if (step.action === 'fill_form') {
         await guardedPageFunction(session,pageFillForm,[step.fields],boundOrigin);
+        if (!pageVerifyForm) throw new Error('Form verification adapter is required');
+        await guardedPageFunction(session,pageVerifyForm,[step.fields],boundOrigin);
       } else if (step.action === 'wait_for') {
         await waitForStep(session,step,started,boundOrigin);
       } else if (step.action === 'click') {

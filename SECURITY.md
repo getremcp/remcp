@@ -6,9 +6,7 @@ ReMCP provides remote access to paired computers through MCP. Treat every ReMCP 
 
 Please do not open a public issue for vulnerabilities that could expose credentials, authentication bypasses, cross-tenant access, remote command execution outside the intended tool boundary, or sensitive device data.
 
-Use [GitHub private vulnerability reporting](https://github.com/antonbaider/remcp/security/advisories/new) to report a vulnerability confidentially. Do not send exploits or secrets through public GitHub Issues. This reporting channel follows the public release-only repository, while remediation is developed and reviewed in the private source repository.
-
-See the [ReMCP Security & Data Handling page](https://remcp.site/security) for the public product security overview and the [public release history](https://github.com/antonbaider/remcp/releases) for available fixes. Reporting a vulnerability does not require publishing proof-of-concept code.
+Report security issues privately to the project maintainer through GitHub's private vulnerability reporting for this repository when available.
 
 Include the affected version, a concise reproduction, expected versus observed behavior, and any relevant logs with credentials removed.
 

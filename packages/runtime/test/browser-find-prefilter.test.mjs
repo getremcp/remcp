@@ -24,6 +24,7 @@ function run(args,source) {
   const sandbox={
     document:{
       documentElement:{},
+      getElementById:id=>elements.find(el=>el.id===id)||null,
       querySelectorAll:()=>{
         // A large NodeList is iterable without materializing all elements
         // before the first bounded role/selector match.
@@ -117,4 +118,33 @@ test('prototype property names are not mistaken for built-in role selectors',()=
     assert.equal(result.matches.length,0);
     assert.ok(findExpression({role}).includes(" : '*'"));
   }
+});
+
+test('native form labels provide accessible selectors without prior screenshots',()=>{
+  const input=node('input','','contact',{type:'email'});
+  input.labels=[node('label','Email address')];
+  const found=run({role:'textbox',text:'Email address'},[input]);
+  assert.equal(found.matches.length,1);
+  assert.equal(found.matches[0].selector,'#contact');
+  assert.equal(found.matches[0].name,'Email address');
+});
+
+test('aria-labelledby and placeholder locate controls without reading typed values',()=>{
+  const label=node('span','Search products','search-name');
+  const target=node('input','','search-box',{type:'search','aria-labelledby':'search-name'});
+  target.value='private user entered search';
+  const named=run({role:'searchbox',text:'Search products'},[label,target]);
+  assert.equal(named.matches.length,1);
+  assert.equal(named.matches[0].selector,'#search-box');
+  assert.equal(named.matches[0].name,'Search products');
+  assert.equal(run({role:'searchbox',text:'private user entered search'},[label,target]).matches.length,0);
+  const placeholder=node('input','','company',{placeholder:'Company name'});
+  assert.equal(run({role:'textbox',text:'Company name'},[placeholder]).matches[0].selector,'#company');
+});
+
+test('ARIA label takes precedence over visible labels to prevent wrong target',()=>{
+  const input=node('input','','account',{type:'text','aria-label':'Billing account'});
+  input.labels=[node('label','Shipping account')];
+  assert.equal(run({role:'textbox',text:'Billing account'},[input]).matches.length,1);
+  assert.equal(run({role:'textbox',text:'Shipping account'},[input]).matches.length,0);
 });

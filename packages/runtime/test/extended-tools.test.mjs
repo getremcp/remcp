@@ -17,7 +17,7 @@ import { compactNetworkSummary, gnomeScreencastSupported, linuxListenerBackend, 
 import { hasTool, invokeTool } from '../src/invoke.mjs';
 
 const EXPECTED = [
-  'computer_snapshot','computer_action','list_windows','window_action','launch_app',
+  'computer_snapshot','computer_action','list_windows','window_action','app_catalog','app_task','app_execute','app_navigate','launch_app',
   'ui_snapshot','ui_find','ui_action','type_text','keyboard','pointer','drag_drop',
   'scroll','wait_for_ui','clipboard','display_inventory','screenshot_region',
   'desktop_webrtc_offer','desktop_webrtc_heartbeat','desktop_webrtc_stop',

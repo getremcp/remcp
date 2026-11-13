@@ -1,3 +1,4 @@
+import { strictWindowsHwnd } from './desktop-windows-action-guard.mjs';
 import { windowsInteropLoad } from './windows-interop.mjs';
 import { clamp, runPowerShell, escapePowerShellSingle, optionalString } from './common.mjs';
 
@@ -30,21 +31,28 @@ function Walk-Acc($acc,[int]$depth,[string]$path,[bool]$inDocument,[string]$pare
  $inside=$inDocument -or $isDocument
  $l=0;$t=0;$w=0;$hh=0;$hasRect=$true
  try{$acc.accLocation([ref]$l,[ref]$t,[ref]$w,[ref]$hh,0)}catch{$hasRect=$false}
- try{$name=[string]$acc.get_accName(0)}catch{$name=''}
- try{$value=[string]$acc.get_accValue(0)}catch{$value=''}
+ # Do not even query a potentially protected Edit's accessible Name:
+ # some MSAA providers expose typed credentials as the name itself.
+ $privateByRole=($role -eq 42 -or ($state -band 0x20000000) -ne 0)
+ $name=''
+ if(-not $privateByRole){try{$name=[string]$acc.get_accName(0)}catch{}}
+ $privateField=($privateByRole -or
+   $name -match 'password|passphrase|passcode|secret|token|otp|recovery.*code|\bpin\b')
+ $value=''
+ if(-not $privateField){try{$value=[string]$acc.get_accValue(0)}catch{}}
  $visible=$hasRect -and $w -gt 0 -and $hh -gt 0 -and -not $invisible
  if($inside -and $visible -and (($interactive -contains $role) -or ($informative -contains $role) -or $name -or $value)){
   $id='msaa:'+$rootPid+':'+$path
   $patterns=New-Object System.Collections.ArrayList
   if($role -in @(30,43,56,62)){[void]$patterns.Add('invoke')}
-  if($role -in @(42,46,47)){[void]$patterns.Add('value')}
+  if(-not $privateField -and $role -in @(42,46,47)){[void]$patterns.Add('value')}
   if($role -in @(34,36,37,45)){[void]$patterns.Add('selection_item')}
   if($role -eq 44){[void]$patterns.Add('toggle')}
   if($role -eq 51){[void]$patterns.Add('range_value')}
   [void]$nodes.Add([pscustomobject]@{
    id=$id;parent_id=$parentId;depth=$depth;active=($depth -eq 0);pid=$rootPid;app=$rootApp;window=$windowName;
-   name=$name;role=(Get-RoleName $role);localized_role=(Get-RoleName $role);automationId='';className='';frameworkId='MSAA';
-   enabled=$true;offscreen=$false;focused=(($state -band 0x4) -ne 0);focusable=(($state -band 0x100000) -ne 0);password=$false;
+   name=$(if($privateField){''}else{$name});role=(Get-RoleName $role);localized_role=(Get-RoleName $role);automationId='';className='';frameworkId='MSAA';
+   enabled=$true;offscreen=$false;focused=(($state -band 0x4) -ne 0);focusable=(($state -band 0x100000) -ne 0);password=$privateField;
    value=$value;patterns=@($patterns);x=[int]$l;y=[int]$t;width=[int]$w;height=[int]$hh
   })
   $parentId=$id
@@ -65,21 +73,35 @@ Walk-Acc $rootAcc 0 'r' $false $null
 }
 
 export function windowsUiRootScript(args = {}) {
+  const hwnd=strictWindowsHwnd(args);
   const pid = Number.isInteger(Number(args.pid)) ? Number(args.pid) : 0;
   const app = escapePowerShellSingle(optionalString(args.app) || '');
   const title = escapePowerShellSingle(optionalString(args.window_title || args.windowTitle) || '');
   const scoped = pid > 0 || app || title;
-  const selector = scoped
+  const selector = hwnd!==null
+    ? "$h=[IntPtr]::new("+hwnd.toString()+");"+
+      "if(-not [RMFG]::IsWindow($h)){throw 'Native guided action refused: HWND not found'};"+
+      "$selectedPid=[uint32]0;[void][RMFG]::GetWindowThreadProcessId($h,[ref]$selectedPid);"+
+      "if($selectedPid -ne "+pid+"){throw 'Native guided action refused: HWND owner changed'}"
+    : scoped
     ? `$p=Get-Process|Where-Object{$_.MainWindowHandle -ne 0 -and (${pid} -eq 0 -or $_.Id -eq ${pid}) -and ('${app}' -eq '' -or $_.ProcessName -like '*${app}*') -and ('${title}' -eq '' -or $_.MainWindowTitle -like '*${title}*')}|Select-Object -First 1;if(-not $p){throw 'No matching UI window found'};$h=$p.MainWindowHandle`
     : '$h=[RMFG]::GetForegroundWindow()';
   return String.raw`
 ${windowsInteropLoad('foreground')}
+# Windows Session 0 (SSH or a service) has no interactive desktop.
+# Defend also when the adapter is invoked without the public tool wrapper.
+if([System.Diagnostics.Process]::GetCurrentProcess().SessionId -eq 0){
+ throw 'Windows UI Automation requires an interactive user desktop (windows_session_0); sign in and run the ReMCP user agent'
+}
 $h=[IntPtr]::Zero
 ${selector}
 if($h -eq [IntPtr]::Zero){throw 'No foreground UI window is available'}
 $root=[System.Windows.Automation.AutomationElement]::FromHandle($h)
 if(-not $root){throw 'Could not create UI Automation root'}
-$windowName=$root.Current.Name
+$windowCaption=New-Object System.Text.StringBuilder 513
+[void][RMFG]::GetWindowText($h,$windowCaption,$windowCaption.Capacity)
+$nativeWindowName=$windowCaption.ToString()
+$windowName=if(${args.strict_target_id===true?'$true':'$false'}){$nativeWindowName}elseif($nativeWindowName.Length -gt 0){$nativeWindowName}else{[string]$root.Current.Name}
 $rootPid=$root.Current.ProcessId
 try{$rootApp=(Get-Process -Id $rootPid -ErrorAction Stop).ProcessName}catch{$rootApp=''}
 `;

@@ -13,6 +13,7 @@ import { findOcrText, ocrImage } from './ocr.mjs';
 
 
 import { adapter, cachedUiNodes, clipboard, keyboard, invalidateUiSnapshotCache, listWindows, pointer, resultValue, sleep, uiAction, uiSnapshot, windowAction, withResolvedUiLabel } from './desktop-core.mjs';
+import { resolveAppLaunchAlias } from './app-launch-registry.mjs';
 
 export function matches(node, args) {
   const id = optionalString(args.id);
@@ -395,9 +396,15 @@ export async function launchApp(args = {}) {
   if (!app) throw new Error('app is required');
   const argv = Array.isArray(args.args) ? args.args.map(String) : [];
   const cwd = args.cwd != null ? await resolveSafePath(args.cwd, 'cwd') : null;
-  const policy = assertAllowedCommand([app, ...argv].join(' '));
-  const result = await adapter.launchApp(app, argv, { ...args, cwd });
-  const body = result?.content?.[0]?.text || (typeof result === 'string' ? result : `Launched ${app}.`);
+  const requestedPolicy = assertAllowedCommand([app, ...argv].join(' '));
+  const profile = resolveAppLaunchAlias(app);
+  const launchTarget = profile?.target || app;
+  const launchArgv = profile?.args?.length ? [...profile.args, ...argv] : argv;
+  // Check both the original request and the actual resolved command and arguments.
+  const policy = launchTarget === app && launchArgv === argv ? requestedPolicy
+    : assertAllowedCommand([launchTarget, ...launchArgv].join(' '));
+  const result = await adapter.launchApp(launchTarget, launchArgv, { ...args, cwd });
+  const body = result?.content?.[0]?.text || (typeof result === 'string' ? result : `Launched ${launchTarget}.`);
 
   const waitHint = optionalString(args.wait_for_window);
   if (waitHint) {

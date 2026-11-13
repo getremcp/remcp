@@ -42,6 +42,21 @@ export function parseWindows(stdout) {
   return rows;
 }
 
+export function parseActiveX11WindowId(stdout) {
+  const match = String(stdout || '').match(/_NET_ACTIVE_WINDOW[^\n]*window id # (0x[0-9a-f]+)/i);
+  return match ? Number.parseInt(match[1],16) : null;
+}
+
+async function activeX11WindowId() {
+  if (!commandExists('xprop')) return null;
+  try {
+    const result = await runFile('xprop',['-root','_NET_ACTIVE_WINDOW'], {
+      label:'active X11 window',allowFailure:true,timeout:1500,
+    });
+    return result.code === 0 ? parseActiveX11WindowId(result.stdout) : null;
+  } catch { return null; }
+}
+
 export function parseX11PixelBounds(stdout) {
   const x = Number(String(stdout).match(/Absolute upper-left X:\s*(-?\d+)/)?.[1]);
   const y = Number(String(stdout).match(/Absolute upper-left Y:\s*(-?\d+)/)?.[1]);
@@ -63,8 +78,10 @@ export async function listWindows() {
     : [];
   if (!isWaylandSession()) {
     if (!wmRows.length && !commandExists('wmctrl')) unavailable('Window inventory', 'install wmctrl');
+    const activeId = await activeX11WindowId();
     return jsonResult(wmRows.map(row => ({
       ...row,
+      active:activeId != null && Number.parseInt(row.id,16) === activeId,
       wm_id: row.id,
       ui_id: null,
       backend: 'x11',
@@ -110,6 +127,7 @@ export async function listWindows() {
   }
 
   const usedUi = new Set();
+  const activeId = await activeX11WindowId();
   const rows = wmRows.map(row => {
     const matchIndex = uiRows.findIndex((node, index) => {
       if (usedUi.has(index)) return false;
@@ -123,6 +141,7 @@ export async function listWindows() {
     const xBounds = pixelBounds.get(row.id) || null;
     return {
       ...row,
+      active:activeId != null && Number.parseInt(row.id,16) === activeId,
       ...(xBounds || {}),
       pid: Number(row.pid) > 0 ? Number(row.pid) : (Number(node?.pid) > 0 ? Number(node.pid) : null),
       wm_bounds: xBounds ? { x:row.x, y:row.y, width:row.width, height:row.height } : null,
@@ -152,6 +171,7 @@ export async function listWindows() {
       height: Number(node.height),
       app: node.app || null,
       title: node.name || node.window || '',
+      active:node.active === true || node.focused === true,
       backend: 'wayland-atspi',
       actions: ['focus','minimize','maximize','restore','move','resize','move_resize','close'],
       action_backend: 'xdg-desktop-portal',

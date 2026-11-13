@@ -26,6 +26,7 @@ import {
   unavailable,
 } from './common.mjs';
 import { parseWindowsServiceStatus } from './windows-scm-status.mjs';
+import { createAppInventoryCache } from './app-inventory-cache.mjs';
 
 
 function durationSpec(value) {
@@ -305,30 +306,39 @@ export function windowsInstalledAppsPowerShell() {
   ].join(';');
 }
 
-export async function installedApps(args) {
-  const limit = clamp(args.limit, 1000, 1, 10_000);
-  const filter = optionalString(args.filter);
+const getCachedAppInventory = createAppInventoryCache();
+
+async function readNativeInstalledApps() {
   if (process.platform === 'win32') {
     const { stdout } = await runPowerShell(windowsInstalledAppsPowerShell(), { label:'installed apps', timeout:30_000, maxBuffer:32*1024*1024 });
     let parsed;
-    try {
-      parsed = JSON.parse(stdout.trim() || '[]');
-    } catch {
-      throw new Error('Windows installed-app inventory returned invalid JSON');
-    }
-    return jsonResult(installedAppsPayload(parsed, { backend:'windows-registry', filter, limit }));
+    try { parsed = JSON.parse(stdout.trim() || '[]'); }
+    catch { throw new Error('Windows installed-app inventory returned invalid JSON'); }
+    return { rows:parsed, backend:'windows-registry' };
   }
   if (process.platform === 'darwin') {
     const parsed = JSON.parse((await runFile('/usr/sbin/system_profiler', ['SPApplicationsDataType','-json'], { label:'installed apps', timeout:60_000, maxBuffer:64*1024*1024 })).stdout);
-    return jsonResult(installedAppsPayload(parsed.SPApplicationsDataType || [], { backend:'system_profiler', filter, limit }));
+    return { rows:parsed.SPApplicationsDataType || [], backend:'system_profiler' };
   }
   if (commandExists('dpkg-query')) {
     const { stdout } = await runFile('dpkg-query', ['-W','-f=${binary:Package}\t${Version}\t${Maintainer}\n'], { label:'installed apps', maxBuffer:32*1024*1024 });
-    return jsonResult(installedAppsPayload(parseInstalledAppsTsv(stdout), { backend:'dpkg-query', filter, limit }));
+    return { rows:parseInstalledAppsTsv(stdout), backend:'dpkg-query' };
   }
   if (commandExists('rpm')) {
     const { stdout } = await runFile('rpm', ['-qa','--qf','%{NAME}\t%{VERSION}-%{RELEASE}\t%{VENDOR}\n'], { label:'installed apps', maxBuffer:32*1024*1024 });
-    return jsonResult(installedAppsPayload(parseInstalledAppsTsv(stdout), { backend:'rpm', filter, limit }));
+    return { rows:parseInstalledAppsTsv(stdout), backend:'rpm' };
   }
   unavailable('Installed application inventory', 'dpkg-query or rpm is required');
+}
+
+export async function installedApps(args = {}) {
+  const limit = clamp(args.limit, 1000, 1, 10_000);
+  const filter = optionalString(args.filter);
+  const { rows, backend } = await getCachedAppInventory(async () => {
+    const inventory = await readNativeInstalledApps();
+    // Cache compact records instead of a potentially large native profiler response.
+    const all = Array.isArray(inventory.rows) ? inventory.rows : [inventory.rows];
+    return { backend:inventory.backend, rows:all.map(normalizeInstalledApp).filter(Boolean) };
+  }, { refresh:args.refresh === true });
+  return jsonResult(installedAppsPayload(rows, { backend, filter, limit }));
 }

@@ -116,7 +116,7 @@ export async function windowAction(args) {
 export function pyAtSpiPrelude({ pid = 0, app = '' } = {}) {
   const scopedPid = Number.isInteger(Number(pid)) ? Number(pid) : 0;
   const scopedApp = JSON.stringify(optionalString(app) || '');
-  return `import json,sys,math
+  return `import json,sys,math,re
 try:
  import pyatspi
 except Exception:
@@ -143,6 +143,11 @@ except Exception:
   class _Editable:
    def __init__(self,a): self.a=a
    def setTextContents(self,v): return self.a.set_text_contents(v)
+  class _Text:
+   def __init__(self,a): self.a=a
+   def getText(self,start,end):
+    if self.a.get_text_iface() is None: raise Exception('Text interface unavailable')
+    return Atspi.Text.get_text(self.a,start,end)
   class _Accessible:
    def __init__(self,a): self.a=a
    @property
@@ -159,6 +164,7 @@ except Exception:
     return _Value(self.a)
    def queryAction(self): return _Action(self.a)
    def queryEditableText(self): return _Editable(self.a)
+   def queryText(self): return _Text(self.a)
    def getProcessId(self):
     try: return int(self.a.get_process_id())
     except: return 0
@@ -255,25 +261,40 @@ while queue and len(out)<${maxNodes}:
  try:
   ext=e.queryComponent().getExtents(pyatspi.DESKTOP_COORDS);box={"x":ext.x,"y":ext.y,"width":ext.width,"height":ext.height}
  except: box={"x":0,"y":0,"width":0,"height":0}
- try:
-  value=e.queryValue().currentValue
-  if isinstance(value,float) and not math.isfinite(value): value=""
- except: value=""
+ private=bool(re.search(r"(password|passphrase|passcode|secret|token|otp|recovery.*code|\bpin\b|secure)",(role+" "+name).lower()))
+ value=""
+ if not private:
+  try:
+   value=e.queryValue().currentValue
+   if isinstance(value,float) and not math.isfinite(value): value=""
+  except: value=""
+  if role.lower() in ("entry","text","text field","searchbox","search field"):
+   try: value=e.queryText().getText(0,-1)
+   except: value=""
  focused=False;node_active=active
  try:
   states=e.getState();focused=bool(states.contains(pyatspi.STATE_FOCUSED));node_active=bool(node_active or states.contains(pyatspi.STATE_ACTIVE))
  except: pass
  if not want_window or want_window.lower() in window_name.lower():
-  out.append({"id":"linux:%d:%s"%(pid,node_path),"index":current_index,"depth":d,"pid":pid,"app":app_name,"active":node_active,"focused":focused,"window":window_name,"role":role,"name":name,"value":value,**box})
+  parent_path=node_path.rsplit(".",1)[0] if "." in node_path else None
+  out.append({"id":"linux:%d:%s"%(pid,node_path),
+   "parent_id":("linux:%d:%s"%(pid,parent_path) if parent_path else None),
+   "index":current_index,"depth":d,"pid":pid,"app":app_name,
+   "active":node_active,"focused":focused,"window":window_name,
+   "role":role,"name":name,"value":value,"password":private,**box})
  if d<${maxDepth}:
   try:
    for i in range(e.childCount):queue.append((e.getChildAtIndex(i),d+1,app_name,pid,active,window_name,node_path+"."+str(i)))
   except:pass
-print(json.dumps(out))`;
+print(json.dumps({"nodes":out,"truncated":bool(queue)}))`;
   const result = await runFile('python3', ['-c', script], { label: 'AT-SPI snapshot', timeout:clamp(args.timeout_ms, 30_000, 100, 30_000), allowFailure:true });
   let parsed = null;
   try { parsed = JSON.parse(result.stdout || ''); } catch {}
   if (Array.isArray(parsed)) return jsonResult({ platform: 'linux', count: parsed.length, nodes: parsed });
+  if (Array.isArray(parsed?.nodes)) return jsonResult({
+    platform:'linux',count:parsed.nodes.length,nodes:parsed.nodes,
+    truncated:parsed.truncated===true,max_nodes:maxNodes,max_depth:maxDepth,
+  });
   if (parsed?.error) unavailable('Linux accessibility', parsed.error);
   if (result.code !== 0) unavailable('Linux accessibility', (result.stderr || result.stdout).trim());
   return jsonResult({ platform: 'linux', count: 0, nodes: [] });
@@ -292,35 +313,58 @@ export async function uiAction(args = {}) {
   const wantedWindow = JSON.stringify(optionalString(args.window_title || args.windowTitle) || '');
   const wantedName = JSON.stringify(optionalString(args.name) || '');
   const wantedRole = JSON.stringify(optionalString(args.role) || '');
+  if(args.strict_target_id===true&&(!/^linux:\d+:r(?:\.\d+)*$/.test(id||'')||
+    !Number.isSafeInteger(wantedPid)||wantedPid<=0||stablePid!==wantedPid||
+    !optionalString(args.app)||!optionalString(args.window_title||args.windowTitle)||
+    !optionalString(args.name)||!optionalString(args.role)))
+    throw new Error('Strict AT-SPI action requires a stable element ID and exact process/window identity');
   const value = JSON.stringify(String(args.value ?? ''));
+  const expectedValue=args.strict_target_id===true&&action==='set_value'&&
+    typeof args.expected_value==='string'?JSON.stringify(args.expected_value):'None';
   const script = pyAtSpiPrelude({ pid:wantedPid, app:args.app }) + `
 want_index=${legacyIndex};want_pid=${wantedPid};want_path=${JSON.stringify(stablePath)}
-want_app=${wantedApp};want_window=${wantedWindow};want_name=${wantedName};want_role=${wantedRole};action=${JSON.stringify(action)};value=${value}
+want_app=${wantedApp};want_window=${wantedWindow};want_name=${wantedName};want_role=${wantedRole};action=${JSON.stringify(action)};value=${value};expected_value=${expectedValue}
 queue=[];seen=0;target=None;target_meta={}
 for root_index,(root,app_name,pid,active) in enumerate(q):
  if want_pid and pid!=want_pid: continue
  if want_app and want_app.lower() not in app_name.lower(): continue
  root_path="r" if pid else "a%d"%root_index
- queue.append((root,app_name,pid,"",root_path))
+ queue.append((root,app_name,pid,"",root_path,active,False))
 while queue:
- e,app_name,pid,window_name,node_path=queue.pop(0);current_index=seen;seen+=1
+ e,app_name,pid,window_name,node_path,app_active,window_active=queue.pop(0);current_index=seen;seen+=1
  try: role=e.getRoleName();name=e.name or ""
  except: role="";name=""
- if role.lower() in ("frame","dialog","window") and name: window_name=name
+ if role.lower() in ("frame","dialog","window") and name:
+  window_name=name
+  try: window_active=bool(e.getState().contains(pyatspi.STATE_ACTIVE))
+  except: window_active=False
  id_match=(not want_path or (pid==want_pid and node_path==want_path)) and (want_index<0 or current_index==want_index)
  selector_match=(not want_name or want_name.lower() in name.lower()) and (not want_role or want_role.lower() in role.lower()) and (not want_window or want_window.lower() in window_name.lower())
  if id_match and selector_match:
-  target=e;target_meta={"pid":pid,"app":app_name,"window":window_name,"path":node_path};break
+  target=e;target_meta={"pid":pid,"app":app_name,"window":window_name,"path":node_path,"app_active":app_active,"window_active":window_active};break
  try:
-  for i in range(e.childCount):queue.append((e.getChildAtIndex(i),app_name,pid,window_name,node_path+"."+str(i)))
+  for i in range(e.childCount):queue.append((e.getChildAtIndex(i),app_name,pid,window_name,node_path+"."+str(i),app_active,window_active))
  except:pass
 if target is None:raise Exception("UI element not found")
+if ${args.strict_target_id === true ? 'True' : 'False'}:
+ if not target_meta["app_active"] or not target_meta["window_active"]:
+  raise Exception("Native guided action refused: target window is background")
+ if target_meta["window"].strip().casefold()!=want_window.strip().casefold() or target_meta["app"].strip().casefold()!=want_app.strip().casefold():
+  raise Exception("Exact native app/window identity changed before action")
+ try:
+  current_name=target.name or "";current_role=target.getRoleName()
+ except:
+  raise Exception("Exact accessibility identity unavailable")
+ if current_name.strip().lower()!=want_name.strip().lower() or current_role.strip().lower()!=want_role.strip().lower():
+  raise Exception("Exact accessibility identity changed before action")
 pointer_fallback=None
 if action in ("click","invoke"):
  try:
   applied=target.queryAction().doAction(0)
   if applied is False: raise Exception("accessibility action returned false")
  except Exception as action_error:
+  if ${args.semantic_only === true ? 'True' : 'False'}:
+   raise Exception("Accessibility-only invoke refused: %s"%action_error)
   try:
    extents=target.queryComponent().getExtents(pyatspi.DESKTOP_COORDS)
    def _rect_value(rect,name,index):
@@ -350,12 +394,20 @@ elif action=="focus":
    except Exception:
     raise focus_error
 elif action=="set_value":
+ if expected_value is not None:
+  try: current_text=target.queryText().getText(0,-1)
+  except Exception: raise Exception("Native text compare unavailable; refusing write")
+  if current_text!=expected_value: raise Exception("Native text value changed before write")
  try:
   applied=target.queryEditableText().setTextContents(value)
   if applied is False: raise Exception("editable text write returned false")
  except Exception as editable_error:
   try: target.queryValue().currentValue=value
   except Exception as value_error: raise Exception("set_value failed: editable=%s; value=%s"%(editable_error,value_error))
+ if ${args.strict_target_id === true ? 'True' : 'False'}:
+  try: confirmed=target.queryText().getText(0,-1)
+  except Exception: raise Exception("Native text readback unavailable; outcome may be partial")
+  if confirmed!=value: raise Exception("Native text readback mismatch; outcome may be partial")
 elif action=="set_range_value":
  target.queryValue().currentValue=float(value)
 elif action in ("expand","collapse"):
@@ -381,12 +433,15 @@ elif action in ("add_to_selection","remove_from_selection"):
  else:
   if not selection.deselectChild(idx): raise Exception("could not remove item from selection")
 out={"action":action,"name":target.name or "","role":target.getRoleName(),**target_meta}
+if action=="set_value" and ${args.strict_target_id === true ? 'True' : 'False'}:
+ out["value_matches_after"]=True
 if pointer_fallback is not None: out["pointer_fallback"]=pointer_fallback
 print(json.dumps(out))`;
   const result = await runFile('python3', ['-c', script], { label: 'AT-SPI action', timeout: 30_000, allowFailure: true });
   let payload = null;
   try { payload = JSON.parse(result.stdout || ''); } catch {}
   if (payload?.pointer_fallback) {
+    if (args.semantic_only === true) throw new Error('Accessibility-only action refused coordinate fallback');
     const fallback = payload.pointer_fallback;
     const x = Number(fallback.x), y = Number(fallback.y);
     if (!Number.isFinite(x) || !Number.isFinite(y)) unavailable('Linux accessibility action', 'coordinate fallback returned invalid screen bounds');

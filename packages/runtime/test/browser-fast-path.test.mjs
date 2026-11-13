@@ -67,11 +67,12 @@ test('fill_form preflights all fields, fires native events and never returns fie
   const a=new Input(), b=new Select(), checkbox=new Input('checkbox');
   const elements={'#a':a,'#b':b,'#c':checkbox};
   const fake={
-    document:{querySelector(selector){return elements[selector]??null;}},
+    document:{querySelector(selector){return elements[selector]??null;},
+      querySelectorAll(selector){return elements[selector]?[elements[selector]]:[];}},
     Event:class {constructor(type){this.type=type;}},
   };
   const perform=fields=>runInNewContext('('+PAGE_FILL_FORM+')('+JSON.stringify(fields)+')',fake);
-  assert.throws(()=>perform([{selector:'#a',value:'unsafe'},{selector:'#missing',value:'x'}]),/not editable/);
+  assert.throws(()=>perform([{selector:'#a',value:'unsafe'},{selector:'#missing',value:'x'}]),/not editable|missing or ambiguous/);
   assert.equal(a.value,'','a partial form must never be written when validation fails');
   assert.throws(()=>perform([{selector:'#a',value:'partial'},{selector:'#c',value:'false'}]),/boolean/);
   assert.equal(a.value,'','ambiguous checkbox values must fail before any form is written');

@@ -30,7 +30,7 @@ function validateSchema(schema, context) {
 }
 
 test('every runtime command has a unique actual handler', () => {
-  assert.equal(all.length,87,'update this gate deliberately when adding/removing runtime operations');
+  assert.equal(all.length,91,'update this gate deliberately when adding/removing runtime operations');
   assert.equal(new Set(all.map(x=>x.name)).size,all.length);
   assert.equal(toolHandlers.size,toolDefinitions.length);
   assert.equal(extendedToolHandlers.size,extendedToolDefinitions.length);

@@ -35,7 +35,8 @@ export function assertWindowsInteropPayload(packageRoot, packageName, options={}
 }
 function verifyPayload(packageRoot, packageName, {cacheRoot=process.platform==='win32'?path.join(process.env.REMCP_CONFIG_DIR||path.join(os.homedir(),'.config','remcp'),'windows-interop'):null}={}) {
  const pkg=JSON.parse(fs.readFileSync(path.join(packageRoot,'package.json'),'utf8'));
- if (pkg.remcpWindowsInterop !== 1) return;
+ if (pkg.remcpWindowsInterop !== 1 && pkg.remcpWindowsInterop !== 2) return;
+ const sourceOnly=pkg.remcpWindowsInterop===2;
  const client=packageName==='@remcp/remcp';
  const root=path.join(packageRoot,client?'src/cli/native/windows':'src/native/windows');
  const match=fs.readFileSync(path.join(root,'manifest.mjs'),'utf8').match(/^export const WINDOWS_INTEROP =\s*(\{[\s\S]*\});\s*$/);
@@ -44,13 +45,26 @@ function verifyPayload(packageRoot, packageName, {cacheRoot=process.platform==='
  const expected=client?['owned-job']:['audio','cursor','displays','foreground','msaa','pointer','ui-mouse','window-action','window-list'];
  if (JSON.stringify(Object.keys(manifest).sort())!==JSON.stringify(expected.slice().sort())) throw new Error('Incomplete Windows interop manifest');
  // Validate the whole package before a repair can modify any existing cache.
+ if(sourceOnly&&fs.readdirSync(root).some(file=>/\.dll$/i.test(file)))
+  throw new Error('DLL-free package unexpectedly contains native binary');
  for (const id of expected) {
   const item=manifest[id], file=path.join(root,id+'.dll');
-  if(item.file!==id+'.dll'||!/^[a-f0-9]{64}$/.test(item.sha256)||item.releaseVersion!==pkg.version||!/^\d+\.\d+\.\d+$/.test(item.releaseVersion)) throw new Error('Invalid Windows helper identity');
+  if(item.releaseVersion!==pkg.version||!/^\d+\.\d+\.\d+$/.test(item.releaseVersion)) throw new Error('Invalid Windows helper identity');
+  if(sourceOnly){
+   const source=path.join(root,id+'.cs');
+   if(item.file!==id+'.cs'||!/^[a-f0-9]{64}$/.test(item.sourceSha256)||
+      item.sha256!==item.sourceSha256||item.signatureStatus!=='NotApplicable')
+    throw new Error('Invalid pinned Windows C# source manifest');
+   regular(source);
+   if(digest(source)!==item.sourceSha256) throw new Error('Windows C# helper integrity mismatch: '+id);
+   continue;
+  }
+  if(item.file!==id+'.dll'||!/^[a-f0-9]{64}$/.test(item.sha256))
+   throw new Error('Invalid Windows helper identity');
   regular(file);
   if(digest(file)!==item.sha256) throw new Error('Windows helper integrity mismatch: '+id);
  }
- if(!cacheRoot) return;
+ if(sourceOnly||!cacheRoot) return;
  for(const id of expected) {
   const item=manifest[id], version=path.join(cacheRoot,item.releaseVersion), store=path.join(version,id+'-'+item.sha256);
   for(const directory of [cacheRoot,version,store]) {

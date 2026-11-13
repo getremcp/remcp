@@ -14,6 +14,8 @@ import { callPageFunction, evaluate, withTarget, productionSessionKey } from './
 import { rememberBrowserViewport } from './browser-viewport.mjs';
 import { browserNavigate, browserSnapshot, browserTabs, findExpression } from './browser-read.mjs';
 import { executeBrowserWorkflow, validateBrowserWorkflow } from './browser-workflow.mjs';
+import { PAGE_VERIFY_FORM } from './browser-form-verification.mjs';
+export { PAGE_VERIFY_FORM } from './browser-form-verification.mjs';
 import { browserDevtools } from './browser-devtools.mjs';
 
 export async function browserFind(args) {
@@ -120,80 +122,115 @@ export const PAGE_ELEMENT_ACTION = `function(selector, needle, action, value) {
 
 // Bounded form mutation: validate every target before changing any field.
 // Values are intentionally excluded from the return object and tool logs.
-export const PAGE_FILL_FORM = `function(fields) {
-  const used = new Set();
-  const targets = fields.map(field => {
-    const el = document.querySelector(field.selector);
+// Fast guarded browser form batch. One CDP evaluation resolves, checks,
+// mutates and verifies all fields. Never returns field values.
+export const PAGE_FILL_FORM = `function(fields, expectedOrigin) {
+  if (expectedOrigin && location.origin !== expectedOrigin)
+    throw new Error('Form origin changed before mutation');
+  const norm = s => String(s || '').replace(/\\s+/g,' ').trim().toLocaleLowerCase();
+  const matchesFor = field => {
+    if (field.selector) return document.querySelectorAll
+      ? Array.from(document.querySelectorAll(field.selector))
+      : [document.querySelector(field.selector)].filter(Boolean);
+    const all = Array.from(document.querySelectorAll('input,textarea,select'));
+    const wanted = norm(field.label);
+    return all.filter(el => {
+      const labels = Array.from(el.labels || []).map(label => label.textContent);
+      const aria = el.getAttribute?.('aria-label');
+      if (aria) labels.push(aria);
+      const refs = String(el.getAttribute?.('aria-labelledby') || '').trim().split(/\\s+/).filter(Boolean);
+      for (const id of refs) labels.push(document.getElementById(id)?.textContent);
+      return labels.some(label => norm(label) === wanted);
+    });
+  };
+  const targets = [], used = new Set();
+  for (const field of fields) {
+    const matches = matchesFor(field);
+    if (matches.length !== 1)
+      throw new Error('Form field unavailable or not editable: missing or ambiguous target');
+    const el = matches[0];
     if (!el || !el.getClientRects().length || el.disabled || el.readOnly ||
-        el.matches('input[type="file"],input[type="submit"],input[type="reset"],button')) {
-      throw new Error('Form field unavailable or not editable: ' + field.selector);
+        el.matches?.('input[type="file"],input[type="hidden"],input[type="submit"],input[type="reset"],button')) {
+      throw new Error('Form field unavailable or not editable');
     }
     const tag = el.tagName.toLowerCase();
-    if (!['input','textarea','select'].includes(tag)) throw new Error('Unsupported form field: ' + field.selector);
+    if (!['input','textarea','select'].includes(tag)) throw new Error('Unsupported form field');
     if (used.has(el)) throw new Error('Duplicate form field target');
     used.add(el);
-    // Form Map selectors are structural; verify the observed kind again after any rerender.
-    const actualType = tag === 'input' ? (el.type || 'text').toLowerCase() : tag;
-    if ((field.expected_tag && field.expected_tag !== tag) ||
-        (field.expected_type && field.expected_type !== actualType)) {
+    const type = tag === 'input' ? (el.type || 'text').toLowerCase() : tag;
+    if (field.expected_tag && field.expected_tag !== tag ||
+        field.expected_type && field.expected_type !== type)
       throw new Error('Form field kind changed; refresh the form map');
-    }
-    if (tag === 'input' && ['checkbox','radio'].includes(el.type) && typeof field.value !== 'boolean') {
-      throw new Error('Checkbox and radio fields require a boolean value: ' + field.selector);
-    }
-    if (tag === 'select' && !Array.from(el.options).some(option => option.value === String(field.value))) {
-      throw new Error('No matching select option: ' + field.selector);
-    }
-    return {el,tag,value:field.value};
-  });
-  const summary = [];
-  for (const {el,tag,value} of targets) {
-    // A change handler from an earlier field can detach a later field mid-batch.
-    if (el.isConnected === false) throw new Error('Form rerendered during the batch; refresh the form map');
-    const checkbox = tag === 'input' && ['checkbox','radio'].includes(el.type);
-    const prop = checkbox ? 'checked' : 'value';
-    let prototype = Object.getPrototypeOf(el);
-    let setter;
-    while (prototype && !setter) {
-      setter = Object.getOwnPropertyDescriptor(prototype, prop)?.set;
-      prototype = Object.getPrototypeOf(prototype);
-    }
-    const next = checkbox ? Boolean(value) : String(value);
-    if (setter) setter.call(el, next); else el[prop] = next;
-    el.dispatchEvent(new Event('input', {bubbles:true}));
-    el.dispatchEvent(new Event('change', {bubbles:true}));
-    summary.push({tag, changed:true});
+    const checkbox = tag === 'input' && (type === 'checkbox' || type === 'radio');
+    if (checkbox && typeof field.value !== 'boolean')
+      throw new Error('Checkbox and radio fields require a boolean value');
+    if (tag === 'select' && !Array.from(el.options).some(o => o.value === String(field.value)))
+      throw new Error('No matching select option');
+    const current = checkbox ? Boolean(el.checked) : String(el.value);
+    if (Object.prototype.hasOwnProperty.call(field,'expected_value') &&
+        current !== field.expected_value)
+      throw new Error('Form field changed before write');
+    targets.push({el,tag,type,field,checkbox,next:checkbox?Boolean(field.value):String(field.value)});
   }
-  return {filled:summary.length, fields:summary};
+  const summary = [];
+  for (const {el,tag,type,field,checkbox,next} of targets) {
+    if (expectedOrigin && location.origin !== expectedOrigin)
+      throw new Error('Form origin changed during mutation; outcome unknown');
+    if (el.isConnected === false)
+      throw new Error('Form rerendered during the batch; outcome may be partial');
+    const prop = checkbox ? 'checked' : 'value';
+    let prototype=Object.getPrototypeOf(el),setter;
+    while (prototype && !setter) {
+      setter=Object.getOwnPropertyDescriptor(prototype,prop)?.set;
+      prototype=Object.getPrototypeOf(prototype);
+    }
+    if (setter) setter.call(el,next);
+    else el[prop]=next;
+    el.dispatchEvent(new Event('input',{bubbles:true}));
+    el.dispatchEvent(new Event('change',{bubbles:true}));
+    const matches = matchesFor(field);
+    if (matches.length !== 1 || matches[0] !== el || el.isConnected === false ||
+        (tag === 'input' ? String(el.type || 'text').toLowerCase() : tag) !== type)
+      throw new Error('Form target changed or rerendered; outcome may be partial');
+    if ((checkbox?Boolean(el.checked):String(el.value)) !== next)
+      throw new Error('Form readback mismatch; outcome may be partial');
+    summary.push({tag,changed:true,verified:true});
+  }
+  return {filled:summary.length,verified:true,submitted:false,fields:summary};
 }`;
 
 export function validateFormFields(fields) {
-  if (!Array.isArray(fields) || fields.length < 1 || fields.length > 20) {
+  if (!Array.isArray(fields) || fields.length < 1 || fields.length > 20)
     throw new Error('fill_form requires 1 to 20 fields');
-  }
-  const seen = new Set();
+  const seen=new Set();
   return fields.map(field => {
-    const selector = typeof field?.selector === 'string' ? field.selector.trim() : '';
-    if (!selector || selector.length > 512 || !Object.hasOwn(field,'value') ||
+    const selector=typeof field?.selector === 'string' ? field.selector.trim() : '';
+    const label=typeof field?.label === 'string' ? field.label.trim() : '';
+    if (Boolean(selector) === Boolean(label) || (selector && selector.length > 512) ||
+        (label && (label.length > 180 || /[\u0000-\u001f\u007f\u202a-\u202e\u2066-\u2069]/u.test(label))) ||
+        !Object.hasOwn(field,'value') ||
         !['string','boolean','number'].includes(typeof field.value) ||
-        (typeof field.value === 'number' && !Number.isFinite(field.value))) {
-      throw new Error('Each form field requires a CSS selector and a string/boolean/number value');
-    }
-    if (String(field.value).length > 16384) throw new Error('Form field value exceeds 16384 characters');
-    if (seen.has(selector)) throw new Error('Duplicate CSS selector in form batch');
-    seen.add(selector);
-    const expected_tag = field.expected_tag;
-    const expected_type = field.expected_type;
-    if (expected_tag != null && !['input','select','textarea'].includes(expected_tag))
+        typeof field.value === 'number' && !Number.isFinite(field.value))
+      throw new Error('Each form field requires one CSS selector or exact label and a string/boolean/number value');
+    if (String(field.value).length > 16384)
+      throw new Error('Form field value exceeds 16384 characters');
+    const id=selector ? 's:'+selector : 'l:'+label.toLocaleLowerCase();
+    if (seen.has(id)) throw new Error('Duplicate CSS selector or label in form batch');
+    seen.add(id);
+    if (field.expected_tag != null && !['input','select','textarea'].includes(field.expected_tag))
       throw new TypeError('Unsupported expected_tag');
-    if (expected_type != null && ![
+    if (field.expected_type != null && ![
       'text','email','password','tel','url','search','number','date','time','datetime-local',
-      'month','week','color','range','checkbox','radio','file','hidden','submit','reset','button',
-      'select','textarea'
-    ].includes(expected_type)) throw new TypeError('Unsupported expected_type');
-    return {selector, value:field.value,
-      ...(expected_tag == null ? {} : {expected_tag}),
-      ...(expected_type == null ? {} : {expected_type})};
+      'month','week','color','range','checkbox','radio','file','hidden','submit','reset','button','select','textarea'
+    ].includes(field.expected_type)) throw new TypeError('Unsupported expected_type');
+    if (Object.hasOwn(field,'expected_value') &&
+        (!['string','boolean'].includes(typeof field.expected_value) ||
+         typeof field.expected_value==='string' && field.expected_value.length>16384))
+      throw new Error('Expected form field value must be a bounded string or boolean');
+    return {...(selector?{selector}:{label}),value:field.value,
+      ...(field.expected_tag==null?{}:{expected_tag:field.expected_tag}),
+      ...(field.expected_type==null?{}:{expected_type:field.expected_type}),
+      ...(Object.hasOwn(field,'expected_value')?{expected_value:field.expected_value}:{})};
   });
 }
 
@@ -244,12 +281,16 @@ export async function browserAction(args) {
     if (action === 'workflow') {
       const result = await executeBrowserWorkflow(session, workflowSteps, {
         pageElementAction:PAGE_ELEMENT_ACTION, pageFillForm:PAGE_FILL_FORM,
+        pageVerifyForm:PAGE_VERIFY_FORM, expectedOrigin:args.expected_origin||null,
       });
       return jsonResult({target_id:target.id, action, result});
     }
     if (action === 'fill_form') {
-      const result = await callPageFunction(session, PAGE_FILL_FORM, [formFields]);
-      return jsonResult({target_id:target.id, action, result});
+      const origin = args.expected_origin || new URL(target.url).origin;
+      const result = await callPageFunction(session, PAGE_FILL_FORM, [formFields,origin]);
+      const verified = await callPageFunction(session, PAGE_VERIFY_FORM, [formFields,origin]);
+      return jsonResult({target_id:target.id, action,
+        result:{...result, verified:verified.verified, verified_fields:verified.count}});
     }
     if (action === 'set_viewport') {
       const width = clamp(args.width, 1280, 200, 8192);

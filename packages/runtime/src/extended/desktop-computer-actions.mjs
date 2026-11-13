@@ -17,6 +17,8 @@ import { dragDrop, launchApp, openPath, revealPath, typeText, uiFind, waitForUi 
 import { clickOcrText } from './desktop-vision.mjs';
 import { computerSnapshot } from './desktop-computer-snapshot.mjs';
 import { assertWindowsInteractiveDesktop, guardWindowsDesktopTool } from './desktop-windows-session.mjs';
+import { appCatalog, appNavigate } from './app-navigation.mjs';
+import { appTask } from './app-task.mjs';
 
 export function browserComputerAction(args, action) {
   const mapped = {
@@ -353,6 +355,9 @@ export const desktopHandlers = {
   list_windows: listWindows,
   window_action: windowAction,
   launch_app: launchApp,
+  app_catalog: appCatalog,
+  app_navigate: appNavigate,
+  app_task: appTask,
   ui_snapshot: uiSnapshot,
   ui_find: uiFind,
   ui_action: uiAction,
@@ -394,7 +399,7 @@ export function computerActionRequiresDesktop(args = {}) {
 // Keep native desktop tools unavailable in Windows Session 0 without blocking
 // terminal, filesystem and explicitly browser-targeted CDP actions.
 const nativeDesktopTools = [
-  'list_windows', 'window_action', 'launch_app', 'ui_snapshot', 'ui_find',
+  'list_windows', 'window_action', 'launch_app', 'app_navigate', 'ui_snapshot', 'ui_find',
   'ui_action', 'type_text', 'keyboard', 'pointer', 'drag_drop', 'scroll',
   'wait_for_ui', 'clipboard', 'display_inventory', 'screenshot_region',
   'open_path', 'reveal_path', 'notification',

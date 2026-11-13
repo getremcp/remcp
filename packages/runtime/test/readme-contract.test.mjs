@@ -10,18 +10,18 @@ const tools = [...coreTools, ...allExtendedTools()];
 
 test('runtime README describes the tool surface that the package actually advertises', () => {
   assert.equal(coreTools.length, 44, 'the backwards-compatible core tool set remains 44 tools');
-  assert.equal(tools.length, 87, 'the 0.2.233 runtime release contract has 87 local tools');
+  assert.equal(tools.length, 91, 'the development runtime contract adds four app navigation/task execution tools');
   assert.match(
     readme,
     new RegExp(`\\b${tools.length} tools\\b`, 'i'),
     'README tool count must come from the runtime contract, not an old release',
   );
-  assert.doesNotMatch(readme, /\b35 tools\b|\b43 tools\b|\b94-tool\b|\b91-tool\b/i);
+  assert.doesNotMatch(readme, /\b35 tools\b|\b43 tools\b|\b94-tool\b|\b90-tool\b/i);
   assert.match(readme, /10 hosted (?:tool )?definitions/i, 'README must describe the current compact hosted discovery surface');
   assert.match(readme, /15 definitions/i, 'README must describe the optional widget-enabled hosted surface');
   assert.match(readme, /all model-visible/i, 'README must distinguish the current model-visible hosted tools');
   assert.match(readme, /5 app-only/i, 'README must distinguish optional app-only presentation helpers');
-  assert.match(readme, /87 granular runtime operations/i, 'README must explain what the compact hosted facade routes to');
+  assert.match(readme, /91 granular runtime operations/i, 'README must explain what the compact hosted facade routes to');
   assert.match(
     readme,
     /up to (?:seven|7).*domain tools|up to 8 tools/i,

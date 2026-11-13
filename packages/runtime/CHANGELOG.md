@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.2.252 — 2026-11-12
+
+**Discover and safely target additional Windows application windows.**
+
+- Add `app_catalog`, `app_task`, and `app_navigate` runtime capabilities for structured app control.
+- Enumerate multiple top-level windows per process using Win32 EnumWindows instead of a single MainWindowHandle.
+- Scope native actions to the verified HWND, owner PID, application, title and interactive session; reject stale or mismatched targets.
+- Preserve guarded UI Automation ValuePattern writes and recheck expected value before mutation.
+- Move the Win32 enumeration and foreground ownership checks into hash-verified native .NET helpers, without per-action compiler invocation.
+- Add `app_execute` as a single guarded browser/native App Engine action: exact DOM labels, origin and old-value checks, local readback, dry-run and explicit commit without implicit submission.
+- Persist each committed App Engine UUID in an owner-private, crash-conservative local journal before dispatch; a restart or uncertain result cannot automatically repeat an external mutation. No cross-service exactly-once guarantee or automatic journal pruning.
+- Use a deterministic short owner-private Unix socket path for trusted macOS/Linux application APIs when the normal path exceeds operating-system limits.
+- Keep protected Windows IPC as future work. Latency improvement is not yet established for full remote RPC.
+- The updated DLLs are currently NotSigned; no Authenticode signature or Kaspersky certification is claimed.
 ## 0.2.251 — 2026-11-12
 
 - Align native helper installation-store metadata with the verified 0.2.251 client/runtime pair.

@@ -1,9 +1,10 @@
-import { windowsInteropLoad } from './windows-interop.mjs';
 import { msaaBrowserSnapshot, windowsUiRootScript } from './desktop-windows-msaa.mjs';
+import { strictWindowsActionGate } from './desktop-windows-action-guard.mjs';
+import { windowsWindowSelector } from './desktop-windows-window-selector.mjs';
+import { windowsInteropLoad } from './windows-interop.mjs';
 import { quoteWindowsArgument } from './windows-argv.mjs';
 import path from 'node:path';
 import process from 'node:process';
-
 import { image, multi, text } from '../util.mjs';
 import {
   clamp,
@@ -17,57 +18,37 @@ import {
   spawnDetached,
   tempDir,
 } from './common.mjs';
-
-export async function listWindows() {
-  const script=String.raw`
-${windowsInteropLoad('window-list')}
-$o=@();Get-Process|Where-Object{$_.MainWindowHandle -ne 0}|ForEach-Object{
- $h=$_.MainWindowHandle;if([RM]::IsWindowVisible($h)){$r=New-Object RM+RECT;[void][RM]::GetWindowRect($h,[ref]$r);
- $o += [pscustomobject]@{id=('0x{0:X}' -f $h.ToInt64());pid=$_.Id;app=$_.ProcessName;title=$_.MainWindowTitle;active=($h -eq [RM]::GetForegroundWindow());minimized=[RM]::IsIconic($h);maximized=[RM]::IsZoomed($h);x=$r.Left;y=$r.Top;width=$r.Right-$r.Left;height=$r.Bottom-$r.Top}}
-};$o|ConvertTo-Json -Compress`;
-  const {stdout}=await runPowerShell(script,{label:'list windows',timeout:30_000});
-  const parsed=stdout.trim()?JSON.parse(stdout):[];
-  return jsonResult(Array.isArray(parsed)?parsed:[parsed]);
-}
-
-function selectorScript(args) {
-  const id=optionalString(args.id);
-  const idExpr=id?.startsWith('0x')?`[IntPtr]${Number.parseInt(id,16)}`:'[IntPtr]::Zero';
-  const pid=Number.isInteger(Number(args.pid))?Number(args.pid):0;
-  const app=escapePowerShellSingle(optionalString(args.app)||'');
-  const title=escapePowerShellSingle(optionalString(args.title)||'');
-  return `$h=${idExpr};if($h -eq [IntPtr]::Zero){$p=Get-Process|Where-Object{$_.MainWindowHandle -ne 0 -and (${pid} -eq 0 -or $_.Id -eq ${pid}) -and ('${app}' -eq '' -or $_.ProcessName -like '*${app}*') -and ('${title}' -eq '' -or $_.MainWindowTitle -like '*${title}*')}|Select-Object -First 1;if(-not $p){throw 'No matching window found'};$h=$p.MainWindowHandle}`;
-}
-
-export async function windowAction(args = {}) {
+export { listWindows } from './desktop-windows-list.mjs';
+export async function windowAction(args = {}, {runPowerShellFn=runPowerShell}={}) {
   const action=requireEnum(args.action,'action',['focus','minimize','maximize','restore','move','resize','move_resize','close']);
   const x=Number(args.x),y=Number(args.y),width=Number(args.width),height=Number(args.height);
   const script=String.raw`
 ${windowsInteropLoad('window-action')}
-${selectorScript(args)}
+${windowsInteropLoad('foreground')}
+${windowsWindowSelector(args)}
 $r=New-Object RM+RECT;[void][RM]::GetWindowRect($h,[ref]$r)
 switch('${action}'){
  'focus'{if(-not [RM]::FocusWindow($h)){throw 'Windows refused foreground focus'}}
  'minimize'{[void][RM]::ShowWindow($h,6)}
  'maximize'{[void][RM]::ShowWindow($h,3)}
  'restore'{[void][RM]::ShowWindow($h,9)}
- 'close'{[void][RM]::PostMessage($h,0x0010,[IntPtr]::Zero,[IntPtr]::Zero)}
- 'move'{[void][RM]::MoveWindow($h,${Number.isFinite(x)?Math.trunc(x):0},${Number.isFinite(y)?Math.trunc(y):0},$r.Right-$r.Left,$r.Bottom-$r.Top,$true)}
- 'resize'{[void][RM]::MoveWindow($h,$r.Left,$r.Top,${Number.isFinite(width)?Math.trunc(width):800},${Number.isFinite(height)?Math.trunc(height):600},$true)}
- 'move_resize'{[void][RM]::MoveWindow($h,${Number.isFinite(x)?Math.trunc(x):0},${Number.isFinite(y)?Math.trunc(y):0},${Number.isFinite(width)?Math.trunc(width):800},${Number.isFinite(height)?Math.trunc(height):600},$true)}
+ 'close'{if(-not [RM]::PostMessage($h,0x0010,[IntPtr]::Zero,[IntPtr]::Zero)){throw 'Windows refused window close message'}}
+ 'move'{if(-not [RM]::MoveWindow($h,${Number.isFinite(x)?Math.trunc(x):0},${Number.isFinite(y)?Math.trunc(y):0},$r.Right-$r.Left,$r.Bottom-$r.Top,$true)){throw 'Windows refused window move'}}
+ 'resize'{if(-not [RM]::MoveWindow($h,$r.Left,$r.Top,${Number.isFinite(width)?Math.trunc(width):800},${Number.isFinite(height)?Math.trunc(height):600},$true)){throw 'Windows refused window resize'}}
+ 'move_resize'{if(-not [RM]::MoveWindow($h,${Number.isFinite(x)?Math.trunc(x):0},${Number.isFinite(y)?Math.trunc(y):0},${Number.isFinite(width)?Math.trunc(width):800},${Number.isFinite(height)?Math.trunc(height):600},$true)){throw 'Windows refused window move_resize'}}
 }
 `;
-  await runPowerShell(script,{label:'window action'});
+  await runPowerShellFn(script,{label:'window action'});
   return text(`Window action ${action} completed.`);
 }
-
-export async function uiSnapshot(args = {}) {
+export async function uiSnapshot(args = {}, {runPowerShellFn=runPowerShell}={}) {
   const maxNodes = clamp(args.max_nodes, 500, 1, 5000);
   const maxDepth = clamp(args.max_depth, 8, 1, 32);
   const browserDom = args.browser_dom === true;
   const script = String.raw`
 Add-Type -AssemblyName UIAutomationClient;Add-Type -AssemblyName UIAutomationTypes
 ${windowsUiRootScript(args)}
+$windowForeground=($h -eq [RMFG]::GetForegroundWindow())
 $browserProvider=$null
 if(${browserDom ? '$true' : '$false'}){
  try{
@@ -105,8 +86,7 @@ $cache.TreeScope=[System.Windows.Automation.TreeScope]::Element
  [System.Windows.Automation.ScrollPattern]::Pattern,
  [System.Windows.Automation.ScrollItemPattern]::Pattern
 )|ForEach-Object{try{$cache.Add($_)}catch{}}
-# LegacyIAccessiblePattern is absent from some managed .NET UIA builds.
-try{$cache.Add([System.Windows.Automation.LegacyIAccessiblePattern]::Pattern)}catch{}
+$legacyPattern=$null;$legacyType='System.Windows.Automation.LegacyIAccessiblePattern' -as [type];if($legacyType){try{$legacyPattern=$legacyType.GetField('Pattern').GetValue($null);$cache.Add($legacyPattern)}catch{$legacyPattern=$null}}
 try{$root=$root.GetUpdatedCache($cache)}catch{}
 $q=New-Object System.Collections.Queue
 $q.Enqueue([pscustomobject]@{e=$root;d=0;parent=$null})
@@ -121,21 +101,21 @@ while($q.Count -gt 0 -and $seen -lt ${maxNodes}){
   $id='win:'+$rid
   $patterns=New-Object System.Collections.ArrayList
   $value=$null;$toggleState=$null;$expandState=$null;$rangeValue=$null;$rangeMin=$null;$rangeMax=$null
-  $selected=$null;$scrollH=$false;$scrollV=$false;$scrollHPct=$null;$scrollVPct=$null;$defaultAction=$null
+  $selected=$null;$scrollH=$false;$scrollV=$false;$scrollHPct=$null;$scrollVPct=$null;$defaultAction=$null;$privateField=($c.IsPassword -or ($c.Name -match 'password|passphrase|passcode|secret|token|otp|recovery.*code|\bpin\b') -or ($c.ControlType.ProgrammaticName -eq 'ControlType.Pane' -and $c.ClassName -match '^WindowsForms10\.EDIT'))
   try{$p=$e.GetCachedPattern([System.Windows.Automation.InvokePattern]::Pattern);if($p){[void]$patterns.Add('invoke')}}catch{}
-  try{$p=[System.Windows.Automation.ValuePattern]$e.GetCachedPattern([System.Windows.Automation.ValuePattern]::Pattern);if($p){[void]$patterns.Add('value');$value=$p.Cached.Value}}catch{}
+  if(-not $privateField){$p=$null;try{$p=[System.Windows.Automation.ValuePattern]$e.GetCachedPattern([System.Windows.Automation.ValuePattern]::Pattern)}catch{};if(-not $p){try{$p=[System.Windows.Automation.ValuePattern]$e.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern)}catch{}};if($p){try{$value=$p.Current.Value;[void]$patterns.Add('value')}catch{}}}
   try{$p=[System.Windows.Automation.TogglePattern]$e.GetCachedPattern([System.Windows.Automation.TogglePattern]::Pattern);if($p){[void]$patterns.Add('toggle');$toggleState=$p.Cached.ToggleState.ToString().ToLowerInvariant()}}catch{}
   try{$p=[System.Windows.Automation.SelectionItemPattern]$e.GetCachedPattern([System.Windows.Automation.SelectionItemPattern]::Pattern);if($p){[void]$patterns.Add('selection_item');$selected=$p.Cached.IsSelected}}catch{}
   try{$p=[System.Windows.Automation.ExpandCollapsePattern]$e.GetCachedPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern);if($p){[void]$patterns.Add('expand_collapse');$expandState=$p.Cached.ExpandCollapseState.ToString().ToLowerInvariant()}}catch{}
   try{$p=[System.Windows.Automation.RangeValuePattern]$e.GetCachedPattern([System.Windows.Automation.RangeValuePattern]::Pattern);if($p){[void]$patterns.Add('range_value');$rangeValue=$p.Cached.Value;$rangeMin=$p.Cached.Minimum;$rangeMax=$p.Cached.Maximum}}catch{}
   try{$p=[System.Windows.Automation.ScrollPattern]$e.GetCachedPattern([System.Windows.Automation.ScrollPattern]::Pattern);if($p){[void]$patterns.Add('scroll');$scrollH=$p.Cached.HorizontallyScrollable;$scrollV=$p.Cached.VerticallyScrollable;$scrollHPct=$p.Cached.HorizontalScrollPercent;$scrollVPct=$p.Cached.VerticalScrollPercent}}catch{}
   try{$p=$e.GetCachedPattern([System.Windows.Automation.ScrollItemPattern]::Pattern);if($p){[void]$patterns.Add('scroll_item')}}catch{}
-  try{$p=[System.Windows.Automation.LegacyIAccessiblePattern]$e.GetCachedPattern([System.Windows.Automation.LegacyIAccessiblePattern]::Pattern);if($p){[void]$patterns.Add('legacy_iaccessible');$defaultAction=$p.Cached.DefaultAction;if($null -eq $value -or $value -eq ''){$value=$p.Cached.Value}}}catch{}
+  if($legacyPattern){try{$p=$e.GetCachedPattern($legacyPattern);if($p){[void]$patterns.Add('legacy_iaccessible');$defaultAction=$p.Cached.DefaultAction;if(-not $privateField -and ($null -eq $value -or $value -eq '')){$value=$p.Cached.Value}}}catch{}}
   [void]$o.Add([pscustomobject]@{
-   id=$id;parent_id=$parent;depth=$d;active=($d -eq 0);pid=$c.ProcessId;app=$rootApp;window=$windowName;
-   name=$c.Name;role=$c.ControlType.ProgrammaticName.Replace('ControlType.','');localized_role=$c.LocalizedControlType;
+   id=$id;parent_id=$parent;depth=$d;active=($d -eq 0 -and $windowForeground);pid=$c.ProcessId;app=$rootApp;window=$windowName;window_id=$(if($d -eq 0){'0x{0:X}' -f $h.ToInt64()}else{''});
+   name=$(if($privateField){''}else{$c.Name});role=$c.ControlType.ProgrammaticName.Replace('ControlType.','');localized_role=$c.LocalizedControlType;
    automationId=$c.AutomationId;className=$c.ClassName;frameworkId=$c.FrameworkId;enabled=$c.IsEnabled;offscreen=$c.IsOffscreen;
-   focused=$c.HasKeyboardFocus;focusable=$c.IsKeyboardFocusable;password=$c.IsPassword;help_text=$c.HelpText;shortcut=$c.AcceleratorKey;
+   focused=$c.HasKeyboardFocus;focusable=$c.IsKeyboardFocusable;password=$privateField;help_text=$c.HelpText;shortcut=$c.AcceleratorKey;
    value=$value;patterns=@($patterns);toggle_state=$toggleState;expand_collapse_state=$expandState;selected=$selected;
    range_value=$rangeValue;range_min=$rangeMin;range_max=$rangeMax;scrollable=($scrollH -or $scrollV);
    horizontal_scrollable=$scrollH;vertical_scrollable=$scrollV;horizontal_scroll_percent=$scrollHPct;vertical_scroll_percent=$scrollVPct;
@@ -149,7 +129,7 @@ while($q.Count -gt 0 -and $seen -lt ${maxNodes}){
  }catch{}
 }
 [pscustomobject]@{platform='win32';count=$o.Count;nodes=@($o);truncated=($q.Count -gt 0);max_nodes=${maxNodes};browser_dom=[pscustomobject]@{requested=${browserDom ? '$true' : '$false'};available=($null -ne $browserProvider);provider=$browserProvider}}|ConvertTo-Json -Compress -Depth 8`;
-  const { stdout } = await runPowerShell(script, { label:'UI snapshot', timeout:30_000 });
+  const { stdout } = await runPowerShellFn(script, { label:'UI snapshot', timeout:30_000 });
   const parsed = stdout.trim() ? JSON.parse(stdout) : { platform:'win32', count:0, nodes:[] };
   if (browserDom && !parsed?.browser_dom?.available) {
     const fallback = await msaaBrowserSnapshot(args).catch(() => null);
@@ -157,7 +137,6 @@ while($q.Count -gt 0 -and $seen -lt ${maxNodes}){
   }
   return jsonResult(parsed);
 }
-
 export async function uiAction(args = {}, { runPowerShellFn = runPowerShell } = {}) {
   const action = requireEnum(args.action, 'action', [
     'click','invoke','focus','set_value','select','toggle','expand','collapse',
@@ -168,13 +147,15 @@ export async function uiAction(args = {}, { runPowerShellFn = runPowerShell } = 
   const role = escapePowerShellSingle(optionalString(args.role) || '');
   const automationId = escapePowerShellSingle(optionalString(args.automation_id || args.automationId) || '');
   const value = escapePowerShellSingle(String(args.value ?? ''));
+  const expectedValue = args.strict_target_id===true&&action==='set_value'&&typeof args.expected_value==='string'?escapePowerShellSingle(args.expected_value):null;
   // The entire switch must parse even when the selected action has no numeric value.
   const numericValue = action === 'set_range_value' ? Number(args.value) : 0;
   if (action === 'set_range_value' && !Number.isFinite(numericValue)) throw new Error('set_range_value requires a finite numeric value');
   const script = String.raw`
 Add-Type -AssemblyName UIAutomationClient;Add-Type -AssemblyName UIAutomationTypes
 ${windowsUiRootScript(args)}
-${windowsInteropLoad('ui-mouse')}
+${strictWindowsActionGate(args)}
+${action==='click'&&args.strict_target_id!==true?windowsInteropLoad('ui-mouse'):''}
 $q=New-Object System.Collections.Queue;$q.Enqueue($root);$found=$null;$visited=0
 while($q.Count -gt 0 -and -not $found -and $visited -lt 10000){
  $e=$q.Dequeue();$visited++
@@ -187,6 +168,14 @@ while($q.Count -gt 0 -and -not $found -and $visited -lt 10000){
  }catch{}
 }
 if(-not $found){throw 'UI element not found'}
+if(${args.strict_target_id === true ? '$true' : '$false'}){
+ if($h -ne [RMFG]::GetForegroundWindow()){throw 'Native guided action refused: target window is background'}
+ if($found.Current.ProcessId -ne $rootPid){throw 'Native guided action refused: control process changed'}
+ if($found.Current.Name -ne '${name}' -or
+    $found.Current.ControlType.ProgrammaticName.Replace('ControlType.','') -ne '${role}'){
+  throw 'Exact UI element identity changed before action'
+ }
+}
 $used=$null
 switch('${action}'){
  'focus'{[void]$found.SetFocus();$used='SetFocus'}
@@ -197,17 +186,22 @@ switch('${action}'){
   $p=$null
   if($found.TryGetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern,[ref]$p)){([System.Windows.Automation.InvokePattern]$p).Invoke();$used='InvokePattern'}
   else{
-   $pt=New-Object System.Windows.Point
+   ${args.strict_target_id===true?
+     "throw 'Strict Windows UIA click requires InvokePattern'":
+     `$pt=New-Object System.Windows.Point
    $hasPoint=$false
    try{$hasPoint=$found.TryGetClickablePoint([ref]$pt)}catch{}
    if(-not $hasPoint){$b=$found.Current.BoundingRectangle;$pt=New-Object System.Windows.Point(($b.X+$b.Width/2),($b.Y+$b.Height/2))}
    [void][RMMouse]::SetCursorPos([int]$pt.X,[int]$pt.Y)
-   [RMMouse]::mouse_event(2,0,0,0,[UIntPtr]::Zero);[RMMouse]::mouse_event(4,0,0,0,[UIntPtr]::Zero);$used='pointer'
+   [RMMouse]::mouse_event(2,0,0,0,[UIntPtr]::Zero);[RMMouse]::mouse_event(4,0,0,0,[UIntPtr]::Zero);$used='pointer'`}
   }
  }
- 'set_value'{
-  $p=$null;if($found.TryGetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern,[ref]$p)){([System.Windows.Automation.ValuePattern]$p).SetValue('${value}');$used='ValuePattern'}else{throw 'ValuePattern unavailable'}
- }
+ 'set_value'{$p=$null;if(-not $found.TryGetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern,[ref]$p)){throw 'ValuePattern unavailable'}
+  if($found.Current.IsPassword){throw 'Native text mutation refused for protected control'}
+  if(([System.Windows.Automation.ValuePattern]$p).Current.IsReadOnly){throw 'Native text control is read-only'}
+  ${expectedValue===null?'':"if(([System.Windows.Automation.ValuePattern]$p).Current.Value -cne '"+expectedValue+"'){throw 'Native text value changed before write'}"}
+  if(${args.strict_target_id===true?'$true':'$false'} -and $h -ne [RMFG]::GetForegroundWindow()){throw 'Native guided action refused: target window became background'}
+  ([System.Windows.Automation.ValuePattern]$p).SetValue('${value}');$used='ValuePattern' }
  'select'{
   $p=$null;if($found.TryGetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern,[ref]$p)){([System.Windows.Automation.SelectionItemPattern]$p).Select();$used='SelectionItemPattern.Select'}else{throw 'SelectionItemPattern unavailable'}
  }
@@ -233,11 +227,33 @@ switch('${action}'){
   $p=$null;if($found.TryGetCurrentPattern([System.Windows.Automation.RangeValuePattern]::Pattern,[ref]$p)){([System.Windows.Automation.RangeValuePattern]$p).SetValue([double]${numericValue});$used='RangeValuePattern'}else{throw 'RangeValuePattern unavailable'}
  }
 }
-[pscustomobject]@{id=('win:'+($found.GetRuntimeId()-join '.'));name=$found.Current.Name;role=$found.Current.ControlType.ProgrammaticName.Replace('ControlType.','');action='${action}';backend=$used}|ConvertTo-Json -Compress`;
+# Strict UIA reports independent booleans, never the written or read-back text.
+$foregroundAfter=$null;$focusedAfter=$null;$valueMatchesAfter=$null
+if(${args.strict_target_id===true?'$true':'$false'}){
+ if('${action}' -eq 'set_value'){Start-Sleep -Milliseconds 60}
+ try{$foregroundAfter=($h -eq [RMFG]::GetForegroundWindow())}catch{$foregroundAfter=$false}
+ if('${action}' -eq 'focus'){
+  try{$focusedAfter=[bool]$found.Current.HasKeyboardFocus}catch{$focusedAfter=$false}
+ }
+ if('${action}' -eq 'set_value'){
+  try{
+   $fresh=$found.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern)
+   if($null -ne $fresh){
+    $valueMatchesAfter=([System.Windows.Automation.ValuePattern]$fresh).Current.Value -ceq '${value}'
+   }else{$valueMatchesAfter=$false}
+  }catch{$valueMatchesAfter=$false}
+ }
+}
+$out=[ordered]@{id=('win:'+($found.GetRuntimeId()-join '.'));name=$found.Current.Name;role=$found.Current.ControlType.ProgrammaticName.Replace('ControlType.','');action='${action}';backend=$used}
+if(${args.strict_target_id===true?'$true':'$false'}){
+ $out.foreground_after=$foregroundAfter
+ $out.focused_after=$focusedAfter
+ $out.value_matches_after=$valueMatchesAfter
+}
+[pscustomobject]$out|ConvertTo-Json -Compress`;
   const raw = (await runPowerShellFn(script, { label:'UI action', timeout:30_000 })).stdout.trim();
   return jsonResult(raw ? JSON.parse(raw) : { action });
 }
-
 export function buildWindowsClipboardPowerShell(action, value = '') {
   // Set-Clipboard rejects an empty value in Windows PowerShell 5.1.
   // Clear the clipboard using the OS clipboard API instead of treating it as a write.
@@ -290,8 +306,6 @@ export async function typeTextKeys(value) {
 }
 
 function mousePrelude() {
-  // dwData is a signed wheel delta. Declaring it as uint made the generated
-  // negative literal cast throw before the wheel event was sent.
   return String.raw`${windowsInteropLoad('pointer')}`;
 }
 
@@ -342,7 +356,7 @@ ${windowsInteropLoad('displays')}
  $cx=$_.Bounds.X+[int]($_.Bounds.Width/2);$cy=$_.Bounds.Y+[int]($_.Bounds.Height/2);$dpi=[RMDisplay]::DpiAt($cx,$cy);$scale=[Math]::Round($dpi/96.0,3)
  [pscustomobject]@{name=$_.DeviceName;display_name=$_.DeviceName;primary=$_.Primary;x=$_.Bounds.X;y=$_.Bounds.Y;width=$_.Bounds.Width;height=$_.Bounds.Height;pixel_width=$_.Bounds.Width;pixel_height=$_.Bounds.Height;workingX=$_.WorkingArea.X;workingY=$_.WorkingArea.Y;workingWidth=$_.WorkingArea.Width;workingHeight=$_.WorkingArea.Height;scale=$scale;dpi=$dpi}
 }|ConvertTo-Json -Compress`;
-  const raw=(await runPowerShell(script,{label:'display inventory',timeout:30_000})).stdout.trim();
+  const raw=(await runPowerShell(script,{label:'display inventory'})).stdout.trim();
   const parsed=raw?JSON.parse(raw):[];
   return jsonResult(Array.isArray(parsed)?parsed:[parsed]);
 }
