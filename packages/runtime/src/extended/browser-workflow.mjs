@@ -1,8 +1,10 @@
 // Execute deterministic bounded UI steps on one guarded CDP target/session.
 // A workflow is explicitly requested by the caller after inspecting the page.
 // No arbitrary JavaScript, cross-target access, file uploads or implicit submits.
+import {randomUUID} from 'node:crypto';
 import { assertResolvedPageUrl } from './browser-endpoint.mjs';
 import { evaluate } from './browser-session.mjs';
+import {dispatchVerifiedClick} from './browser-pointer-guard.mjs';
 
 const ACTIONS = new Set(['fill_form','set_value','select','focus','click','wait_for']);
 const CONDITIONS = new Set(['selector','text','url_contains','load']);
@@ -110,10 +112,15 @@ export async function executeBrowserWorkflow(session, steps, {
     const step = steps[index];
     if (Date.now() - started > 12000) throw new Error('Workflow exceeded 12 second budget after '+completed.length+' steps');
     try {
-      const currentUrl = await evaluate(session, 'location.href');
-      const currentOrigin = assertWorkflowOrigin(boundOrigin, currentUrl);
-      await assertResolvedPageUrl(currentUrl);
-      if (boundOrigin === null) boundOrigin = currentOrigin;
+      // A wait poll reads the live URL and its predicate atomically in one CDP
+      // roundtrip. Once the origin is bound, avoid a second location.href read.
+      // The first unbound wait still validates the origin before any polling.
+      if (step.action !== 'wait_for' || boundOrigin === null) {
+        const currentUrl = await evaluate(session, 'location.href');
+        const currentOrigin = assertWorkflowOrigin(boundOrigin, currentUrl);
+        await assertResolvedPageUrl(currentUrl);
+        if (boundOrigin === null) boundOrigin = currentOrigin;
+      }
       if (step.action === 'fill_form') {
         await guardedPageFunction(session,pageFillForm,[step.fields],boundOrigin);
         if (!pageVerifyForm) throw new Error('Form verification adapter is required');
@@ -121,12 +128,13 @@ export async function executeBrowserWorkflow(session, steps, {
       } else if (step.action === 'wait_for') {
         await waitForStep(session,step,started,boundOrigin);
       } else if (step.action === 'click') {
-        const bounds=await guardedPageFunction(session,pageElementAction,[step.selector,null,'click',''],boundOrigin);
+        const pointerToken=randomUUID();
+        const bounds=await guardedPageFunction(session,pageElementAction,[step.selector,null,'click','',pointerToken],boundOrigin);
         const x=Number(bounds.x)+Number(bounds.width)/2;
         const y=Number(bounds.y)+Number(bounds.height)/2;
-        await session.send('Input.dispatchMouseEvent',{type:'mouseMoved',x,y,button:'none'});
-        await session.send('Input.dispatchMouseEvent',{type:'mousePressed',x,y,button:'left',clickCount:1});
-        await session.send('Input.dispatchMouseEvent',{type:'mouseReleased',x,y,button:'left',clickCount:1});
+        await dispatchVerifiedClick(session,
+          {selector:step.selector,needle:null,x,y,origin:boundOrigin,pointerToken},
+          (fn,args)=>guardedPageFunction(session,fn,args,boundOrigin));
       } else {
         await guardedPageFunction(session,pageElementAction,[step.selector,null,step.action,step.value??''],boundOrigin);
       }

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { isManagedLinuxSystemUnit, linuxCliShimText, discoverOwnedLinuxUnits, uninstallOwnedLinuxUnits } from '../src/cli/service-linux.mjs';
@@ -155,4 +155,52 @@ test('CLI uninstall leaves pairing but removes stale user unit and status superv
   assert.equal(state.installed,false);
   assert.equal(state.active,false);
   assert.equal(state.manager,'none');
+});
+
+
+test('uninstall refuses an identically worded unit replaced after supervisor stop', t => {
+  const fixture = linuxUninstallFixture();
+  const root = path.dirname(path.dirname(fixture.userFile));
+  t.after(() => rmSync(root, {recursive:true,force:true}));
+  const original = readFileSync(fixture.userFile, 'utf8');
+  let swapped = false;
+  const runner = (bin,args) => {
+    assert.equal(bin,'systemctl');
+    if (args.includes('disable') && !swapped) {
+      const replacement = fixture.userFile + '.replacement';
+      writeFileSync(replacement, original);
+      renameSync(replacement, fixture.userFile);
+      swapped = true;
+    }
+    return { status: args.includes('is-active') ? 3 : 0 };
+  };
+  assert.throws(() => uninstallOwnedLinuxUnits({
+    ...fixture, includeSystem:false, runner,
+  }), /systemd unit changed during uninstall/);
+  assert.equal(swapped,true);
+  assert.equal(readFileSync(fixture.userFile,'utf8'),original,
+    'a new unit inode must not be deleted even when text matches');
+});
+
+test('uninstall refuses a symlink swapped into the unit path after stop', t => {
+  const fixture = linuxUninstallFixture();
+  const root = path.dirname(path.dirname(fixture.userFile));
+  t.after(() => rmSync(root, {recursive:true,force:true}));
+  const original = readFileSync(fixture.userFile, 'utf8');
+  const other = fixture.userFile + '.foreign';
+  writeFileSync(other, original);
+  let swapped = false;
+  const runner = (bin,args) => {
+    if (args.includes('disable') && !swapped) {
+      rmSync(fixture.userFile);
+      symlinkSync(other, fixture.userFile);
+      swapped = true;
+    }
+    return {status:args.includes('is-active') ? 3 : 0};
+  };
+  assert.throws(() => uninstallOwnedLinuxUnits({
+    ...fixture, includeSystem:false, runner,
+  }), /systemd unit changed during uninstall/);
+  assert.equal(swapped,true);
+  assert.equal(readFileSync(other,'utf8'),original);
 });

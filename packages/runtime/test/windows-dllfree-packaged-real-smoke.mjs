@@ -26,7 +26,7 @@ for(const [kind,config] of Object.entries(expected)){
  const root=path.join(qa,kind,'package');
  const pkg=JSON.parse(fs.readFileSync(path.join(root,'package.json'),'utf8'));
  assert.equal(pkg.name,config.name);
- assert.equal(pkg.version,'0.2.252');
+ assert.equal(pkg.version,JSON.parse(fs.readFileSync(new URL('../package.json',import.meta.url),'utf8')).version);
  assert.equal(pkg.remcpWindowsInterop,2);
  if(profile==='dllfree-source-qa')assert.equal(pkg.private,true);
  else assert.notEqual(pkg.private,true);

@@ -22,6 +22,36 @@ export function isManagedLinuxSystemUnit(text, launcher = linuxServiceLauncherFi
 // Discover BOTH supervisors before uninstalling either. A PID-1 migration may
 // leave a disabled historical user unit behind; removing only the active scope
 // makes status incorrectly report an installed service after uninstall.
+// Pin the exact regular unit inode before trusting its ExecStart. Checking
+// lstat(path) and then reading path again could inspect a substituted unit.
+function readOwnedLinuxUnit(file, launcher, expected = null) {
+  const before = fs.lstatSync(file);
+  if (!before.isFile() || before.isSymbolicLink()) {
+    throw new Error('Unrecognized ReMCP systemd unit: ' + file);
+  }
+  const fd = fs.openSync(file, fs.constants.O_RDONLY |
+    (fs.constants.O_NOFOLLOW || 0) | (fs.constants.O_NONBLOCK || 0));
+  try {
+    const opened = fs.fstatSync(fd);
+    const same = (a, b) => a.dev === b.dev && a.ino === b.ino;
+    if (!opened.isFile() || opened.size > 64 * 1024 ||
+        !same(before, opened) || (expected && !same(expected, opened))) {
+      throw new Error('Unrecognized or replaced ReMCP systemd unit: ' + file);
+    }
+    const body = fs.readFileSync(fd, 'utf8');
+    const after = fs.lstatSync(file);
+    const readStat = fs.fstatSync(fd);
+    if (!after.isFile() || after.isSymbolicLink() || !same(after, opened) ||
+        readStat.size !== opened.size || readStat.mtimeMs !== opened.mtimeMs ||
+        !isManagedLinuxSystemUnit(body, launcher)) {
+      throw new Error('Unrecognized or changed ReMCP systemd unit: ' + file);
+    }
+    return { dev: opened.dev, ino: opened.ino };
+  } finally {
+    fs.closeSync(fd);
+  }
+}
+
 export function discoverOwnedLinuxUnits({
   systemFile = linuxSystemServiceFile,
   userFile = linuxServiceFile,
@@ -34,17 +64,20 @@ export function discoverOwnedLinuxUnits({
   ];
   const found = [];
   for (const unit of candidates) {
-    let stat;
-    try { stat = fs.lstatSync(unit.file); }
+    // Only a file missing at initial discovery may be skipped. If it is
+    // removed while we verify the open descriptor, fail closed instead.
+    try { fs.lstatSync(unit.file); }
     catch (error) {
       if (error?.code === 'ENOENT') continue;
       throw error;
     }
-    if (!stat.isFile() || stat.isSymbolicLink() ||
-        !isManagedLinuxSystemUnit(fs.readFileSync(unit.file, 'utf8'), launcher)) {
-      throw new Error('Refusing to uninstall an unrecognized ReMCP systemd unit: ' + unit.file);
+    let identity;
+    try { identity = readOwnedLinuxUnit(unit.file, launcher); }
+    catch (error) {
+      throw new Error('Refusing to uninstall an unrecognized ReMCP systemd unit: ' +
+        unit.file, { cause: error });
     }
-    found.push(unit);
+    found.push({ ...unit, ...identity });
   }
   return found;
 }
@@ -59,7 +92,7 @@ export function uninstallOwnedLinuxUnits({
   runner = spawnSync,
 } = {}) {
   const units = discoverOwnedLinuxUnits({ systemFile, userFile, launcher, includeSystem });
-  for (const { scope, file } of units) {
+  for (const { scope, file, dev, ino } of units) {
     const option = scope === 'user' ? ['--user'] : [];
     const stop = runner('systemctl', [...option, 'disable', '--now', 'remcp-agent.service'],
       { encoding:'utf8', timeout:20000 });
@@ -74,10 +107,10 @@ export function uninstallOwnedLinuxUnits({
     }
     // Another actor must not replace an owned unit with a symlink or foreign
     // content between discovery and removal.
-    const stat = fs.lstatSync(file);
-    if (!stat.isFile() || stat.isSymbolicLink() ||
-        !isManagedLinuxSystemUnit(fs.readFileSync(file, 'utf8'), launcher)) {
-      throw new Error('ReMCP systemd unit changed during uninstall: ' + file);
+    try { readOwnedLinuxUnit(file, launcher, { dev, ino }); }
+    catch (error) {
+      throw new Error('ReMCP systemd unit changed during uninstall: ' + file,
+        { cause: error });
     }
     fs.unlinkSync(file);
     const reload = runner('systemctl', [...option, 'daemon-reload'],
@@ -92,7 +125,8 @@ export function uninstallOwnedLinuxUnits({
 export function linuxSystemAgentOwned() {
   if (process.platform !== 'linux' || process.getuid?.() !== 0) return false;
   try {
-    return isManagedLinuxSystemUnit(fs.readFileSync(linuxSystemServiceFile, 'utf8'));
+    readOwnedLinuxUnit(linuxSystemServiceFile, linuxServiceLauncherFile);
+    return true;
   } catch {
     return false;
   }

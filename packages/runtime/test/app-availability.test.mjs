@@ -59,7 +59,8 @@ test('installed-app hints only appear when explicitly requested', async () => {
   const checked = await appCatalog({category:'development',check_installed:true});
   assert.ok(checked.structuredContent.apps.length > 0);
   assert.ok(checked.structuredContent.apps.every(app => ['confirmed','unconfirmed'].includes(app.installation)));
-  assert.equal(checked.structuredContent.availability_source,'path_executables');
+  const sourceByPlatform = { linux:'path_executables', darwin:'application_bundles', win32:'start_menu' };
+  assert.equal(checked.structuredContent.availability_source, sourceByPlatform[process.platform]);
   assert.deepEqual(JSON.parse(checked.content[0].text),checked.structuredContent);
   const refreshed = await appCatalog({category:'development',check_installed:true,refresh:true});
   assert.ok(refreshed.structuredContent.apps.length>0);

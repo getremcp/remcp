@@ -11,6 +11,7 @@
   <a href="https://www.npmjs.com/package/@remcp/remcp"><img alt="npm downloads all time" src="https://img.shields.io/endpoint?url=https%3A%2F%2Fremcp.site%2Fapi%2Fnpm-downloads%2Fbadge%3Fperiod%3Dtotal&style=flat-square"></a>
   <img alt="Node.js" src="https://img.shields.io/node/v/%40remcp/remcp?style=flat-square&label=node">
   <a href="./LICENSE"><img alt="license" src="https://img.shields.io/npm/l/%40remcp%2Fremcp?style=flat-square"></a>
+  <a href="https://www.bestpractices.dev/projects/16621"><img alt="OpenSSF Best Practices status (in progress; not certified)" src="https://www.bestpractices.dev/projects/16621/badge"></a>
   <a href="https://github.com/getremcp/remcp/stargazers"><img alt="GitHub stars" src="https://img.shields.io/github/stars/getremcp/remcp?style=flat-square"></a>
 </p>
 
@@ -35,6 +36,7 @@
   <a href="https://remcp.site/docs">Docs</a> ·
   <a href="docs/TOOLS.md">Tool reference</a> ·
   <a href="https://remcp.site/security">Security</a> ·
+  <a href="./SECURITY.md">Report vulnerabilities privately</a> ·
   <a href="https://remcp.site/privacy">Privacy</a> ·
   <a href="https://remcp.site/support">Support</a>
 </p>
@@ -255,7 +257,7 @@ For source-linked developer documentation alongside local computer access, combi
 with, [DesktopCommanderMCP](https://github.com/wonderwhy-er/DesktopCommanderMCP) or any other MCP
 server.
 
-**87 granular device operations, 10 hosted production definitions.** Current production advertises 8 device-facing façade tools plus 2 account/fleet tools, all model-visible. If custom widgets are explicitly re-enabled, discovery expands to 15 definitions by adding 5 app-only UI helpers. See the generated **[full tool reference](docs/TOOLS.md)** for every current façade and its operation list.
+**91 granular device operations, 10 hosted production definitions.** Current production advertises 8 device-facing façade tools plus 2 account/fleet tools, all model-visible. If custom widgets are explicitly re-enabled, discovery expands to 15 definitions by adding 5 app-only UI helpers. See the generated **[full tool reference](docs/TOOLS.md)** for every current façade and its operation list.
 
 **Device runtime surface:**
 
@@ -275,7 +277,7 @@ server.
 | Diagnostics | `service`, `event_log`, `network`, `installed_apps`, `environment`, `audio`, `power_action`, `record_screen` |
 | Documents | `read_document`, `edit_spreadsheet`, `edit_document`, `pdf_action` |
 
-The hosted ReMCP endpoint currently advertises **10 model-visible tools** with `REMCP_CUSTOM_WIDGETS_ENABLED=false`; no app-only render/save/refresh helpers or `structuredContent.preview` references are exposed. The compact surface routes to all 87 granular runtime operations, and 101 compatibility names remain callable for cached clients without inflating discovery for new models. If widgets are explicitly re-enabled later, the hosted catalog expands to 15 definitions and 106 compatibility names. Each online device returned by `list_devices` reports its live supported subset, and unavailable operations fail closed.
+The hosted ReMCP endpoint currently advertises **10 model-visible tools** with `REMCP_CUSTOM_WIDGETS_ENABLED=false`; no app-only render/save/refresh helpers or `structuredContent.preview` references are exposed. The compact surface routes to all 91 granular runtime operations, and 101 compatibility names remain callable for cached clients without inflating discovery for new models. If widgets are explicitly re-enabled later, the hosted catalog expands to 15 definitions and 106 compatibility names. Each online device returned by `list_devices` reports its live supported subset, and unavailable operations fail closed.
 
 ### Tool selection for AI agents
 

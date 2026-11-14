@@ -10,7 +10,7 @@ import { normalizedServerUrl, sendRelayMessage, jitter, deviceMetrics } from './
 import { createAgentUpdateMonitor, UPDATE_CHECK_INTERVAL_MS } from './agent-update-monitor.mjs';
 import { nextFleetManifestDelayMs } from './agent-update-rollout.mjs';
 import { createAgentResponder } from './agent-responder.mjs';
-import { createAgentRelayConnection } from './agent-relay-connection.mjs';
+import { assertAgentE2eeAdmission, createAgentRelayConnection } from './agent-relay-connection.mjs';
 import { createRuntimeCapabilities, normalizeRuntimeToolNames } from './agent-runtime-capabilities.mjs';
 
 const METRICS_INTERVAL_MS = 5 * 60_000;
@@ -27,6 +27,9 @@ const RUNTIME_RESTART_MAX_MS = 30_000;
 const CALL_TIMEOUT_MARGIN_MS = 10_000;
 
 export async function runAgent(options) {
+  // Reject an explicitly requested E2EE session before any runtime or relay
+  // startup: this release has authenticated TLS, not end-to-end encryption.
+  assertAgentE2eeAdmission();
   const serverUrl = normalizedServerUrl(options.serverUrl, { allowInsecure: options.allowInsecureTransport === true || process.env.REMCP_ALLOW_INSECURE_TRANSPORT === 'true' });
   const deviceToken = String(options.deviceToken || '');
   const deviceId = String(options.deviceId || '');

@@ -324,6 +324,7 @@ export function documentCapabilitySnapshot({
 export const WINDOWS_SESSION_SCOPED_CAPABILITIES = Object.freeze([
   'desktop_session', 'desktop_open', 'windows', 'ui', 'input', 'pointer',
   'drag', 'clipboard', 'displays', 'screen_region', 'notifications', 'record',
+  'webrtc_pilot',
 ]);
 
 export function limitWindowsSessionCapabilities(capabilities, {
@@ -354,7 +355,7 @@ export async function capabilitySnapshot() {
   const documentCapabilities = documentCapabilitySnapshot();
   const capabilities = {
     ...desktopShellCapabilities,
-    webrtc_pilot:linux && desktopSession && webRtcWorkerAvailable(),
+    webrtc_pilot:desktopSession && webRtcWorkerAvailable(),
     windows: win || mac || (desktopSession && (commandExists('wdotool') || commandExists('wmctrl') || (wayland && pyAtSpi))),
     ui: win || mac || (desktopSession && pyAtSpi),
     input: win || mac || (desktopSession && (portalInput || x11Input || (wayland && commandExists('wtype')))),

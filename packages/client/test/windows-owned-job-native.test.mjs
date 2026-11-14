@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { spawnWindowsOwnedJob } from '../src/cli/windows-owned-job.mjs';
+import { stageWindowsNativeClientFixture } from './windows-native-package-fixture.mjs';
 
 const arm64Vm = process.platform === 'win32' && process.arch === 'arm64';
 
@@ -75,22 +76,18 @@ test('Windows job tolerates slow PowerShell initialization before its bounded ha
   // A disposable helper copy delays readiness beyond the previous 15-second
   // watchdog. The test uses the real Windows Job Object implementation.
   const root=fs.mkdtempSync(path.join(os.tmpdir(),'remcp-slow-owned-job-'));
-  const sourceFile=path.resolve('src/cli/windows-owned-job-source.mjs');
-  const source=fs.readFileSync(sourceFile,'utf8');
+  const entry=stageWindowsNativeClientFixture(path.join(root,'fixture'));
+  const file=path.join(entry,'windows-owned-job-source.mjs');
+  const source=fs.readFileSync(file,'utf8');
   const marker='$job = New-Object ReMcpOwnedJob';
   assert.equal(source.split(marker).length,2,'expected one owned-job construction boundary');
-  fs.writeFileSync(path.join(root,'windows-owned-job-source.mjs'),
-    source.replace(marker,'Start-Sleep -Milliseconds 17000\n'+marker));
-  fs.copyFileSync(path.resolve('src/cli/windows-owned-job.mjs'),
-    path.join(root,'windows-owned-job.mjs'));
-  fs.copyFileSync(path.resolve('src/cli/windows-interop.mjs'), path.join(root,'windows-interop.mjs'));
-  fs.cpSync(path.resolve('src/cli/native'),path.join(root,'native'),{recursive:true});
+  fs.writeFileSync(file,source.replace(marker,'Start-Sleep -Milliseconds 17000\n'+marker));
   const child=path.join(root,'child.mjs');
   fs.writeFileSync(child,'setTimeout(()=>process.exit(0),100);');
   let owner;
   try {
     const {spawnWindowsOwnedJob:spawnSlow}=await import(
-      pathToFileURL(path.join(root,'windows-owned-job.mjs')).href);
+      pathToFileURL(path.join(entry,'windows-owned-job.mjs')).href);
     const began=performance.now();
     owner=spawnSlow(process.execPath,[child],{cwd:root,log:path.join(root,'agent.log')});
     await owner.ownedJob.ready;
@@ -108,12 +105,10 @@ test('loaded helper assets allow package promotion while the owned job is active
  skip:process.platform!=='win32',timeout:90000,
 },async()=>{
  const root=fs.mkdtempSync(path.join(os.tmpdir(),'remcp-loaded-helper-'));
- const pkg=path.join(root,'package');fs.mkdirSync(pkg);
- for(const name of ['windows-owned-job.mjs','windows-owned-job-source.mjs','windows-interop.mjs'])
-  fs.copyFileSync(path.resolve('src/cli',name),path.join(pkg,name));
- fs.cpSync(path.resolve('src/cli/native'),path.join(pkg,'native'),{recursive:true});
+ const pkg=path.join(root,'package');
+ const entry=stageWindowsNativeClientFixture(pkg);
  const child=path.join(root,'child.mjs');fs.writeFileSync(child,'setInterval(()=>{},100);');
- const {spawnWindowsOwnedJob:spawnLocal}=await import(pathToFileURL(path.join(pkg,'windows-owned-job.mjs')).href);
+ const {spawnWindowsOwnedJob:spawnLocal}=await import(pathToFileURL(path.join(entry,'windows-owned-job.mjs')).href);
  const owner=spawnLocal(process.execPath,[child],{cwd:root,log:path.join(root,'log')});
  try{
   await owner.ownedJob.ready;

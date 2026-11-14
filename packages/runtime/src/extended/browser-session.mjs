@@ -12,6 +12,7 @@ import { clamp, commandExists, jsonResult, optionalString, requireEnum, spawnDet
 
 import { MAX_CDP_MESSAGE_BYTES, PRODUCTION_SESSION_IDLE_MS, assertResolvedBrowserUrl, assertResolvedPageUrl, chooseTarget, endpointUrl, ensureBrowserEndpoint, productionBrowserSessions, requestJson, validatedTargetWebSocketUrl } from './browser-endpoint.mjs';
 import { getBrowserViewport } from './browser-viewport.mjs';
+import { assertLiveTargetOrigin } from './browser-target-origin.mjs';
 
 export class CdpSession {
   constructor(url, timeoutMs) {
@@ -447,6 +448,7 @@ export async function withTarget(args = {}, callback) {
     }
     const currentUrl = await evaluate(session, 'location.href');
     await assertResolvedPageUrl(currentUrl);
+    assertLiveTargetOrigin(target.url, currentUrl);
     // A reused target's discovery metadata can be old after navigation.
     // Pass the just-verified live URL without an extra CDP round-trip.
     const result = await callback(session, { ...target, url:currentUrl });

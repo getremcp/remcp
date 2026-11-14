@@ -13,17 +13,30 @@ import { findOcrText, ocrImage } from './ocr.mjs';
 
 
 import { uiMatches } from './desktop-ui-actions.mjs';
+import {uiSnapshotCacheCovers} from './ui-snapshot-cache-coverage.mjs';
 
 export const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 export const adapter = process.platform === 'win32' ? windows : process.platform === 'darwin' ? macos : linux;
 
 export const UI_CACHE_TTL_MS = 5_000;
 export let latestUiSnapshot = null;
+export let uiSnapshotCacheEpoch = 0;
+export let uiSnapshotMutationEpoch = 0;
 
 // ES module imports are read-only bindings. All snapshot invalidation must be
 // owned by this module so wait_for_ui can request a fresh tree safely.
-export function invalidateUiSnapshotCache() {
+export function invalidateUiSnapshotCache({ mutation = false } = {}) {
   latestUiSnapshot = null;
+  uiSnapshotCacheEpoch += 1;
+  if (mutation) uiSnapshotMutationEpoch += 1;
+}
+
+// Never reuse a native tree that may have been captured before or during a
+// click, typing, focus, or scroll. Preserve the actual adapter result/error.
+export async function withFreshUiAfterAction(run) {
+  invalidateUiSnapshotCache({ mutation:true });
+  try { return await run(); }
+  finally { invalidateUiSnapshotCache({ mutation:true }); }
 }
 
 export function suggestedUiAction(node = {}) {
@@ -67,7 +80,7 @@ export function semanticTreeText(nodes = [], maxChars = 48_000) {
   return lines.join('\n');
 }
 
-export function enrichUiPayload(value, args = {}) {
+export function enrichUiPayload(value, args = {}, capturedEpoch = uiSnapshotCacheEpoch) {
   const base = Array.isArray(value) ? { platform:process.platform, count:value.length, nodes:value } : { ...(value || {}) };
   const source = Array.isArray(base.nodes) ? base.nodes : [];
   let label = 0;
@@ -93,13 +106,17 @@ export function enrichUiPayload(value, args = {}) {
     semantic_tree:args.semantic_tree === false ? undefined : semanticTreeText(nodes),
     captured_at:new Date().toISOString(),
   };
-  latestUiSnapshot = { at:Date.now(), payload, args:{ ...args } };
+  // A slow native capture that straddles a mutation must not repopulate
+  // the cache with a pre-click AX/UIA/AT-SPI tree after the mutation.
+  if (capturedEpoch === uiSnapshotCacheEpoch)
+    latestUiSnapshot = { at:Date.now(), payload, args:{ ...args } };
   return payload;
 }
 
 export function cachedUiNodes(args = {}) {
   if (!latestUiSnapshot || Date.now() - latestUiSnapshot.at > UI_CACHE_TTL_MS) return null;
-  const requestedPid = Number.isInteger(Number(args.pid)) ? Number(args.pid) : null;
+  if (!uiSnapshotCacheCovers(latestUiSnapshot,args)) return null;
+  const requestedPid = args.pid != null && args.pid !== '' && Number.isInteger(Number(args.pid)) ? Number(args.pid) : null;
   const cachedNodes = latestUiSnapshot.payload?.nodes;
   if (!Array.isArray(cachedNodes)) return null;
   if (requestedPid != null && !cachedNodes.some(node => Number(node.pid) === requestedPid)) return null;
@@ -332,7 +349,7 @@ export async function windowAction(args = {}) {
   if (action === 'move' && ![args.x,args.y].every(value => Number.isFinite(Number(value)))) throw new Error('window_action move requires x and y');
   if (action === 'resize' && ![args.width,args.height].every(value => Number.isFinite(Number(value)))) throw new Error('window_action resize requires width and height');
   if (action === 'move_resize' && ![args.x,args.y,args.width,args.height].every(value => Number.isFinite(Number(value)))) throw new Error('window_action move_resize requires x, y, width and height');
-  return adapter.windowAction(args);
+  return withFreshUiAfterAction(() => adapter.windowAction(args));
 }
 export async function uiSnapshot(args = {}) {
   const explicitlyScoped = args.pid != null || args.app || args.window_title || args.windowTitle;
@@ -348,6 +365,8 @@ export async function uiSnapshot(args = {}) {
     ...effective,
     ...(deadline === null ? {} : { timeout_ms:Math.max(100, deadline - Date.now()) }),
   });
+  const capturedEpoch = uiSnapshotCacheEpoch;
+  const capturedMutationEpoch = uiSnapshotMutationEpoch;
   let raw = await capture();
   let value = resultValue(raw);
   const requestedDepth = Number(effective.max_depth);
@@ -368,7 +387,9 @@ export async function uiSnapshot(args = {}) {
       value = resultValue(raw);
     }
   }
-  return jsonResult(enrichUiPayload(value, effective));
+  if (capturedMutationEpoch !== uiSnapshotMutationEpoch)
+    throw new Error('Native accessibility changed during capture; retry snapshot');
+  return jsonResult(enrichUiPayload(value, effective, capturedEpoch));
 }
 export async function uiAction(args = {}) {
   const resolved = withResolvedUiLabel(args);
@@ -376,12 +397,12 @@ export async function uiAction(args = {}) {
   if (!hasTarget) throw new Error('ui_action requires id, label, name, role, or automation_id');
   const action = optionalString(resolved.action);
   if (['set_value','set_range_value'].includes(action) && resolved.value == null) throw new Error(`ui_action ${action} requires value`);
-  return adapter.uiAction(resolved);
+  return withFreshUiAfterAction(() => adapter.uiAction(resolved));
 }
-export async function keyboard(args = {}) { return adapter.keyboard(args); }
+export async function keyboard(args = {}) { return withFreshUiAfterAction(() => adapter.keyboard(args)); }
 export async function pointer(args = {}) {
   if (args.action === 'move' && ![args.x,args.y].every(value => Number.isFinite(Number(value)))) throw new Error('pointer move requires x and y');
-  return adapter.pointer(args);
+  return withFreshUiAfterAction(() => adapter.pointer(args));
 }
 export async function clipboard(args = {}) { return adapter.clipboard(args); }
 export async function displayInventory(args = {}) { return adapter.displayInventory(args); }
@@ -466,5 +487,5 @@ export async function scroll(args = {}) {
   } else if (Number.isFinite(Number(args.x)) && Number.isFinite(Number(args.y))) {
     await pointer({ action:'move', x:Number(args.x), y:Number(args.y), backend:args.backend });
   }
-  return adapter.scroll({ ...args, delta_x:deltaX, delta_y:deltaY });
+  return withFreshUiAfterAction(() => adapter.scroll({ ...args, delta_x:deltaX, delta_y:deltaY }));
 }

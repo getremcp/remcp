@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { stageWindowsNativeClientFixture } from './windows-native-package-fixture.mjs';
 
 test('native Windows startup installs and stops only an isolated owned agent', {
   skip:process.platform !== 'win32', timeout:210000,
@@ -20,17 +21,13 @@ test('native Windows startup installs and stops only an isolated owned agent', {
   const startup=path.join(appData,'Microsoft','Windows','Start Menu',
     'Programs','Startup','ReMCP Agent.vbs');
   const pidFile=path.join(root,'owned-agent.pid');
+  assert.equal(stageWindowsNativeClientFixture(installed),entry);
   fs.mkdirSync(path.dirname(cli),{recursive:true});
-  fs.mkdirSync(entry,{recursive:true});
   fs.writeFileSync(cli,
     "import fs from 'node:fs';\n" +
     "fs.writeFileSync(process.env.REMCP_QA_OWNED_PID, String(process.pid));\n" +
     "setInterval(() => {}, 500);\n");
-  for(const file of ['windows-user-supervisor.mjs','windows-owned-job.mjs',
-    'windows-owned-job-source.mjs','windows-interop.mjs']) {
-    fs.copyFileSync(path.resolve('src/cli',file),path.join(entry,file));
-  }
-  fs.cpSync(path.resolve('src/cli/native'),path.join(entry,'native'),{recursive:true});
+  // Native interop fixtures are staged in the real npm package layout.
   const script=[
     "import fs from 'node:fs';",
     "import assert from 'node:assert/strict';",

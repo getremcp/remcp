@@ -61,3 +61,39 @@ test('fails closed on a forbidden current URL instead of running a cached action
  assert.equal(closed,true,'deny a poisoned cached connection');
  assert.equal(productionBrowserSessions.has(key),false);
 });
+
+
+test('stale CDP discovery URL cannot authorize a cached mutation on about:blank',async t=>{
+ const previousEnv=process.env.NODE_ENV;
+ const previousHosts=process.env.REMCP_BROWSER_ALLOWED_HOSTS;
+ process.env.NODE_ENV='production';
+ process.env.REMCP_BROWSER_ALLOWED_HOSTS='93.184.215.14';
+ t.after(()=>{
+  if(previousEnv===undefined)delete process.env.NODE_ENV;
+  else process.env.NODE_ENV=previousEnv;
+  if(previousHosts===undefined)delete process.env.REMCP_BROWSER_ALLOWED_HOSTS;
+  else process.env.REMCP_BROWSER_ALLOWED_HOSTS=previousHosts;
+  productionBrowserSessions.clear();
+ });
+ const endpoint='http://127.0.0.1:19384';
+ const target={id:'pending-navigation',url:'https://93.184.215.14/start',
+  webSocketDebuggerUrl:'ws://127.0.0.1:19384/devtools/page/pending-navigation'};
+ let acted=false,closed=false;
+ const session={url:target.webSocketDebuggerUrl,closed:false,socket:{readyState:1},
+  async send(method){
+   if(method==='Fetch.disable')return {};
+   assert.equal(method,'Runtime.evaluate');
+   return {result:{value:'about:blank'}};
+  },
+  close(){closed=true;this.closed=true;},
+ };
+ productionBrowserSessions.set(endpoint+'|pending-navigation',{
+  target,targetId:target.id,session,guardInstalled:true,removeGuard(){},schedule(){},
+ });
+ await assert.rejects(withTarget({endpoint,target_id:target.id},async()=>{
+  acted=true;
+ }),/target origin changed before action/);
+ assert.equal(acted,false,'no user action may run against a stale target');
+ assert.equal(closed,true);
+ assert.equal(productionBrowserSessions.has(endpoint+'|pending-navigation'),false);
+});

@@ -7,6 +7,9 @@ import {mkdtempSync,rmSync,writeFileSync,existsSync,readFileSync} from 'node:fs'
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 
+// The synthetic pyatspi subprocess exercises only the Linux desktop adapter.
+const linuxTest = process.platform === 'linux' ? test : test.skip;
+
 const py=[
   'import os',
   'STATE_ACTIVE=1',
@@ -79,28 +82,28 @@ function scenario(mode,overrides={},operation='action'){
   }finally{rmSync(root,{recursive:true,force:true})}
 }
 
-test('strict AT-SPI updates the uniquely identified active foreground window',()=>{
+linuxTest('strict AT-SPI updates the uniquely identified active foreground window',()=>{
   const r=scenario('foreground');
   assert.equal(r.ok,true,JSON.stringify(r));
   assert.equal(r.written,'new');
   assert.equal(r.v.path,'r.1.0');
 });
-test('strict AT-SPI refuses a background window even when a sibling is active',()=>{
+linuxTest('strict AT-SPI refuses a background window even when a sibling is active',()=>{
   const r=scenario('background');
   assert.equal(r.ok,false);
   assert.equal(r.written,null);
 });
-test('strict AT-SPI refuses substring window-title impersonation',()=>{
+linuxTest('strict AT-SPI refuses substring window-title impersonation',()=>{
   const r=scenario('lookalike');
   assert.equal(r.ok,false);
   assert.equal(r.written,null);
 });
-test('strict AT-SPI compare-and-swap refuses an old value changed on the host',()=>{
+linuxTest('strict AT-SPI compare-and-swap refuses an old value changed on the host',()=>{
   const r=scenario('stale');
   assert.equal(r.ok,false);
   assert.equal(r.written,null);
 });
-test('strict AT-SPI refuses missing or legacy target identifiers before execution',()=>{
+linuxTest('strict AT-SPI refuses missing or legacy target identifiers before execution',()=>{
   for(const id of ['linux:321','linux:321:12','linux:777:r.1.0','linux:321:r.0.x']){
     const r=scenario('foreground',{id});
     assert.equal(r.ok,false,id);
@@ -108,7 +111,7 @@ test('strict AT-SPI refuses missing or legacy target identifiers before executio
   }
 });
 
-test('Linux snapshot never queries the value of a protected field',()=>{
+linuxTest('Linux snapshot never queries the value of a protected field',()=>{
   const result=scenario('private',{},'snapshot');
   assert.equal(result.ok,true,JSON.stringify(result));
   const field=result.v.nodes.find(n=>n.name==='Password');
@@ -118,7 +121,7 @@ test('Linux snapshot never queries the value of a protected field',()=>{
   assert.equal(result.written,null,'protected field was never read');
 });
 
-test('strict AT-SPI rejects a provider that acknowledges a write but keeps the old text',()=>{
+linuxTest('strict AT-SPI rejects a provider that acknowledges a write but keeps the old text',()=>{
   const r=scenario('reactive');
   assert.equal(r.ok,false,JSON.stringify(r));
   assert.equal(r.written,'new','OS adapter did attempt the write once');

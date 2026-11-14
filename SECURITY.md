@@ -6,9 +6,11 @@ ReMCP provides remote access to paired computers through MCP. Treat every ReMCP 
 
 Please do not open a public issue for vulnerabilities that could expose credentials, authentication bypasses, cross-tenant access, remote command execution outside the intended tool boundary, or sensitive device data.
 
-Report security issues privately to the project maintainer through GitHub's private vulnerability reporting for this repository when available.
+**Private disclosure (preferred):** [Report a vulnerability privately](https://github.com/getremcp/remcp/security/advisories/new) using GitHub's enabled private vulnerability reporting. The [security advisory center](https://github.com/getremcp/remcp/security/advisories) lists published advisories when available. These URLs belong to the canonical public project; `https://github.com/antonbaider/remcp` redirects to it.
 
-Include the affected version, a concise reproduction, expected versus observed behavior, and any relevant logs with credentials removed.
+Do **not** post an exploit, credentials, tokens, private file paths, screenshots containing personal data, or an undisclosed vulnerability in [public GitHub Issues](https://github.com/getremcp/remcp/issues). Use public issues only for nonsensitive defects. A report should describe the affected version, reproducible impact and steps, expected versus observed behavior, and sanitized evidence; do not attach real secrets or another user's data.
+
+**Disclosure and response process:** The maintainer reviews privately reported issues, validates impact, coordinates a fix and release, and publishes a [GitHub Security Advisory](https://github.com/getremcp/remcp/security/advisories) where appropriate. We aim to acknowledge an actionable private report within seven calendar days; this is a response target, not a promise of a fix within a specific time. Disclosure should be coordinated with the reporter after a verified fix or appropriate mitigation. Security updates and affected versions are documented in [GitHub Releases](https://github.com/getremcp/remcp/releases).
 
 ## Supported versions
 

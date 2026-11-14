@@ -63,6 +63,24 @@ test('workflow completes a matching wait without fixed sleep', async () => {
 });
 
 
+test('subsequent workflow waits avoid a redundant CDP URL read', async()=>{
+  const steps=validate([
+    {action:'wait_for',condition:'load',timeout_ms:150},
+    {action:'wait_for',condition:'selector',selector:'#ready',timeout_ms:150},
+  ]);
+  const expressions=[];
+  const mock={async send(method,payload){
+    assert.equal(method,'Runtime.evaluate');
+    expressions.push(payload.expression);
+    if(payload.expression==='location.href')return {result:{value:'about:blank'}};
+    return {result:{value:{url:'about:blank',matched:true}}};
+  }};
+  const result=await executeBrowserWorkflow(mock,steps,{});
+  assert.equal(result.completed,2);
+  assert.equal(expressions.filter(x=>x==='location.href').length,1);
+  assert.equal(expressions.length,3,'first wait binds origin, next wait verifies origin in its own poll');
+});
+
 test('fragmented inline anchor click targets a visible fragment, never a covered input', () => {
   const input={tagName:'INPUT'};
   const link={

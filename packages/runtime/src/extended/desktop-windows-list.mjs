@@ -2,8 +2,23 @@
 // Get-Process.MainWindowHandle is not a complete enumeration.
 import {jsonResult,runPowerShell} from './common.mjs';
 import { windowsInteropLoad } from './windows-interop.mjs';
+import { readFastWindows } from './desktop-windows-window-worker.mjs';
 
-export async function listWindows(_args={}, {runPowerShellFn=runPowerShell}={}){
+export async function listWindows(_args={}, {
+  runPowerShellFn=runPowerShell,
+  fastReadFn=readFastWindows,
+  // A new persistent PowerShell child must never start by default on
+  // user desktops during a WebRTC-only runtime update.
+  preferFast=process.platform==='win32' && process.env.REMCP_WINDOWS_WINDOW_IPC==='1' && runPowerShellFn===runPowerShell,
+}={}){
+  // Private stdio child IPC: process and verified Win32 helper are initialized
+  // only once. Fall back to the established read-only path on IPC failure.
+  if(preferFast){
+    try{return jsonResult(await fastReadFn());}
+    catch(error){
+      if(process.env.REMCP_WINDOWS_WINDOW_IPC_STRICT==='1')throw error;
+    }
+  }
   const script=String.raw`
 ${windowsInteropLoad('window-list')}
 if([System.Diagnostics.Process]::GetCurrentProcess().SessionId -eq 0){

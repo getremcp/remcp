@@ -144,8 +144,8 @@ test('tar preflight rejects oversized members on every OS, including Windows', (
 });
 
 test('archive extraction rejects an expanded-size bomb before writing files', {
-  // Windows inbox bsdtar has no --sparse flag. The portable preflight test
-  // above still proves the expanded-size guard without a 513 MB QA artifact.
+  // Windows sparse-file support is not guaranteed. The portable preflight
+  // above still enforces the expanded-size guard without a 513 MiB fixture.
   skip: process.platform === 'win32' || spawnSync('tar', ['--version'], { stdio: 'ignore' }).status !== 0,
 }, async () => {
   const project = join(root, 'archive-bomb-project');
@@ -154,8 +154,12 @@ test('archive extraction rejects an expanded-size bomb before writing files', {
   writeFileSync(large, '');
   truncateSync(large, 513 * 1024 * 1024);
   const archive = join(root, 'large.tar');
-  const created = spawnSync('tar', ['--sparse', '-cf', archive, '-C', project, 'large.bin'], { encoding: 'utf8' });
+  // GNU tar requires --sparse; macOS BSD tar preserves sparse holes by default.
+  const help = spawnSync('tar', ['--help'], { encoding: 'utf8' });
+  const sparseOption = (help.stdout || '').includes('--sparse') ? ['--sparse'] : [];
+  const created = spawnSync('tar', [...sparseOption, '-cf', archive, '-C', project, 'large.bin'], { encoding: 'utf8' });
   assert.equal(created.status, 0, created.stderr);
+  assert.ok(statSync(archive).size < 256 * 1024, 'archive fixture must remain physically sparse');
   const destination = join(root, 'archive-bomb-output');
   const extracted = await invokeTool('extract_archive', { archive, destination });
   assert.equal(isError(extracted), true);

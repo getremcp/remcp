@@ -76,7 +76,7 @@ test('record_screen capability is advertised only when a real recorder backend e
   const waylandOnly = name => name === 'wf-recorder' || name === 'timeout';
   const gnomeOnly = name => name === 'gjs';
 
-  assert.equal(recordScreenAvailable({ platform:'darwin', commandExistsFn:none }), false);
+  assert.equal(recordScreenAvailable({ platform:'darwin', commandExistsFn:none, existsSyncFn:none }), false);
   assert.equal(recordScreenAvailable({ platform:'darwin', commandExistsFn:ffmpegOnly }), true);
   assert.equal(recordScreenAvailable({ platform:'win32', commandExistsFn:none }), false);
   assert.equal(recordScreenAvailable({ platform:'win32', commandExistsFn:ffmpegOnly }), true);

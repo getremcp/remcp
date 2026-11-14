@@ -14,6 +14,18 @@ const HEARTBEAT_INTERVAL_MS = 15_000;
 // pong must not create a new device session during transient NIC packet loss.
 const HEARTBEAT_MAX_MISSED_TICKS = 2;
 const HANDSHAKE_TIMEOUT_MS = 12_000;
+// E2EE is not negotiated by the hosted relay in this release. A caller that
+// explicitly requires device-to-client encryption must NEVER silently use the
+// TLS-only relay. The default is unchanged for existing installations.
+export function assertAgentE2eeAdmission(environment = process.env) {
+  const requirement = environment?.REMCP_REQUIRE_E2EE;
+  if (requirement === undefined || requirement === '0') return;
+  if (requirement === '1') {
+    throw new Error('E2EE required but unavailable in this release; refusing TLS-only relay connection');
+  }
+  throw new Error('Invalid REMCP_REQUIRE_E2EE: expected 0 or 1');
+}
+
 // Higher-level agent owns runtime supervision/telemetry; this controller owns only relay transport.
 export function createAgentRelayConnection({
   agentUrl, serverUrl, deviceToken, deviceId, deviceName,
@@ -24,6 +36,7 @@ export function createAgentRelayConnection({
   checkUpdatesOnConnect = false,
   heartbeatIntervalMs = HEARTBEAT_INTERVAL_MS, handshakeTimeoutMs = HANDSHAKE_TIMEOUT_MS,
 }) {
+  assertAgentE2eeAdmission();
   let revoked = false;
   let reconnectTimer = null;
   let askedToReconnect = false;
@@ -75,6 +88,9 @@ export function createAgentRelayConnection({
 
   function connect() {
     if (isStopping() || revoked) return;
+    // Policy can become stricter after controller creation. Re-admit before
+    // every first dial or reconnect, not only when creating the controller.
+    assertAgentE2eeAdmission();
     if (activeSocket && (activeSocket.readyState === WebSocket.OPEN ||
       activeSocket.readyState === WebSocket.CONNECTING)) return;
     // The device token is intentionally sent only to the configured ReMCP relay during the

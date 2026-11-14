@@ -1,5 +1,6 @@
 import process from 'node:process';
 import os from 'node:os';
+import {randomUUID} from 'node:crypto';
 import path from 'node:path';
 import { isIP } from 'node:net';
 import { lookup } from 'node:dns/promises';
@@ -17,6 +18,9 @@ import { executeBrowserWorkflow, validateBrowserWorkflow } from './browser-workf
 import { PAGE_VERIFY_FORM } from './browser-form-verification.mjs';
 export { PAGE_VERIFY_FORM } from './browser-form-verification.mjs';
 import { browserDevtools } from './browser-devtools.mjs';
+import {uniqueUploadNodeId} from './browser-upload-target.mjs';
+import {PAGE_TEXT_TARGET} from './browser-text-target.mjs';
+import {dispatchVerifiedClick} from './browser-pointer-guard.mjs';
 
 export async function browserFind(args) {
   if (!(args.selector || args.text || args.role)) throw new Error('browser_find requires selector, text, or role; use browser_snapshot to enumerate page structure');
@@ -27,13 +31,15 @@ export async function browserFind(args) {
 }
 
 export const PAGE_SCROLL_ACTION = `function(selector, needle, deltaX, deltaY) {
-  let target = selector ? document.querySelector(selector) : null;
-  if (!target && needle) {
-    const lower = String(needle).toLowerCase();
-    target = Array.from(document.querySelectorAll('*')).find(node =>
-      String(node.innerText || node.textContent || '').trim().toLowerCase().includes(lower)
-    ) || null;
+  let target = null;
+  if (selector) {
+    if (typeof document.querySelectorAll === 'function') {
+      const matches = document.querySelectorAll(selector);
+      if (matches.length !== 1) throw new Error('Scroll selector missing or ambiguous');
+      target = matches[0];
+    } else target = document.querySelector(selector);
   }
+  if (!target && needle) target = (${PAGE_TEXT_TARGET})(needle,'scroll');
   if ((selector || needle) && !target) throw new Error('Element not found');
 
   let scroller = document.scrollingElement || document.documentElement;
@@ -69,14 +75,22 @@ export const PAGE_SCROLL_ACTION = `function(selector, needle, deltaX, deltaY) {
   };
 }`;
 
-export const PAGE_ELEMENT_ACTION = `function(selector, needle, action, value) {
-  let el = selector ? document.querySelector(selector) : null;
-  if (!el && needle) {
-    const lower = String(needle).toLowerCase();
-    el = Array.from(document.querySelectorAll('*')).find(node =>
-      String(node.innerText || node.textContent || '').trim().toLowerCase().includes(lower)
-    ) || null;
+export const PAGE_ELEMENT_ACTION = `function(selector, needle, action, value, pointerToken) {
+  let el = null;
+  if (selector) {
+    // Never act on the first of several CSS matches. A stale broad selector
+    // can silently click/edit the wrong account or a destructive control.
+    // querySelectorAll is available on real browser Documents; the fallback
+    // keeps lightweight single-target test DOM stubs compatible.
+    if (typeof document.querySelectorAll === 'function') {
+      const matches = document.querySelectorAll(selector);
+      if (matches.length !== 1) throw new Error('Element selector missing or ambiguous');
+      el = matches[0];
+    } else {
+      el = document.querySelector(selector);
+    }
   }
+  if (!el && needle) el = (${PAGE_TEXT_TARGET})(needle,action);
   if (!el) throw new Error('Element not found');
   if (action === 'click' || action === 'type' || action === 'type_clear' || action === 'scroll_into_view') {
     el.scrollIntoView({block:'center', inline:'center'});
@@ -110,6 +124,11 @@ export const PAGE_ELEMENT_ACTION = `function(selector, needle, action, value) {
     });
     if (!safe) throw new Error('Element has no unobstructed clickable fragment');
     b = safe;
+  }
+  if (action === 'click' && pointerToken) {
+    // Bind this exact DOM object across the hover/press boundary, not its CSS ID.
+    Object.defineProperty(document,'__remcp_pointer_'+pointerToken,
+      {value:el,configurable:true,enumerable:false});
   }
   return {
     tag: el.tagName.toLowerCase(),
@@ -279,9 +298,14 @@ export async function browserAction(args) {
     validateBrowserWorkflow(args.steps, {validateFormFields}) : null;
   return withTarget(args, async (session, target) => {
     if (action === 'workflow') {
+      // withTarget already verified this live URL. Bind the origin now so the
+      // first wait can combine its URL and predicate in one guarded CDP read.
+      const currentOrigin=new URL(target.url).origin;
+      const expectedOrigin=args.expected_origin||
+        (currentOrigin==='null'?null:currentOrigin);
       const result = await executeBrowserWorkflow(session, workflowSteps, {
         pageElementAction:PAGE_ELEMENT_ACTION, pageFillForm:PAGE_FILL_FORM,
-        pageVerifyForm:PAGE_VERIFY_FORM, expectedOrigin:args.expected_origin||null,
+        pageVerifyForm:PAGE_VERIFY_FORM, expectedOrigin,
       });
       return jsonResult({target_id:target.id, action, result});
     }
@@ -310,9 +334,8 @@ export async function browserAction(args) {
       for (const value of requested) files.push(await resolveSafePath(value, 'path'));
       await session.send('DOM.enable');
       const doc = await session.send('DOM.getDocument', { depth: 1 });
-      const found = await session.send('DOM.querySelector', { nodeId: doc.root.nodeId, selector });
-      if (!found.nodeId) throw new Error(`No element matches selector ${selector}`);
-      await session.send('DOM.setFileInputFiles', { nodeId: found.nodeId, files });
+      const nodeId=await uniqueUploadNodeId(session,doc.root.nodeId,selector);
+      await session.send('DOM.setFileInputFiles', { nodeId, files });
       return jsonResult({ target_id: target.id, action, selector, files: files.length });
     }
     if (action === 'press') {
@@ -340,12 +363,13 @@ export async function browserAction(args) {
     if (!selector && !needle) throw new Error('selector or browser_text/text locator is required');
 
     if (action === 'click') {
-      const rect = await callPageFunction(session, PAGE_ELEMENT_ACTION, [selector, needle, 'click', '']);
+      const pointerToken=randomUUID();
+      const rect = await callPageFunction(session, PAGE_ELEMENT_ACTION, [selector, needle, 'click', '', pointerToken]);
       const x = Number(rect.x) + Number(rect.width) / 2;
       const y = Number(rect.y) + Number(rect.height) / 2;
-      await session.send('Input.dispatchMouseEvent', { type:'mouseMoved', x, y, button:'none' });
-      await session.send('Input.dispatchMouseEvent', { type:'mousePressed', x, y, button:'left', clickCount:1 });
-      await session.send('Input.dispatchMouseEvent', { type:'mouseReleased', x, y, button:'left', clickCount:1 });
+      await dispatchVerifiedClick(session,
+        {selector,needle,x,y,origin:new URL(target.url).origin,pointerToken},
+        (fn,args)=>callPageFunction(session,fn,args));
       return jsonResult({ target_id:target.id, action, result:{ ...rect, x, y } });
     }
 

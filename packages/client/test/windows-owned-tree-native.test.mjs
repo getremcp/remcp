@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
 import { once } from 'node:events';
+import { stageWindowsNativeClientFixture } from './windows-native-package-fixture.mjs';
 
 const arm64Vm = process.platform === 'win32' && process.arch === 'arm64';
 
@@ -78,12 +79,8 @@ test('Windows supervisor refuses stop and restart after losing an unacknowledged
     fs.writeFileSync(${JSON.stringify(marker)},'ready');
     setInterval(()=>{if(fs.existsSync(${JSON.stringify(stop)}))process.exit(0);},50);`);
   const env={...process.env,REMCP_CONFIG_DIR:path.join(root,'config')};
-  const fixture=path.join(root,'fixture'); fs.mkdirSync(fixture);
-  for(const name of ['windows-owned-job.mjs','windows-owned-job-source.mjs','windows-interop.mjs']) {
-    fs.copyFileSync(path.resolve('src/cli',name),path.join(fixture,name));
-  }
-  fs.cpSync(path.resolve('src/cli/native'),path.join(fixture,'native'),{recursive:true});
-  const supervisor=path.join(fixture,'windows-user-supervisor.mjs');
+  const entry=stageWindowsNativeClientFixture(path.join(root,'fixture'));
+  const supervisor=path.join(entry,'windows-user-supervisor.mjs');
   const source=fs.readFileSync(path.resolve('src/cli/windows-user-supervisor.mjs'),'utf8');
   const injection=`const ownChild = child;
     if (ownChild.ownedJob) { const crash=setInterval(()=>{

@@ -54,6 +54,22 @@ try{
   await sleep(100);
  }
  assert.ok(target,'exact local QA browser page must exist');
+ // A discovered Chrome URL may be ahead of its live JS context (about:blank).
+ // Observe the exact localhost fixture until its actual DOM has committed,
+ // without mutating or weakening the origin guard in production.
+ let liveReady=false;
+ for(let i=0;i<100;i++){
+  try {
+   const state=(await browserEvaluate({endpoint,target_id:target.id,
+    expression:'({url:location.href,ready:document.readyState==="complete"&&!!document.querySelector("#name")})'})).structuredContent.value;
+   if(new URL(state.url).origin===pageOrigin&&state.ready){liveReady=true;break;}
+  }catch(error){
+   if(!/target origin changed before action|execution context (was destroyed|not found)/i.test(String(error)))
+    throw error;
+  }
+  await sleep(100);
+ }
+ assert.ok(liveReady,'isolated app form must load on its exact origin');
  const ready=(await browserWait({endpoint,target_id:target.id,
    condition:'selector',selector:'#name',timeout_ms:5000})).structuredContent;
  assert.equal(ready.matched,true,'form must be rendered before readback');

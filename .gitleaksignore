@@ -45,3 +45,9 @@ test/drain.test.mjs:generic-api-key:33
 # credential; preserve all other generic-api-key and Stripe detections.
 # Suppress only this exact historical commit/file/rule/line fingerprint.
 2764336180235e9f9f833f1bb5925c48020a0e5e:docs/ops/STRIPE_SANDBOX_WEBHOOK_PROBE.md:generic-api-key:172
+
+# Historical static UUIDs are synthetic, local DOM-pointer tokens in the
+# browser-identity regression, never authentication credentials or API keys.
+# Restrict exceptions to the original commit/path/rule/line only.
+fddebe534f27246e1fa36cfeb5eebf12ef4fceb4:runtime/test/browser-pointer-identity.test.mjs:generic-api-key:41
+fddebe534f27246e1fa36cfeb5eebf12ef4fceb4:runtime/test/browser-pointer-identity.test.mjs:generic-api-key:50

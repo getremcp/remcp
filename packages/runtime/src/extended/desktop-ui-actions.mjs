@@ -42,8 +42,12 @@ export async function uiMatches(args = {}) {
   const cached = resolved.refresh === true ? null : cachedUiNodes(resolved);
   if (cached) {
     const hits = cached.filter(node => matches(node, resolved)).slice(0, clamp(resolved.limit, 20, 1, 200));
-    if (hits.length || resolved.cache_only === true || resolved.id || resolved.label != null) return hits;
+    if (hits.length || resolved.cache_only === true) return hits;
   }
+  // Cache-only probes never refresh a missing or incompatible snapshot.
+  if (resolved.cache_only === true) return [];
+  // An exact ID absent from a recent active-window cache may exist in another
+  // app; a fresh scoped native capture is required before saying "not found".
   const stableLinuxPid = optionalString(resolved.id)?.match(/^linux:(\d+):/)?.[1];
   const scopedPid = resolved.pid != null ? resolved.pid : stableLinuxPid ? Number(stableLinuxPid) : null;
   const result = await uiSnapshot({
