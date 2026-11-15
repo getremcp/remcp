@@ -135,7 +135,8 @@ function submitMacHelper(kind, lines) {
     '#!/bin/sh',
     'sleep 1',
     'status=0',
-    ...lines.map(line => `${line} || status=$?`),
+    // Never run enable/kickstart after an unconfirmed launchd re-registration.
+    ...lines.map(line => `if [ "$status" -eq 0 ]; then ${line} || status=$?; fi`),
     `if [ "$status" -ne 0 ]; then echo "ReMCP launchd ${kind} helper failed with status $status" >> ${shellQuote(macLogFile)}; fi`,
     `rm -f ${shellQuote(helperFile)}`,
     `launchctl remove ${shellQuote(helperLabel)} >/dev/null 2>&1 || true`,
@@ -148,13 +149,23 @@ function submitMacHelper(kind, lines) {
   return helperLabel;
 }
 
+// launchctl can return 37 while the old job is still unloading. Retry
+// only the same owner-scoped service, never another launchd target.
+export function macReloadSteps(domain, target, file = macServiceFile) {
+  const job = shellQuote(target);
+  const scope = shellQuote(domain);
+  const service = shellQuote(file);
+  return [
+    `launchctl bootout ${job} >/dev/null 2>&1 || true`,
+    `n=0; while launchctl print ${job} >/dev/null 2>&1; do n=$((n+1)); [ "$n" -lt 12 ] || break; sleep 1; done; ! launchctl print ${job} >/dev/null 2>&1`,
+    `n=0; until launchctl bootstrap ${scope} ${service} >/dev/null 2>&1; do n=$((n+1)); [ "$n" -lt 12 ] || break; sleep 1; done; launchctl print ${job} >/dev/null 2>&1`,
+    `launchctl enable ${job}`,
+    `n=0; until launchctl kickstart -k ${job} >/dev/null 2>&1; do n=$((n+1)); [ "$n" -lt 8 ] || break; sleep 1; done; launchctl print ${job} | grep -Eq '^[[:space:]]*state = running$'`,
+  ];
+}
+
 function scheduleMacServiceReload(domain, target) {
-  return submitMacHelper('reload', [
-    `launchctl bootout ${shellQuote(target)} >/dev/null 2>&1 || true`,
-    `launchctl bootstrap ${shellQuote(domain)} ${shellQuote(macServiceFile)}`,
-    `launchctl enable ${shellQuote(target)}`,
-    `launchctl kickstart -k ${shellQuote(target)}`,
-  ]);
+  return submitMacHelper('reload', macReloadSteps(domain, target));
 }
 
 export function scheduleMacServiceRestart(target) {

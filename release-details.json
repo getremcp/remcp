@@ -1,10 +1,10 @@
 {
-  "version": "0.2.254",
-  "title": "Harden Linux application discovery and browser destination classification.",
+  "version": "0.2.255",
+  "title": "Recover macOS LaunchAgent after an interrupted automatic update.",
   "changes": [
-    "Read Linux XDG application launchers using pinned directory/file descriptors with O_DIRECTORY and O_NOFOLLOW; refuse replaced symlinks, non-regular files and oversized entries without executing their contents.",
-    "Reject malformed hosts with repeated trailing DNS dots, including private IPv4, reserved DNS names and IPv4-compatible/mapped IPv6; preserve normal public navigation and strictly loopback-only CDP endpoint trust.",
-    "Add deterministic property-based fast-check fuzz coverage for browser host classification and malformed CDP origins; this dependency is development-only.",
-    "Preserve the DLL-free source-release Windows profile, existing consent boundaries and opt-in WebRTC behavior. Unsigned native workers remain separately staged QA artifacts; no automatic screen capture or new permissions are enabled."
+    "Retry the owner-scoped launchd bootstrap and kickstart with bounded waits when a transient job handoff fails (including observed status 37); verify that the agent job actually reports running.",
+    "Do not execute dependent launchctl actions after an unconfirmed bootstrap and do not report a scheduled reload as an already restarted service.",
+    "Preserve device pairing, the owner-only supervisor, existing Windows updater safety fences, existing runtime tool permissions and the DLL-free source-only package profile.",
+    "WebRTC native workers are still separate unsigned QA artifacts, not bundled by public npm; end-to-end encryption for general ReMCP control is NOT implemented and remains fail-closed when required. Remote keyboard/mouse/clipboard over the WebRTC pilot are NOT enabled in production."
   ]
 }

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.255 — 2026-11-15
+
+- Release the exact corresponding first-party runtime version for the macOS supervisor recovery client.
+- No new native worker, remote-control permission, DLL, or end-to-end control encryption is included; preserve fail-closed capture and existing tool authorization.
+
 ## 0.2.254 — 2026-11-15
 
 - Open Linux XDG `.desktop` files through pinned no-symlink directory/file descriptors to prevent parent and final-file replacement races.

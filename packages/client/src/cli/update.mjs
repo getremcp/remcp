@@ -357,7 +357,10 @@ export async function updateCommand(flags) {
   const restarted = restartAlreadyScheduled ||
     restartPersistentServiceIfInstalled(cfg, { deferWindows: true });
   if (restarted) {
-    console.log(`ReMCP updated and ${restarted} restarted (client ${before.cli} → ${after.cli ?? '?'}, runtime ${before.runtime ?? '?'} → ${after.runtime ?? '?'}).`);
+    // launchd handoff is asynchronous: scheduling it is not proof of an online agent.
+    const outcome = servicePlatform() === 'darwin'
+      ? 'reload scheduled (verify agent.running after launchd handoff)' : 'restarted';
+    console.log(`ReMCP updated and ${restarted} ${outcome} (client ${before.cli} → ${after.cli ?? '?'}, runtime ${before.runtime ?? '?'} → ${after.runtime ?? '?'}).`);
     return;
   }
   // This process is the updater, not the agent: exiting here would restart nothing. The agent sees
