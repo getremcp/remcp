@@ -136,7 +136,7 @@ function submitMacHelper(kind, lines) {
     'sleep 1',
     'status=0',
     // Never run enable/kickstart after an unconfirmed launchd re-registration.
-    ...lines.map(line => `if [ "$status" -eq 0 ]; then ${line} || status=$?; fi`),
+    ...lines.map((line, index) => `if [ "$status" -eq 0 ]; then ${line} || { status=$?; echo "ReMCP launchd ${kind} step ${index + 1} failed with status $status" >> ${shellQuote(macLogFile)}; }; fi`),
     `if [ "$status" -ne 0 ]; then echo "ReMCP launchd ${kind} helper failed with status $status" >> ${shellQuote(macLogFile)}; fi`,
     `rm -f ${shellQuote(helperFile)}`,
     `launchctl remove ${shellQuote(helperLabel)} >/dev/null 2>&1 || true`,
@@ -160,7 +160,11 @@ export function macReloadSteps(domain, target, file = macServiceFile) {
     `n=0; while launchctl print ${job} >/dev/null 2>&1; do n=$((n+1)); [ "$n" -lt 12 ] || break; sleep 1; done; ! launchctl print ${job} >/dev/null 2>&1`,
     `n=0; until launchctl bootstrap ${scope} ${service} >/dev/null 2>&1; do n=$((n+1)); [ "$n" -lt 12 ] || break; sleep 1; done; launchctl print ${job} >/dev/null 2>&1`,
     `launchctl enable ${job}`,
-    `n=0; until launchctl kickstart -k ${job} >/dev/null 2>&1; do n=$((n+1)); [ "$n" -lt 8 ] || break; sleep 1; done; launchctl print ${job} | grep -Eq '^[[:space:]]*state = running$'`,
+    // RunAtLoad + KeepAlive already starts a newly bootstrapped job. Repeating
+    // kickstart -k while it is starting races launchd (37/EALREADY) and can
+    // terminate the process that just connected. Wait for the actual state;
+    // issue at most one non-destructive kickstart if it never starts itself.
+    `n=0; while ! launchctl print ${job} | grep -Eq '^[[:space:]]*state = running$'; do n=$((n+1)); [ "$n" -lt 12 ] || break; sleep 1; done; if ! launchctl print ${job} | grep -Eq '^[[:space:]]*state = running$'; then launchctl kickstart ${job} >/dev/null 2>&1 || true; n=0; while ! launchctl print ${job} | grep -Eq '^[[:space:]]*state = running$'; do n=$((n+1)); [ "$n" -lt 8 ] || break; sleep 1; done; fi; launchctl print ${job} | grep -Eq '^[[:space:]]*state = running$'`,
   ];
 }
 

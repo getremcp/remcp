@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.256 — 2026-11-15
+
+- Publish an exact corresponding runtime package for the macOS LaunchAgent handoff recovery client.
+- No changes to DLL-free Windows helper sources, media worker packaging, remote input permissions or E2EE.
+
 ## 0.2.255 — 2026-11-15
 
 - Release the exact corresponding first-party runtime version for the macOS supervisor recovery client.

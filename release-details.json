@@ -1,10 +1,10 @@
 {
-  "version": "0.2.255",
-  "title": "Recover macOS LaunchAgent after an interrupted automatic update.",
+  "version": "0.2.256",
+  "title": "Stabilize macOS LaunchAgent handoff after automatic updates.",
   "changes": [
-    "Retry the owner-scoped launchd bootstrap and kickstart with bounded waits when a transient job handoff fails (including observed status 37); verify that the agent job actually reports running.",
-    "Do not execute dependent launchctl actions after an unconfirmed bootstrap and do not report a scheduled reload as an already restarted service.",
-    "Preserve device pairing, the owner-only supervisor, existing Windows updater safety fences, existing runtime tool permissions and the DLL-free source-only package profile.",
-    "WebRTC native workers are still separate unsigned QA artifacts, not bundled by public npm; end-to-end encryption for general ReMCP control is NOT implemented and remains fail-closed when required. Remote keyboard/mouse/clipboard over the WebRTC pilot are NOT enabled in production."
+    "Avoid racing macOS launchd with repeated kickstart -k while a newly bootstrapped RunAtLoad agent is starting; wait for its running state first.",
+    "If RunAtLoad fails to start, attempt one non-destructive kickstart, then verify the running job; report the failing helper step without claiming a successful restart.",
+    "Preserve owner-scoped service registration, existing installation and pairing, Windows DLL-free source-only interop, and existing native capture consent boundaries.",
+    "WebRTC native workers, screen/control E2EE and general remote input are not bundled or enabled by this version."
   ]
 }
