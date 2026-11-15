@@ -22,24 +22,45 @@ export function isManagedLinuxSystemUnit(text, launcher = linuxServiceLauncherFi
 // Discover BOTH supervisors before uninstalling either. A PID-1 migration may
 // leave a disabled historical user unit behind; removing only the active scope
 // makes status incorrectly report an installed service after uninstall.
-// Pin the exact regular unit inode before trusting its ExecStart. Checking
-// lstat(path) and then reading path again could inspect a substituted unit.
+// Pin every Linux path component, then validate the opened unit descriptor.
+// A check-before-open lstat or a symlinked parent could redirect a later read.
 function readOwnedLinuxUnit(file, launcher, expected = null) {
-  const before = fs.lstatSync(file);
-  if (!before.isFile() || before.isSymbolicLink()) {
-    throw new Error('Unrecognized ReMCP systemd unit: ' + file);
-  }
-  const fd = fs.openSync(file, fs.constants.O_RDONLY |
-    (fs.constants.O_NOFOLLOW || 0) | (fs.constants.O_NONBLOCK || 0));
+  const pinnedDirs = [];
+  let fd;
   try {
+    let source = file;
+    if (process.platform === 'linux') {
+      if (!path.isAbsolute(file)) throw new Error('ReMCP systemd unit path must be absolute');
+      const parts = path.normalize(file).split(path.sep).filter(Boolean);
+      const flags = fs.constants.O_RDONLY | fs.constants.O_DIRECTORY | fs.constants.O_NOFOLLOW;
+      let parent = fs.openSync(path.parse(file).root, flags);
+      pinnedDirs.push(parent);
+      for (const part of parts.slice(0, -1)) {
+        parent = fs.openSync(`/proc/self/fd/${parent}/${part}`, flags);
+        pinnedDirs.push(parent);
+      }
+      source = `/proc/self/fd/${parent}/${parts.at(-1)}`;
+    }
+    fd = fs.openSync(source, fs.constants.O_RDONLY |
+      (fs.constants.O_NOFOLLOW || 0) | (fs.constants.O_NONBLOCK || 0));
     const opened = fs.fstatSync(fd);
     const same = (a, b) => a.dev === b.dev && a.ino === b.ino;
-    if (!opened.isFile() || opened.size > 64 * 1024 ||
-        !same(before, opened) || (expected && !same(expected, opened))) {
+    const limit = 64 * 1024;
+    if (!opened.isFile() || opened.size > limit ||
+        (expected && !same(expected, opened))) {
       throw new Error('Unrecognized or replaced ReMCP systemd unit: ' + file);
     }
-    const body = fs.readFileSync(fd, 'utf8');
-    const after = fs.lstatSync(file);
+    // Bound reads even if a malicious actor grows the file after fstat.
+    const buffer = Buffer.alloc(limit + 1);
+    let count = 0;
+    while (count < buffer.length) {
+      const bytes = fs.readSync(fd, buffer, count, buffer.length - count, count);
+      if (bytes === 0) break;
+      count += bytes;
+    }
+    if (count > limit) throw new Error('Oversized ReMCP systemd unit: ' + file);
+    const body = buffer.toString('utf8', 0, count);
+    const after = fs.lstatSync(source);
     const readStat = fs.fstatSync(fd);
     if (!after.isFile() || after.isSymbolicLink() || !same(after, opened) ||
         readStat.size !== opened.size || readStat.mtimeMs !== opened.mtimeMs ||
@@ -48,7 +69,8 @@ function readOwnedLinuxUnit(file, launcher, expected = null) {
     }
     return { dev: opened.dev, ino: opened.ino };
   } finally {
-    fs.closeSync(fd);
+    if (fd !== undefined) fs.closeSync(fd);
+    for (const parent of pinnedDirs.reverse()) fs.closeSync(parent);
   }
 }
 

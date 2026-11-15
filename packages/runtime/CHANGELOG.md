@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.257 — 2026-11-15
+
+- Provide a version-matched first-party runtime for the Linux systemd client hardening release.
+- Runtime tool behavior, Windows source-only helper bytes, optional native media workers and remote-control authorization are unchanged.
+
 ## 0.2.256 — 2026-11-15
 
 - Publish an exact corresponding runtime package for the macOS LaunchAgent handoff recovery client.

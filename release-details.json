@@ -1,10 +1,10 @@
 {
-  "version": "0.2.256",
-  "title": "Stabilize macOS LaunchAgent handoff after automatic updates.",
+  "version": "0.2.257",
+  "title": "Harden Linux systemd unit ownership checks against parent-directory substitution.",
   "changes": [
-    "Avoid racing macOS launchd with repeated kickstart -k while a newly bootstrapped RunAtLoad agent is starting; wait for its running state first.",
-    "If RunAtLoad fails to start, attempt one non-destructive kickstart, then verify the running job; report the failing helper step without claiming a successful restart.",
-    "Preserve owner-scoped service registration, existing installation and pairing, Windows DLL-free source-only interop, and existing native capture consent boundaries.",
-    "WebRTC native workers, screen/control E2EE and general remote input are not bundled or enabled by this version."
+    "Pin every parent component of a Linux systemd unit path through O_DIRECTORY / O_NOFOLLOW and descriptor-relative opens before trusting its launcher or inode.",
+    "Reject swapped symlink parents, nonregular/oversized unit files, changed inode metadata and unrecognized ExecStart values; keep reads bounded to 64 KiB and fail closed before uninstallation.",
+    "Add a regression which demonstrates that a parent symlink replacement was accepted by the prior code and is rejected by this version. Preserve PID-1 and user service lifecycle checks.",
+    "Preserve v0.2.256 macOS LaunchAgent recovery, paired-device credentials, the DLL-free source-only Windows profile and opt-in WebRTC consent/E2EE boundaries. No additional native binary, automatic screen access or control permission is included."
   ]
 }

@@ -204,3 +204,29 @@ test('uninstall refuses a symlink swapped into the unit path after stop', t => {
   assert.equal(swapped,true);
   assert.equal(readFileSync(other,'utf8'),original);
 });
+
+test('uninstall refuses a symlinked parent even when the original unit inode is unchanged',
+  {skip:process.platform!=='linux'}, t => {
+  const fixture = linuxUninstallFixture();
+  const root = path.dirname(path.dirname(fixture.userFile));
+  t.after(() => rmSync(root, {recursive:true,force:true}));
+  const original = readFileSync(fixture.userFile, 'utf8');
+  const parent = path.dirname(fixture.userFile);
+  const moved = parent + '.relocated';
+  let redirected = false;
+  const runner = (bin,args) => {
+    assert.equal(bin,'systemctl');
+    if (args.includes('disable') && !redirected) {
+      renameSync(parent,moved);
+      symlinkSync(moved,parent,'dir');
+      redirected = true;
+    }
+    return {status:args.includes('is-active') ? 3 : 0};
+  };
+  assert.throws(() => uninstallOwnedLinuxUnits({
+    ...fixture,includeSystem:false,runner,
+  }),/systemd unit changed during uninstall/);
+  assert.equal(redirected,true);
+  assert.equal(readFileSync(path.join(moved,'remcp-agent.service'),'utf8'),original,
+    'a parent-directory substitution must never permit deleting the original unit');
+});
