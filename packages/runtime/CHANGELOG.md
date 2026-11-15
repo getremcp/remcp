@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.254 — 2026-11-15
+
+- Open Linux XDG `.desktop` files through pinned no-symlink directory/file descriptors to prevent parent and final-file replacement races.
+- Reject malformed repeated-dot private browser hosts and reserved IPv4-compatible/mapped IPv6 destinations while preserving strict CDP loopback-only trust.
+- Add seeded browser policy property-fuzzing tests as development dependencies; no native DLL is included in this source-only runtime.
+
 ## 0.2.252 — 2026-11-12
 
 **Discover and safely target additional Windows application windows.**

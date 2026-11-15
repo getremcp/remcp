@@ -1,7 +1,7 @@
 // Bounded, read-only Linux XDG GUI launcher inventory. Never execute Exec=.
 import os from 'node:os';
 import path from 'node:path';
-import {access,lstat,readFile,readdir} from 'node:fs/promises';
+import {access,open,readdir} from 'node:fs/promises';
 import {constants} from 'node:fs';
 import {jsonResult} from './common.mjs';
 
@@ -85,6 +85,47 @@ async function walkFiles(directory,{limit=MAX_DESKTOP_FILES,depth=0}={}){
   return found;
 }
 
+// Pin the discovered application's directory and each nested component on
+// Linux before reading the final regular file. Neither the parent path nor the
+// launcher may turn into a symlink between enumeration and the actual read.
+export async function readDesktopEntryFile(file,{base=path.dirname(file)}={}){
+  const dirs=[];
+  let handle;
+  try{
+    let target=file;
+    if(process.platform==='linux'){
+      const rel=path.relative(base,file);
+      const parts=rel.split(path.sep);
+      if(!path.isAbsolute(base)||!rel||path.isAbsolute(rel)||
+          parts.some(part=>!part||part==='.'||part==='..'))return null;
+      const flags=constants.O_RDONLY|constants.O_DIRECTORY|constants.O_NOFOLLOW;
+      let directory=await open(base,flags);
+      dirs.push(directory);
+      for(const part of parts.slice(0,-1)){
+        directory=await open(`/proc/self/fd/${directory.fd}/${part}`,flags);
+        dirs.push(directory);
+      }
+      target=`/proc/self/fd/${directory.fd}/${parts.at(-1)}`;
+    }
+    handle=await open(target,constants.O_RDONLY|(constants.O_NOFOLLOW||0)|(constants.O_NONBLOCK||0));
+    const stat=await handle.stat();
+    if(!stat.isFile()||stat.size>MAX_FILE_BYTES)return null;
+    const buffer=Buffer.alloc(MAX_FILE_BYTES+1);
+    let total=0;
+    while(total<buffer.length){
+      const {bytesRead}=await handle.read(buffer,total,buffer.length-total,total);
+      if(bytesRead===0)break;
+      total+=bytesRead;
+    }
+    if(total>MAX_FILE_BYTES)return null;
+    return buffer.toString('utf8',0,total);
+  }catch{return null}
+  finally{
+    if(handle)await handle.close();
+    for(const dir of dirs.reverse())await dir.close();
+  }
+}
+
 export async function linuxGuiInventory(options={}){
   const desktop=options.desktop??process.env.XDG_CURRENT_DESKTOP??'';
   const dirs=sourceDirs({
@@ -102,12 +143,8 @@ export async function linuxGuiInventory(options={}){
       // same-ID system launchers.
       if(seen.has(desktopId))continue;
       seen.add(desktopId);
-      let body;
-      try{
-        const stat=await lstat(file);
-        if(!stat.isFile()||stat.size>MAX_FILE_BYTES)continue;
-        body=await readFile(file,'utf8');
-      }catch{continue}
+      const body=await readDesktopEntryFile(file,{base:applicationDir});
+      if(body===null)continue;
       const parsed=parseDesktopEntry(body,{desktop});
       if(!parsed||!await runnable(parsed.try_exec,{pathEnv:options.pathEnv}))continue;
       apps.push({name:parsed.name,desktop_id:desktopId,

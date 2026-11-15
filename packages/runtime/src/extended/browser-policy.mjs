@@ -16,10 +16,16 @@ export function boundedText(value, max = 1000) {
 }
 
 export function normalizedHost(hostname) {
-  return String(hostname || '').replace(/^\[|\]$/g, '').replace(/\.$/, '').toLowerCase();
+  // A DNS name may end with more than one absolute-label dot. Removing only
+  // one would classify "localhost.." and "127.0.0.1.." as public.
+  // Normalize terminal dots before unwrapping IPv6 brackets.
+  return String(hostname || '').trim().replace(/\.+$/, '').replace(/^\[|\]$/g, '').toLowerCase();
 }
 
 export function isLoopbackHost(hostname) {
+  // Positive trust/allow checks must not accept malformed DNS names, even
+  // though the private-destination deny check normalizes them defensively.
+  if (/\.\.$/.test(String(hostname || ''))) return false;
   const host = normalizedHost(hostname);
   return ['localhost', '127.0.0.1', '::1'].includes(host);
 }
@@ -51,9 +57,16 @@ export function isPrivateIpv4(host) {
 
 export function isPrivateIpv6(host) {
   if (isIP(host) !== 6) return false;
-  if (host === '::' || host === '::1') return true;
-  if (/^f[cd]/.test(host) || /^fe[89ab]/.test(host) || host.startsWith('ff')) return true;
-  const mapped = host.match(/^::(?:ffff:)?([0-9a-f]{1,4}):([0-9a-f]{1,4})$/);
+  // DNS may return IPv4-compatible/mapped IPv6 as dotted decimal or with
+  // expanded hextets. Canonicalize locally (no DNS) before comparing ranges.
+  // This matches WHATWG URL navigation's IPv6 normalization.
+  const canonical = new URL('http://[' + host + ']/').hostname.slice(1, -1).toLowerCase();
+  if (canonical === '::' || canonical === '::1') return true;
+  if (/^f[cd]/.test(canonical) || /^fe[89ab]/.test(canonical) || canonical.startsWith('ff')) return true;
+  // Deprecated IPv4-compatible ::/96 is reserved, even if the lower
+  // 32 bits resemble a public IPv4. Do not trust it as a public DNS result.
+  if (/^::(?:[0-9a-f]{1,4}:)?[0-9a-f]{1,4}$/.test(canonical)) return true;
+  const mapped = canonical.match(/^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/);
   if (mapped) {
     const high = Number.parseInt(mapped[1], 16);
     const low = Number.parseInt(mapped[2], 16);
@@ -103,6 +116,7 @@ export function safeBrowserUrl(value, field = 'url') {
   catch { throw new Error(`${field} must be a valid absolute URL`); }
   if (!BROWSER_PROTOCOLS.has(url.protocol)) throw new Error(`${field} must use http or https`);
   if (url.username || url.password) throw new Error(`${field} must not embed credentials`);
+  if (/\.\.$/.test(url.hostname)) throw new Error(`${field} has malformed DNS hostname`);
   if (!localBrowserNavigationAllowed() && isPrivateBrowserHost(url.hostname)) {
     throw new Error(`${field} must not target loopback, private, or link-local addresses`);
   }

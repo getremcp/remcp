@@ -2,7 +2,7 @@
   "name": "@remcp/runtime",
   "remcpWindowsInterop": 2,
   "remcpBuildProfile": "dllfree-source-release",
-  "version": "0.2.253",
+  "version": "0.2.254",
   "description": "First-party ReMCP local device runtime: filesystem, terminal, computer-use, browser, diagnostics and document tools over MCP.",
   "type": "module",
   "license": "MIT",
@@ -34,7 +34,8 @@
     "macos-temperature-sensor": "2.1.1"
   },
   "devDependencies": {
-    "@modelcontextprotocol/client": "^2.3.1"
+    "@modelcontextprotocol/client": "^2.3.1",
+    "fast-check": "4.10.2"
   },
   "repository": {
     "type": "git",

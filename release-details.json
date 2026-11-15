@@ -1,12 +1,10 @@
 {
-  "version": "0.2.253",
-  "title": "Stage opt-in native WebRTC screen viewing for Linux, macOS and Windows.",
+  "version": "0.2.254",
+  "title": "Harden Linux application discovery and browser destination classification.",
   "changes": [
-    "Add a session-scoped native WebRTC media bridge behind explicit device and website consent, with platform-specific capture boundaries, per-session Stop and timeouts.",
-    "Support Windows interactive-session capture and macOS Screen Recording permission checks; keep synthetic media for isolated Linux QA only.",
-    "Reject untrusted worker binaries, owner-writable paths, arbitrary TURN configuration, replayed sessions and expired ephemeral relay credentials.",
-    "Preserve the v0.2.252 App Engine and Windows application inventory; no automatic remote screen access or control is enabled.",
-    "Add an opt-in fail-closed E2EE requirement (REMCP_REQUIRE_E2EE=1): the agent refuses to start or connect to the current TLS-only relay rather than silently downgrade. This does not enable E2EE; unset/0 keeps existing behavior.",
-    "Native unsigned worker binaries remain separately packaged QA candidates, not shipped by the public npm runtime; Windows ARM64, macOS ARM64 and Linux x64 passed local media/Stop QA. WAN/TLS and public installer acceptance remain pending."
+    "Read Linux XDG application launchers using pinned directory/file descriptors with O_DIRECTORY and O_NOFOLLOW; refuse replaced symlinks, non-regular files and oversized entries without executing their contents.",
+    "Reject malformed hosts with repeated trailing DNS dots, including private IPv4, reserved DNS names and IPv4-compatible/mapped IPv6; preserve normal public navigation and strictly loopback-only CDP endpoint trust.",
+    "Add deterministic property-based fast-check fuzz coverage for browser host classification and malformed CDP origins; this dependency is development-only.",
+    "Preserve the DLL-free source-release Windows profile, existing consent boundaries and opt-in WebRTC behavior. Unsigned native workers remain separately staged QA artifacts; no automatic screen capture or new permissions are enabled."
   ]
 }

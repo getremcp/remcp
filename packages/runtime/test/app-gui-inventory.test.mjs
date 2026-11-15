@@ -4,7 +4,7 @@ import {mkdtemp,writeFile,mkdir,rm,symlink} from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import {jsonResult} from '../src/extended/common.mjs';
-import {parseDesktopEntry,linuxGuiInventory} from '../src/extended/app-gui-inventory.mjs';
+import {parseDesktopEntry,linuxGuiInventory,readDesktopEntryFile} from '../src/extended/app-gui-inventory.mjs';
 import {detectedApps,detectedAppRows,inspectDetectedApp}
   from '../src/extended/app-dynamic-discovery.mjs';
 import {resultValue} from '../src/extended/desktop-core.mjs';
@@ -152,4 +152,42 @@ test('GUI executable hint must be exact and is not a command permission',async()
     uiSnapshot:async()=>{throw Error('must not scan lookalike app')},
   });
   assert.equal(bad.status,'blocked');
+});
+
+test('replaced XDG launcher does not follow a late symlink or read an oversized file',
+  {skip:process.platform!=='linux'},async()=>{
+  const root=await mkdtemp(path.join(os.tmpdir(),'remcp-xdg-fd-'));
+  const discovered=path.join(root,'org.example.Mutable.desktop');
+  const secret=path.join(root,'private-fixture.txt');
+  try{
+    await writeFile(discovered,entry('Before replacement'));
+    assert.match(await readDesktopEntryFile(discovered),/Before replacement/);
+    // Simulate the attacker replacing an already-discovered path between
+    // directory enumeration and the actual read. Do not follow its final symlink.
+    await writeFile(secret,entry('Secret must stay unread'));
+    await rm(discovered);
+    await symlink(secret,discovered);
+    assert.equal(await readDesktopEntryFile(discovered),null);
+    await rm(discovered);
+    await writeFile(discovered,'x'.repeat(64*1024+1));
+    assert.equal(await readDesktopEntryFile(discovered),null);
+  }finally{await rm(root,{recursive:true,force:true})}
+});
+
+test('Linux GUI inventory read rejects a parent directory replaced by a symlink',
+  {skip:process.platform!=='linux'},async()=>{
+  const root=await mkdtemp(path.join(os.tmpdir(),'remcp-xdg-parent-fd-'));
+  const base=path.join(root,'applications');
+  const original=path.join(base,'utilities');
+  const outside=path.join(root,'outside');
+  const file=path.join(original,'example.desktop');
+  try{
+    await mkdir(original,{recursive:true});await mkdir(outside);
+    await writeFile(file,entry('Before swap'));
+    await writeFile(path.join(outside,'example.desktop'),entry('Outside path'));
+    assert.match(await readDesktopEntryFile(file,{base}),/Before swap/);
+    await rm(original,{recursive:true});
+    await symlink(outside,original);
+    assert.equal(await readDesktopEntryFile(file,{base}),null);
+  }finally{await rm(root,{recursive:true,force:true})}
 });
