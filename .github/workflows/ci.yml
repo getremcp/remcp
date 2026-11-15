@@ -135,6 +135,8 @@ jobs:
     permissions:
       contents: write
       id-token: write
+      attestations: write # only this tag-scoped release job may create provenance
+      artifact-metadata: write # required by actions/attest v4 for public build artifacts
       actions: write # dispatch the separately verified public release signer
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -186,6 +188,64 @@ jobs:
       # Re-running a failed release must be safe: an already published version is skipped
       # instead of failing the workflow with "cannot publish over the previously published
       # versions".
+      - name: Verify exact tagged release payload bytes before SLSA attestation
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          [[ "$GITHUB_REF" == "refs/tags/$GITHUB_REF_NAME" ]] || exit 1
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          for asset in chatgpt-app-submission.json submission/remcp-plugin.zip submission/remcp-openai-existing-plugin.zip submission/remcp-skills-only.zip; do
+            test -s "$asset"
+            # Claim provenance only for bytes actually present at the signed release commit.
+            expected="$(git show "$GITHUB_SHA:$asset" | sha256sum | cut -d ' ' -f1)"
+            actual="$(sha256sum "$asset" | cut -d ' ' -f1)"
+            test "$expected" = "$actual" || { echo "Release asset changed after checkout: $asset" >&2; exit 1; }
+          done
+      - name: Attest the four tagged release payloads with GitHub OIDC
+        id: release_provenance
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: |
+            chatgpt-app-submission.json
+            submission/remcp-plugin.zip
+            submission/remcp-openai-existing-plugin.zip
+            submission/remcp-skills-only.zip
+      - name: Verify SLSA bundle and prepare a portable release attestation
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ATTESTATION_BUNDLE: ${{ steps.release_provenance.outputs.bundle-path }}
+        run: |
+          set -Eeuo pipefail
+          test -s "$ATTESTATION_BUNDLE"
+          gh attestation verify --help >/dev/null
+          for asset in chatgpt-app-submission.json submission/remcp-plugin.zip submission/remcp-openai-existing-plugin.zip submission/remcp-skills-only.zip; do
+            gh attestation verify "$asset" --repo "$GITHUB_REPOSITORY" \
+              --bundle "$ATTESTATION_BUNDLE" --source-ref "$GITHUB_REF" \
+              --source-digest "$GITHUB_SHA" \
+              --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/ci.yml"
+          done
+          # JSON with one Sigstore bundle is also a valid one-record JSONL file.
+          # Do not invent a predicate or sign checksum bytes as if they were built here.
+          node --input-type=module - "$ATTESTATION_BUNDLE" <<'VERIFY_BUNDLE'
+          import { readFileSync, writeFileSync } from 'node:fs';
+          const bundle = JSON.parse(readFileSync(process.argv[2], 'utf8'));
+          if (!bundle.dsseEnvelope || !bundle.verificationMaterial) {
+            throw new Error('GitHub did not return a signed DSSE provenance bundle');
+          }
+          writeFileSync('remcp-release.intoto.jsonl', JSON.stringify(bundle) + '\n');
+          VERIFY_BUNDLE
+          test -s remcp-release.intoto.jsonl
+      - name: Verify existing release bytes before npm publication
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -Eeuo pipefail
+          # Partial releases must contain only the candidate's exact bytes.
+          # Refuse untrusted assets, existing signatures and API outages before
+          # any irreversible npm trusted-publishing operation.
+          node scripts/release-prepublish-preflight.mjs
       - name: Publish @remcp/runtime
         run: |
           version="$(node -p "require('./packages/runtime/package.json').version")"
@@ -302,15 +362,35 @@ jobs:
             echo "Both packages are published with a signed provenance statement."
           } > "$notes"
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
-            if gh release view "$GITHUB_REF_NAME" --json assets --jq '.assets[].name' | grep -Eq '^SHA256SUMS(\.sigstore\.json)?$'; then
-              echo "Signed release assets are immutable; publish a new version rather than overwriting" >&2
+            # Reject untrusted extra/duplicate assets before uploading any files.
+            gh release view "$GITHUB_REF_NAME" --json assets | node scripts/release-assets-allowlist.mjs
+            if gh release view "$GITHUB_REF_NAME" --json assets --jq '.assets[].name' | grep -Eq '^(SHA256SUMS(\.sigstore\.json)?|remcp-release\.intoto\.jsonl)$'; then
+              echo "Signed or attested release assets are immutable; publish a new version" >&2
               exit 1
             fi
-            gh release upload "$GITHUB_REF_NAME" submission/remcp-plugin.zip submission/remcp-openai-existing-plugin.zip submission/remcp-skills-only.zip chatgpt-app-submission.json --clobber
+            # A retry must not silently replace a previously published release asset.
+            # Compare existing bytes exactly, and add only missing asset names.
+            existing_dir="$(mktemp -d)"
+            trap 'rm -rf -- "$existing_dir"' EXIT
+            for asset in submission/remcp-plugin.zip submission/remcp-openai-existing-plugin.zip submission/remcp-skills-only.zip chatgpt-app-submission.json remcp-release.intoto.jsonl; do
+              name="$(basename "$asset")"
+              if gh release view "$GITHUB_REF_NAME" --json assets --jq '.assets[].name' | grep -Fx "$name" >/dev/null; then
+                gh release download "$GITHUB_REF_NAME" --pattern "$name" --dir "$existing_dir"
+                cmp "$asset" "$existing_dir/$(basename "$asset")" || {
+                  echo "Refusing to replace an existing $name from $GITHUB_REF_NAME" >&2
+                  exit 1
+                }
+              else
+                gh release upload "$GITHUB_REF_NAME" "$asset"
+              fi
+            done
             gh release edit "$GITHUB_REF_NAME" --title "$title" --notes-file "$notes"
           else
-            gh release create "$GITHUB_REF_NAME" submission/remcp-plugin.zip submission/remcp-openai-existing-plugin.zip submission/remcp-skills-only.zip chatgpt-app-submission.json --title "$title" --notes-file "$notes" --verify-tag
+            gh release create "$GITHUB_REF_NAME" submission/remcp-plugin.zip submission/remcp-openai-existing-plugin.zip submission/remcp-skills-only.zip chatgpt-app-submission.json remcp-release.intoto.jsonl --title "$title" --notes-file "$notes" --verify-tag
           fi
+          # This is the final inventory gate before the checksum signer runs.
+          # Partial uploads, extra assets and dropped provenance must all fail.
+          gh release view "$GITHUB_REF_NAME" --json assets | node scripts/release-assets-allowlist.mjs --require-attestation
       - name: Dispatch keyless signing of the exact published release assets
         shell: bash
         env:
@@ -347,6 +427,7 @@ jobs:
       - name: Validate immutable repair target
         shell: bash
         env:
+          GH_TOKEN: ${{ github.token }}
           REPAIR_VERSION: ${{ inputs.repair_release }}
         run: |
           set -Eeuo pipefail
@@ -373,6 +454,17 @@ jobs:
             printf '%s\n' "$unexpected" >&2
             exit 1
           }
+          # Once build-time SLSA provenance is required, manual recovery may
+          # fix npm/Registry only when the original tagged release is already
+          # attested. It must never mint false provenance for a missing release.
+          if node -e 'const [a,b,c]=process.argv[1].split(".").map(Number);process.exit(a>0||b>2||(b===2&&c>=258)?0:1)' "$version"; then
+            # Do not repair npm or Registry if any extra asset or missing
+            # original attested payload is present in the existing release.
+            gh release view "$tag" --json assets | node scripts/release-assets-allowlist.mjs --require-attestation || {
+              echo "Attested release $tag is missing or has untrusted assets; use the original tag publisher or a new version" >&2
+              exit 1
+            }
+          fi
           echo "repairing $tag from reviewed workflow-only descendant $(git rev-parse HEAD)"
       - name: Install verified mcp-publisher 1.8.1 for recovery
         shell: bash
@@ -619,6 +711,31 @@ jobs:
             echo
             echo "Both packages are published with a signed provenance statement."
           } > "$notes"
+          # A partial npm repair must never replace an already attested release.
+          # Independently verify all downloaded release bytes and the actual
+          # tagged-build certificate before allowing Registry/npm recovery.
+          if gh release view "$tag" --json assets --jq '.assets[].name' 2>/dev/null |
+             grep -Fx 'remcp-release.intoto.jsonl' >/dev/null; then
+            verified_dir="$(mktemp -d)"
+            trap 'rm -rf -- "$verified_dir"' EXIT
+            gh release download "$tag" --dir "$verified_dir"
+            tag_sha="$(git rev-list -n1 "$tag")"
+            for asset in chatgpt-app-submission.json submission/remcp-plugin.zip submission/remcp-openai-existing-plugin.zip submission/remcp-skills-only.zip; do
+              cmp "$asset" "$verified_dir/$(basename "$asset")"
+              gh attestation verify "$asset" --repo "$GITHUB_REPOSITORY" \
+                --bundle "$verified_dir/remcp-release.intoto.jsonl" \
+                --source-ref "refs/tags/$tag" --source-digest "$tag_sha" \
+                --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/ci.yml" >/dev/null
+            done
+            echo "Existing $tag release is verified and immutable; repair package registries only"
+            exit 0
+          fi
+          # The original tag-only build workflow is the sole source of new
+          # provenance; a repair-only run cannot manufacture it afterward.
+          if node -e 'const [a,b,c]=process.argv[1].split(".").map(Number);process.exit(a>0||b>2||(b===2&&c>=258)?0:1)' "$version"; then
+            echo "Refusing to publish an unattested $tag in the recovery job" >&2
+            exit 1
+          fi
           if gh release view "$tag" >/dev/null 2>&1; then
             if gh release view "$tag" --json assets --jq '.assets[].name' | grep -Eq '^SHA256SUMS(\.sigstore\.json)?$'; then
               echo "Signed release assets are immutable; publish a new version rather than overwriting" >&2
@@ -638,6 +755,11 @@ jobs:
         run: |
           set -Eeuo pipefail
           [[ "$REPAIR_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || exit 1
+          # New attested releases are immutable; repair must never re-sign them.
+          if node -e 'const [a,b,c]=process.argv[1].split(".").map(Number);process.exit(a>0||b>2||(b===2&&c>=258)?0:1)' "$REPAIR_VERSION"; then
+            echo "Skip legacy signing for attested release $REPAIR_VERSION"
+            exit 0
+          fi
           gh workflow run release-signatures.yml \
             --repo "$GITHUB_REPOSITORY" --ref main \
             -f release_tag="v$REPAIR_VERSION"

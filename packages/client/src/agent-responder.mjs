@@ -3,13 +3,26 @@ import { VERSION } from './version.mjs';
 import { runAgentNetworkProbe } from './agent-network-probe-client.mjs';
 import { sendRelayMessage } from './agent-utilities.mjs';
 
-export function createAgentResponder({ inFlight, onPendingChange, getRuntimeState, serverUrl, deviceToken }) {
+export function createAgentResponder({ inFlight, onPendingChange, getRuntimeState, serverUrl, deviceToken,
+  assertResponseAllowed = () => {},
+}) {
   async function respond(ws, message) {
     onPendingChange(1);
     // The relay forwards a cancel when the MCP client goes away. Without it a cancelled tool call
     // kept running on the machine (a delete still deleted), because nothing told the runtime.
     const controller = new AbortController();
     inFlight.set(message.id, controller);
+    const reply = payload => {
+      try { assertResponseAllowed(); }
+      catch {
+        // Policy can tighten while a tool awaits I/O. Do not transmit even
+        // an error over the old TLS-only session after local revocation.
+        controller.abort();
+        ws.terminate();
+        return;
+      }
+      sendRelayMessage(ws, { type: 'response', id: message.id, ...payload });
+    };
     const { mcp, runtimeDown, runtimeVersion, runtimeRestarts, callTimeoutMs } = getRuntimeState();
     try {
       let result;
@@ -25,10 +38,10 @@ export function createAgentResponder({ inFlight, onPendingChange, getRuntimeStat
       } else {
         throw new Error('The ReMCP local runtime is restarting. Retry in a few seconds.');
       }
-      sendRelayMessage(ws, { type: 'response', id: message.id, result });
+      reply({ result });
     } catch (error) {
       const cancelled = controller.signal.aborted;
-      sendRelayMessage(ws, { type: 'response', id: message.id, error: { message: cancelled ? 'Cancelled: the client stopped waiting for this call.' : error instanceof Error ? error.message : String(error) } });
+      reply({ error: { message: cancelled ? 'Cancelled: the client stopped waiting for this call.' : error instanceof Error ? error.message : String(error) } });
     } finally {
       inFlight.delete(message.id);
       onPendingChange(-1);

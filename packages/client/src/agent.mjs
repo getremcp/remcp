@@ -29,7 +29,7 @@ const CALL_TIMEOUT_MARGIN_MS = 10_000;
 export async function runAgent(options) {
   // Reject an explicitly requested E2EE session before any runtime or relay
   // startup: this release has authenticated TLS, not end-to-end encryption.
-  assertAgentE2eeAdmission();
+  assertAgentE2eeAdmission(process.env, options.requireE2ee);
   const serverUrl = normalizedServerUrl(options.serverUrl, { allowInsecure: options.allowInsecureTransport === true || process.env.REMCP_ALLOW_INSECURE_TRANSPORT === 'true' });
   const deviceToken = String(options.deviceToken || '');
   const deviceId = String(options.deviceId || '');
@@ -251,6 +251,11 @@ export async function runAgent(options) {
 
   const respond = createAgentResponder({
     serverUrl, deviceToken,
+    assertResponseAllowed: () => {
+      assertAgentE2eeAdmission(process.env, options.requireE2ee);
+      if (typeof options.readCurrentE2eeRequirement === 'function')
+        assertAgentE2eeAdmission(process.env, options.readCurrentE2eeRequirement());
+    },
     inFlight,
     onPendingChange: delta => { pendingRequests = Math.max(0, pendingRequests + delta); },
     getRuntimeState: () => ({ mcp, runtimeDown, runtimeVersion, runtimeRestarts, callTimeoutMs }),
@@ -293,6 +298,8 @@ export async function runAgent(options) {
     respond, inFlight, sendMetricsSample, reportInstallOnce, flushTelemetry,
     checkForUpdate, schedulePostConnectUpdateChecks, clearPostConnectUpdateChecks, stop,
     checkUpdatesOnConnect: Array.isArray(options.updateRecheckDelaysMs),
+    requireE2ee: options.requireE2ee,
+    readCurrentE2eeRequirement: options.readCurrentE2eeRequirement,
   });
 
   scheduleMetricsSample();

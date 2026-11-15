@@ -22,6 +22,7 @@ import { repairMacTemperatureAfterStart } from './cli/npm-global.mjs';
 import { repairManagedWindowsPowerShellShimOnStart } from './cli/windows-cli-shim.mjs';
 import { run } from './cli/shell.mjs';
 import { updateCommand } from './cli/update.mjs';
+import { effectiveE2eeRequirement, manageE2eePolicy } from './cli/e2ee-policy.mjs';
 function fetchConfiguredServer(url, options) {
   // The URL comes from the locally paired ReMCP config and is used only as the destination;
   // status checks do not upload local file contents.
@@ -42,7 +43,7 @@ function parse(argv) {
 }
 
 function printHelp() {
-  console.log(`ReMCP ${VERSION}\n\nCommands:\n  remcp connect [--no-qr]\n  remcp start\n  remcp status\n  remcp doctor\n  remcp update [--repair] [--no-restart]\n  remcp auto-update [status|on|off]\n  remcp install\n  remcp uninstall\n  remcp uninstall --purge\n  remcp telemetry [status|on|off]\n  remcp godmode [status|on|off]\n  remcp --version\n\nPairing commands are generated in the ReMCP workspace.\n\nUsage metrics are opt-out (tool names, timings, outcomes only, sent to your own ReMCP\naccount through the paired agent). Disable them at any time with: remcp telemetry off\n\nUnrestricted mode (remcp godmode on) lifts the access roots and the command guardrails for this\ncomputer only. The MCP configuration tool cannot enable it; protect remote terminal access.`);
+  console.log(`ReMCP ${VERSION}\n\nCommands:\n  remcp connect [--no-qr]\n  remcp start\n  remcp status\n  remcp doctor\n  remcp update [--repair] [--no-restart]\n  remcp auto-update [status|on|off]\n  remcp e2ee [status|require|off] (requires an unavailable transport; fail closed)\n  remcp install\n  remcp uninstall\n  remcp uninstall --purge\n  remcp telemetry [status|on|off]\n  remcp godmode [status|on|off]\n  remcp --version\n\nPairing commands are generated in the ReMCP workspace.\n\nUsage metrics are opt-out (tool names, timings, outcomes only, sent to your own ReMCP\naccount through the paired agent). Disable them at any time with: remcp telemetry off\n\nUnrestricted mode (remcp godmode on) lifts the access roots and the command guardrails for this\ncomputer only. The MCP configuration tool cannot enable it; protect remote terminal access.`);
 }
 
 // The running agent snapshots update policy at startup. A saved toggle alone does not
@@ -222,6 +223,15 @@ export async function main(argv = process.argv.slice(2)) {
     const telemetry = telemetryState();
     const agent = await runAgent({
       ...cfg,
+      // Recheck owner policy on every live relay heartbeat. A failed
+      // supervisor restart must not leave an already connected TLS-only agent.
+      readCurrentE2eeRequirement:()=>{
+        const latest=loadConfig(false);
+        if(!latest||latest.deviceId!==cfg.deviceId||
+           latest.deviceToken!==cfg.deviceToken)
+          throw new Error('Paired ReMCP config no longer matches running agent');
+        return effectiveE2eeRequirement(latest);
+      },
       autoUpdate: autoUpdateEnabled(cfg),
       trustRuntime: cfg.trustRuntime === true
         || process.env.REMCP_TRUST_RUNTIME === '1'
@@ -266,6 +276,11 @@ export async function main(argv = process.argv.slice(2)) {
       return;
     }
     throw new Error('Usage: remcp auto-update [status|on|off]');
+  }
+
+  if (command === 'e2ee') {
+    manageE2eePolicy(positional[0]);
+    return;
   }
 
   if (command === 'telemetry') {
@@ -421,6 +436,8 @@ export async function main(argv = process.argv.slice(2)) {
         upToDate,
       },
       telemetry:{ enabled:telemetry.enabled },
+      e2ee:{ requirementConfigured:effectiveE2eeRequirement(cfg), available:false,
+        transport:'tls-only', liveSessionVerified:false },
     };
     if (command === 'doctor') {
       report.diagnosis = await diagnoseLocalRuntime(cfg);

@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.258 — 2026-11-15
+
+- Keep `@remcp/runtime` exactly version-aligned with the candidate public client and its DLL-free source-release Windows manifests.
+- Export seven existing `fast-check` property tests for browser SSRF, DNS bypasses, private destinations and CDP loopback as a `.test.js` file while preserving their seeds and execution in `npm test`.
+- Carry future CodeQL workflow detection and SLSA GitHub release provenance requirements; these do not change MCP tool permissions or native helper payloads.
+- Harden existing opt-in Windows WebRTC QA: descriptor-pinned executable hashing and fail-closed TURN credential source verification (owner/DACL twice, pathname identity after read, explicit EOF). No new capture, control or E2EE permissions.
+- Maintain the v0.2.257 Linux unit ownership protection in the matching client. No additional native capture binary, E2EE implementation, or remote control permission is included.
+
 ## 0.2.257 — 2026-11-15
 
 - Provide a version-matched first-party runtime for the Linux systemd client hardening release.

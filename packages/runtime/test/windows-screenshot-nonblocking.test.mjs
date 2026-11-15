@@ -27,7 +27,11 @@ test('Windows screenshot does not block other event loop tasks while child is ru
   let childCompleted = false;
   const capture = runWindowsScreenshot('C:\\Temp\\test.png', () =>
     execFileAsync(process.execPath, ['-e', 'setTimeout(() => process.stdout.write("done"), 160)'], {
-      timeout: 1000, encoding: 'utf8', maxBuffer: 1024,
+      // The subprocess only proves the capture stays asynchronous. On a
+      // contended QA host a cold Node child may take >1s to be scheduled;
+      // do not mistake that for an application screenshot timeout. The
+      // production PowerShell deadline is separately asserted as 30s.
+      timeout: 10_000, encoding: 'utf8', maxBuffer: 1024,
     }).finally(() => { childCompleted = true; }));
   await new Promise(resolve => setTimeout(resolve, 20));
   assert.equal(childCompleted, false);

@@ -17,13 +17,16 @@ const HANDSHAKE_TIMEOUT_MS = 12_000;
 // E2EE is not negotiated by the hosted relay in this release. A caller that
 // explicitly requires device-to-client encryption must NEVER silently use the
 // TLS-only relay. The default is unchanged for existing installations.
-export function assertAgentE2eeAdmission(environment = process.env) {
+export function assertAgentE2eeAdmission(environment = process.env, configRequired = false) {
+  // The owner-controlled config survives service restarts and auto-updates.
+  // Env requirements remain stronger: "0" cannot override a persisted "true".
+  if (configRequired !== true && configRequired !== false && configRequired !== undefined)
+    throw new Error('Invalid persisted E2EE requirement: expected boolean');
   const requirement = environment?.REMCP_REQUIRE_E2EE;
-  if (requirement === undefined || requirement === '0') return;
-  if (requirement === '1') {
+  if (requirement !== undefined && requirement !== '0' && requirement !== '1')
+    throw new Error('Invalid REMCP_REQUIRE_E2EE: expected 0 or 1');
+  if (requirement === '1' || configRequired === true)
     throw new Error('E2EE required but unavailable in this release; refusing TLS-only relay connection');
-  }
-  throw new Error('Invalid REMCP_REQUIRE_E2EE: expected 0 or 1');
 }
 
 // Higher-level agent owns runtime supervision/telemetry; this controller owns only relay transport.
@@ -33,10 +36,16 @@ export function createAgentRelayConnection({
   setSocket, getHelloState, respond, inFlight,
   sendMetricsSample, reportInstallOnce, flushTelemetry,
   checkForUpdate, schedulePostConnectUpdateChecks, clearPostConnectUpdateChecks, stop,
-  checkUpdatesOnConnect = false,
+  checkUpdatesOnConnect = false, requireE2ee = false,
+  readCurrentE2eeRequirement = null,
   heartbeatIntervalMs = HEARTBEAT_INTERVAL_MS, handshakeTimeoutMs = HANDSHAKE_TIMEOUT_MS,
 }) {
-  assertAgentE2eeAdmission();
+  const assertCurrentPolicy=()=>{
+    assertAgentE2eeAdmission(process.env,requireE2ee);
+    if(typeof readCurrentE2eeRequirement==='function')
+      assertAgentE2eeAdmission(process.env,readCurrentE2eeRequirement());
+  };
+  assertCurrentPolicy();
   let revoked = false;
   let reconnectTimer = null;
   let askedToReconnect = false;
@@ -51,6 +60,18 @@ export function createAgentRelayConnection({
     ? Math.min(120_000, Math.floor(handshakeTimeoutMs)) : HANDSHAKE_TIMEOUT_MS;
   let clearActiveHeartbeat = () => {};
   let activeSocket = null;
+  function enforceActivePolicy(ws) {
+    try{assertCurrentPolicy();return true;}
+    catch{
+      // A persisted strict policy must revoke a TLS-only socket even if a
+      // managed service restart failed. Never acknowledge E2EE protection.
+      console.error('ReMCP E2EE requirement changed: stopping TLS-only agent.');
+      ws.terminate();
+      markStopping?.();
+      void Promise.resolve().then(()=>stop?.()).catch(()=>{});
+      return false;
+    }
+  }
   function scheduleReconnect(delay) {
     if (isStopping() || revoked || reconnectTimer) return;
     // Keep the upper-bound guard in control flow immediately before the timer sink. CodeQL's
@@ -68,7 +89,14 @@ export function createAgentRelayConnection({
     const safeDelay = Math.max(100, Math.floor(numericDelay));
     reconnectTimer = setTimeout(() => {
       reconnectTimer = null;
-      connect();
+      try{connect();}
+      catch{
+        // A stricter local policy can take effect while the socket is offline.
+        // Stop rather than letting an uncaught timer exception re-dial TLS.
+        console.error('ReMCP strict E2EE policy refused a TLS-only reconnect.');
+        markStopping?.();
+        void Promise.resolve().then(()=>stop?.()).catch(()=>{});
+      }
     }, safeDelay);
     // A failed handshake may leave no other referenced handles. Keep the reconnect
     // timer referenced, or Node exits 0 and a supervisor can restart it forever.
@@ -90,7 +118,7 @@ export function createAgentRelayConnection({
     if (isStopping() || revoked) return;
     // Policy can become stricter after controller creation. Re-admit before
     // every first dial or reconnect, not only when creating the controller.
-    assertAgentE2eeAdmission();
+    assertCurrentPolicy();
     if (activeSocket && (activeSocket.readyState === WebSocket.OPEN ||
       activeSocket.readyState === WebSocket.CONNECTING)) return;
     // The device token is intentionally sent only to the configured ReMCP relay during the
@@ -143,6 +171,7 @@ export function createAgentRelayConnection({
     });
     setSocket(ws);
     ws.on('open', () => {
+      if(!enforceActivePolicy(ws))return;
       if (activeSocket !== ws || isStopping()) {
         ws.terminate();
         return;
@@ -157,6 +186,7 @@ export function createAgentRelayConnection({
       // Probe relay liveness client-side and terminate a stale socket to reconnect.
       heartbeatTimer = setInterval(() => {
         if (ws.readyState !== WebSocket.OPEN) return;
+        if(!enforceActivePolicy(ws))return;
         if (awaitingPong && ++missedPongTicks >= HEARTBEAT_MAX_MISSED_TICKS) {
           console.error('ReMCP relay heartbeat timeout; terminating stale connection.');
           ws.terminate();
@@ -197,7 +227,7 @@ export function createAgentRelayConnection({
       missedPongTicks = 0;
     });
     ws.on('message', raw => {
-      if (activeSocket !== ws) return;
+      if (activeSocket !== ws || !enforceActivePolicy(ws)) return;
       let message;
       try { message = JSON.parse(raw.toString()); } catch { return; }
       if (message?.type === 'reconnect') {
