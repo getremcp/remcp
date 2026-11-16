@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.260 — 2026-11-16
+
+- Add owner-local X11 capture with bounded BGRA frames, primary-monitor refresh and single-thread resource cleanup.
+- Preserve OS authority checks, Wayland Portal isolation, encrypted session input and confirmed native Stop.
+
 ## 0.2.259 — 2026-11-16
 
 - Add source-only optional native WebRTC media and a pinned vendor wheel lock for Windows, macOS and Linux, installed through the matching first-party client.

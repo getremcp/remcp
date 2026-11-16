@@ -59,6 +59,11 @@ export function desktopMediaPlatformEnvironment(env=process.env,platform=process
   const systemRoot=value('SystemRoot')||value('WINDIR');
   return {SystemRoot:systemRoot,WINDIR:systemRoot,LOCALAPPDATA:value('LOCALAPPDATA')};
 }
+export function desktopMediaNativeSource(env=process.env,platform=process.platform){
+  if(platform==='linux')return !env.WAYLAND_DISPLAY&&env.XDG_SESSION_TYPE!=='wayland'&&
+    /^:[0-9]{1,3}(?:\.[0-9]{1,2})?$/.test(env.DISPLAY||'')?'x11':'portal';
+  return {darwin:'avfoundation',win32:'gdigrab'}[platform];
+}
 export function desktopMediaEnvironment(profile,runtimeEntry){
   if(profile===undefined)return {};
   if(profile?.enabled!==true)return {REMCP_WEBRTC_RUNTIME_PILOT:'0'};
@@ -71,7 +76,7 @@ export function desktopMediaEnvironment(profile,runtimeEntry){
       REMCP_WEBRTC_ALLOW_TEST_SOURCE:'0',REMCP_WEBRTC_WINDOWS_PRIVATE_TURN_QA:'0',
       REMCP_WEBRTC_PYTHON:profile.python,
       REMCP_WEBRTC_WORKER_SCRIPT:path.join(directory,'worker_stdio.py'),
-      REMCP_WEBRTC_DEV_SOURCE:{linux:'portal',darwin:'avfoundation',win32:'gdigrab'}[process.platform]};
+      REMCP_WEBRTC_DEV_SOURCE:desktopMediaNativeSource()};
   }catch{return {REMCP_WEBRTC_RUNTIME_PILOT:'0'};}
 }
 export async function installDesktopMedia({python,runtimeEntry,directory,run=execute}){
@@ -89,6 +94,6 @@ export async function installDesktopMedia({python,runtimeEntry,directory,run=exe
   await run(executable,['-m','pip','install','--disable-pip-version-check','--only-binary=:all:',
     '--require-hashes','-r',path.join(source,'requirements.lock')],{inherit:true});
   const probe=path.join(source,'install_probe.py');
-  await run(executable,[probe],{timeout:20000});
+  await run(executable,[probe,'--source',desktopMediaNativeSource()],{timeout:20000});
   return {version:1,protocol:'remcp-media-stdio-v1',enabled:true,python:executable,installedVersion:VERSION};
 }

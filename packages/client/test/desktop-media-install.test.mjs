@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {createHash} from 'node:crypto';
-import {desktopMediaEnvironment,desktopMediaPlatformEnvironment} from '../src/cli/desktop-media-install.mjs';
+import {desktopMediaEnvironment,desktopMediaPlatformEnvironment,desktopMediaNativeSource} from '../src/cli/desktop-media-install.mjs';
 test('explicit disabled or invalid media profile cannot inherit an old QA enablement',()=>{
   assert.equal(desktopMediaEnvironment({enabled:false},'').REMCP_WEBRTC_RUNTIME_PILOT,'0');
   assert.equal(desktopMediaEnvironment({enabled:true},'').REMCP_WEBRTC_RUNTIME_PILOT,'0');
@@ -33,4 +33,13 @@ test('Windows media preserves system paths across a case-sensitive environment s
   const env={SYSTEMROOT:'C:\\Windows',localappdata:'C:\\Users\\Owner\\AppData\\Local'};
   assert.deepEqual(desktopMediaPlatformEnvironment(env,'win32'),{SystemRoot:env.SYSTEMROOT,WINDIR:env.SYSTEMROOT,LOCALAPPDATA:env.localappdata});
   assert.deepEqual(desktopMediaPlatformEnvironment(env,'linux'),{});
+});
+
+test('X11 native source stays local and never overrides a Wayland session',()=>{
+  assert.equal(desktopMediaNativeSource({DISPLAY:':0',XDG_SESSION_TYPE:'x11'},'linux'),'x11');
+  assert.equal(desktopMediaNativeSource({DISPLAY:':0'},'linux'),'x11');
+  for(const env of [{DISPLAY:'host:0'},{DISPLAY:':0',WAYLAND_DISPLAY:'wayland-0'},{DISPLAY:':0',XDG_SESSION_TYPE:'wayland'},{}])
+    assert.equal(desktopMediaNativeSource(env,'linux'),'portal');
+  assert.equal(desktopMediaNativeSource({},'win32'),'gdigrab');
+  assert.equal(desktopMediaNativeSource({},'darwin'),'avfoundation');
 });

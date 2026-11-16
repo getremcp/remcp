@@ -452,7 +452,7 @@ async def main():
     default_source = ("avfoundation" if sys.platform == "darwin" else
                       "gdigrab" if sys.platform == "win32" else "portal")
     parser.add_argument("--source",choices=["synthetic","gst-test","portal",
-                                          "avfoundation","gdigrab"],
+                                          "avfoundation","gdigrab","x11"],
                         default=default_source)
     parser.add_argument("--video-profile",choices=["balanced","sharp"],
                         default="balanced",help="Opt-in 1080p at 8 fps (sharp)")

@@ -32,7 +32,7 @@ node ./src/compact.mjs --print-tools  # compact local façade for scanners/local
 ## Tools
 
 93 tools are implemented in this development branch: the original 44 filesystem/search/terminal/process tools
-plus 49 computer-use, browser, diagnostics, document and unified application tools, including five session-bound WebRTC tools. This source corresponds to @remcp/runtime@0.2.259;
+plus 49 computer-use, browser, diagnostics, document and unified application tools, including five session-bound WebRTC tools. This source corresponds to @remcp/runtime@0.2.260;
 the live local MCP `tools/list` omits optional platform-specific tools that the current computer cannot
 support and emits `notifications/tools/list_changed` when that capability set changes. The stdio server is dual-era: existing 2025-era clients continue to work unchanged, while clients that negotiate MCP `2026-07-28` use `server/discover`, cache hints, unrestricted structured output validation, and `subscriptions/listen` for list-change delivery.
 

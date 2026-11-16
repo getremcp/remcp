@@ -1,4 +1,4 @@
-"""Fail-closed, in-process macOS/Windows desktop capture for aiortc.
+"""Fail-closed, in-process macOS/Windows/X11 desktop capture for aiortc.
 
 FFmpeg/PyAV is loaded inside the isolated stdio worker. No OS permission
 bypass, external capture process, camera, microphone or user-selected input.
@@ -13,13 +13,17 @@ from aiortc import VideoStreamTrack
 def native_source_allowed(source, platform=None):
     target = platform or sys.platform
     return ((target == "darwin" and source == "avfoundation")
-            or (target == "win32" and source == "gdigrab"))
+            or (target == "win32" and source == "gdigrab")
+            or (target == "linux" and source == "x11"))
 
 
 def native_permission_granted(platform=None, *, mac_framework=None,
                               windows_kernel=None, windows_user32=None):
     """Preflight native consent/session without prompting or capturing pixels."""
     target = platform or sys.platform
+    if target == "linux":
+        from xorg_capture import x11_owner_display
+        return x11_owner_display() is not None
     if target == "darwin":
         try:
             framework = mac_framework or ctypes.CDLL(
@@ -135,6 +139,12 @@ class NativeDesktopCapture:
             raise ValueError("invalid_native_screen_source")
         if not permission_check(target):
             raise PermissionError("native_screen_permission_or_session_unavailable")
+        if source == "x11":
+            from xorg_capture import X11VideoTrack
+            self.player = None
+            self.track = PermissionGuardedDesktopTrack(
+                X11VideoTrack(), target, permission_check=permission_check)
+            return
         real_media_player = media_player_cls is None
         if real_media_player:
             from aiortc.contrib.media import MediaPlayer

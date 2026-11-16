@@ -23,6 +23,7 @@ function workerSource(env,platform){
   if(!native)return null;
   const source=env.REMCP_WEBRTC_DEV_SOURCE||native;
   if(source===native)return source;
+  if(platform==='linux'&&source==='x11'&&!env.WAYLAND_DISPLAY&&env.XDG_SESSION_TYPE!=='wayland'&&/^:[0-9]{1,3}(?:\.[0-9]{1,2})?$/.test(env.DISPLAY||''))return source;
   return platform==='linux'&&LINUX_TEST_SOURCES.has(source)&&
     env.REMCP_WEBRTC_ALLOW_TEST_SOURCE==='1'?source:null;
 }
