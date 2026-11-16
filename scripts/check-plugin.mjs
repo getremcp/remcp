@@ -123,9 +123,9 @@ export function hostedToolNamesForProfile(root, profile = 'compact') {
   if (profile === 'compact') return new Set(COMPACT_HOSTED_TOOLS);
   assert.equal(profile, 'review', 'unknown REMCP_PUBLIC_TOOL_PROFILE');
   const raw = JSON.parse(readFileSync(join(root, 'src/tool-catalog.json'), 'utf8'));
-  assert.ok(Array.isArray(raw) && raw.length === 91, 'review profile requires the current 91-operation runtime catalog');
-  const reviewed = raw.filter(tool => !['browser_devtools','desktop_webrtc_offer','desktop_webrtc_heartbeat','desktop_webrtc_stop'].includes(tool.name));
-  assert.equal(reviewed.length,87,'review profile excludes only the four explicitly unreviewable runtime operations');
+  assert.ok(Array.isArray(raw) && raw.length === 93, 'review profile requires the current 93-operation runtime catalog');
+  const reviewed = raw.filter(tool => !['browser_devtools','desktop_webrtc_offer','desktop_webrtc_heartbeat','desktop_webrtc_stop','desktop_webrtc_status','desktop_webrtc_control'].includes(tool.name));
+  assert.equal(reviewed.length,87,'review profile excludes only the six explicitly unreviewable runtime operations');
   // The public package is dependency-free: derive the exact standalone names
   // from the checked-in runtime schemas without importing the hosted MCP server.
   const prefixes = {
@@ -135,6 +135,7 @@ export function hostedToolNamesForProfile(root, profile = 'compact') {
     audio:'audio',power_action:'power',edit_document:'document',pdf_action:'pdf',
   };
   const names = [...REVIEW_ACCOUNT_TOOLS, ...reviewed.flatMap(tool => {
+    if (tool.name === 'app_execute') return ['app_action'];
     const prefix = prefixes[tool.name];
     if (!prefix) return [tool.name];
     const operations = tool.name === 'edit_document'

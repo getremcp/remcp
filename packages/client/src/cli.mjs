@@ -22,7 +22,8 @@ import { repairMacTemperatureAfterStart } from './cli/npm-global.mjs';
 import { repairManagedWindowsPowerShellShimOnStart } from './cli/windows-cli-shim.mjs';
 import { run } from './cli/shell.mjs';
 import { updateCommand } from './cli/update.mjs';
-import { effectiveE2eeRequirement, manageE2eePolicy } from './cli/e2ee-policy.mjs';
+import {manageDesktopMedia} from './cli/desktop-media.mjs';
+import { describeLocalE2ee, effectiveE2eeRequirement, manageE2eePolicy } from './cli/e2ee-policy.mjs';
 function fetchConfiguredServer(url, options) {
   // The URL comes from the locally paired ReMCP config and is used only as the destination;
   // status checks do not upload local file contents.
@@ -43,7 +44,7 @@ function parse(argv) {
 }
 
 function printHelp() {
-  console.log(`ReMCP ${VERSION}\n\nCommands:\n  remcp connect [--no-qr]\n  remcp start\n  remcp status\n  remcp doctor\n  remcp update [--repair] [--no-restart]\n  remcp auto-update [status|on|off]\n  remcp e2ee [status|require|off] (requires an unavailable transport; fail closed)\n  remcp install\n  remcp uninstall\n  remcp uninstall --purge\n  remcp telemetry [status|on|off]\n  remcp godmode [status|on|off]\n  remcp --version\n\nPairing commands are generated in the ReMCP workspace.\n\nUsage metrics are opt-out (tool names, timings, outcomes only, sent to your own ReMCP\naccount through the paired agent). Disable them at any time with: remcp telemetry off\n\nUnrestricted mode (remcp godmode on) lifts the access roots and the command guardrails for this\ncomputer only. The MCP configuration tool cannot enable it; protect remote terminal access.`);
+  console.log(`ReMCP ${VERSION}\n\nCommands:\n  remcp connect [--no-qr]\n  remcp start\n  remcp status\n  remcp doctor\n  remcp update [--repair] [--no-restart]\n  remcp auto-update [status|on|off]\n  remcp desktop [status|install --python <absolute path>|off]\n  remcp e2ee [init|rotate|status|require|off|trust|peers|revoke|client-init|client-pin|client-login]\n  remcp mcp --device <id> (encrypted stdio MCP for AI clients)\n  remcp install\n  remcp uninstall\n  remcp uninstall --purge\n  remcp telemetry [status|on|off]\n  remcp godmode [status|on|off]\n  remcp --version\n\nPairing commands are generated in the ReMCP workspace.\n\nUsage metrics are opt-out (tool names, timings, outcomes only, sent to your own ReMCP\naccount through the paired agent). Disable them at any time with: remcp telemetry off\n\nUnrestricted mode (remcp godmode on) lifts the access roots and the command guardrails for this\ncomputer only. The MCP configuration tool cannot enable it; protect remote terminal access.`);
 }
 
 // The running agent snapshots update policy at startup. A saved toggle alone does not
@@ -83,6 +84,10 @@ export async function main(argv = process.argv.slice(2)) {
     return;
   }
 
+  if (command === 'mcp') {
+    const { runEncryptedMcp } = await import('./cli/e2ee-mcp.mjs');
+    await runEncryptedMcp(flags); return;
+  }
   if (command === 'connect') {
     // Like the desktop-app flow this mirrors: with no flags the command talks to the official
     // server, prints a code, opens the browser to approve it, and pairs. `--code` keeps working for
@@ -239,7 +244,12 @@ export async function main(argv = process.argv.slice(2)) {
       telemetryEnabled: telemetry.enabled,
       installReported: telemetry.installReported,
       installSpec: `${PACKAGE_NAME}@${VERSION}`,
-      persistState: patch => saveConfig({ ...cfg, ...patch }),
+      persistState: patch => {
+        const latest=loadConfig(false);
+        if(!latest||latest.deviceId!==cfg.deviceId||latest.deviceToken!==cfg.deviceToken)
+          throw new Error('Local pairing changed while persisting agent state');
+        saveConfig({ ...latest, ...patch });
+      },
     });
     // Legacy Node supervisors use IPC; the Windows Job Object launcher does not.
     // On Windows, the kernel job terminates the process tree when its owner exits.
@@ -278,8 +288,10 @@ export async function main(argv = process.argv.slice(2)) {
     throw new Error('Usage: remcp auto-update [status|on|off]');
   }
 
+  if (command === 'desktop') { await manageDesktopMedia(positional[0],flags); return; }
+
   if (command === 'e2ee') {
-    manageE2eePolicy(positional[0]);
+    await manageE2eePolicy(positional[0], flags);
     return;
   }
 
@@ -436,8 +448,7 @@ export async function main(argv = process.argv.slice(2)) {
         upToDate,
       },
       telemetry:{ enabled:telemetry.enabled },
-      e2ee:{ requirementConfigured:effectiveE2eeRequirement(cfg), available:false,
-        transport:'tls-only', liveSessionVerified:false },
+      e2ee:await describeLocalE2ee(cfg),
     };
     if (command === 'doctor') {
       report.diagnosis = await diagnoseLocalRuntime(cfg);

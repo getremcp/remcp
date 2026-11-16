@@ -1,6 +1,7 @@
-// Explicitly opt-in Linux proof: ReMCP device RPC -> isolated aiortc worker
-// via stdio, never a public/native HTTP listener. No OS permission bypass.
-// Not an installed production runtime feature.
+import {validateDeviceIce} from './webrtc-device-ice-contract.mjs';
+import {createWebRtcSessionControl} from './desktop-webrtc-control.mjs';
+// Optional owner-installed media: device RPC -> isolated aiortc worker over
+// private stdio. Native capture still requires the operating system permission.
 import {spawn} from 'node:child_process';
 import {existsSync,lstatSync} from 'node:fs';
 import path from 'node:path';
@@ -72,7 +73,7 @@ export function createDesktopWebRtcBridge({
     throw new RangeError('Invalid WebRTC native Stop exit deadline');
   let child=null, current=null, active=false, started=0, seen=0;
   let stdout='', sequence=0, clock=null, pendingExit=null;
-  let lastExitedSession=null;
+  let lastExitedSession=null,inputEnabled=false,inputStopping=false,inputEpoch='',stopRequest=null;
   const waits=new Map();
 
   function rejectWaits(){
@@ -90,12 +91,12 @@ export function createDesktopWebRtcBridge({
     if(clock){clearIntervalFn(clock);clock=null;}
     const target=child,session=current;
     const frozenTree=platform==='win32'&&Boolean(env.REMCP_WEBRTC_FROZEN_WORKER);
-    child=null;current=null;active=false;stdout='';
+    child=null;current=null;active=false;inputEnabled=false;stdout='';
     rejectWaits();
     if(!target)return pendingExit?.promise??Promise.resolve(false);
     let confirmExit;
     const exited=new Promise(resolve=>{confirmExit=resolve;});
-    const marker={target,promise:exited};
+    const marker={target,promise:exited,session};
     pendingExit=marker;
     let escalation;
     const onExit=()=>{
@@ -266,12 +267,15 @@ export function createDesktopWebRtcBridge({
     worker.once('close',()=>{if(child===worker)shutdown(true);});
   }
 
-  async function offer({session_id:sid,mode,sdp},extra={}){
+  async function offer({session_id:sid,mode,sdp,input_control=false},extra={}){
     if(!UUID.test(String(sid))||mode!=='view'||typeof sdp!=='string'||
        Buffer.byteLength(sdp)>MAX_SDP||sdp.length<100)
       throw new Error('Invalid view-only WebRTC offer');
-    if(current!==null||child||pendingExit)
+    if(!stopRequest&&!child&&!pendingExit&&!control.pending)inputStopping=false;
+    if(current!==null||child||pendingExit||control.pending||inputStopping||stopRequest)
       throw new Error('Another WebRTC session is active');
+    if(typeof input_control!=='boolean')throw new Error('Invalid input consent');
+    inputEnabled=input_control;inputStopping=false;inputEpoch=String(now())+':'+sid;
     lastExitedSession=null;
     current=sid;started=seen=now();active=false;
     let cancelled=false;
@@ -294,6 +298,11 @@ export function createDesktopWebRtcBridge({
         const configured=await send('ice-config',sid,{config},offerTimeout);
         if(configured.sessionId!==sid)
           throw new Error('Invalid Windows private TURN acknowledgement');
+      }
+      if(extra.nativeIce){
+        const config=validateDeviceIce(extra.nativeIce,now());
+        const configured=await send('ice-config',sid,{config},offerTimeout);
+        if(configured.sessionId!==sid)throw new Error('Invalid private device ICE acknowledgement');
       }
       const answer=await send('offer',sid,{sdp},offerTimeout);
       if(cancelled||!child||current!==sid||answer.sessionId!==sid||
@@ -322,19 +331,23 @@ export function createDesktopWebRtcBridge({
       return jsonResult({ok:true,sessionId:sid});
     }catch(error){shutdown();throw error;}
   }
-  async function stop({session_id:sid}){
+  async function stopCore(sid){
     if(!UUID.test(String(sid)))
       throw new Error('WebRTC viewer session not found');
     // The native peer may close first; an observed child exit confirms its
     // media peer is gone. Only that exact completed session can be ACKed.
-    if(!child&&current===null&&!pendingExit&&lastExitedSession===sid)
+    if(!child&&current===null&&!pendingExit&&!control.pending&&lastExitedSession===sid)
       return jsonResult({ok:true,sessionId:sid});
     if(sid!==current||!child)
       throw new Error('WebRTC viewer session not found');
+    inputStopping=true;
     try{
       const reply=await send('stop',sid,{},4000);
       if(reply.sessionId!==sid)throw new Error('Invalid WebRTC stop acknowledgement');
-    }catch(error){shutdown();throw error;}
+    }catch{
+      // The peer may close before Stop reaches its worker. A missing stdio
+      // acknowledgement cannot override subsequent verified native exit.
+    }
     const exited=shutdown();
     let timer;
     // PyInstaller onefile owns a bootstrapper plus a native media child.
@@ -342,16 +355,33 @@ export function createDesktopWebRtcBridge({
     // the ordinary Python/Mac/Linux Stop limit remains unchanged.
     const stopBudget=platform==='win32'&&env.REMCP_WEBRTC_FROZEN_WORKER
       ? frozenStopExitTimeoutMs:stopExitTimeoutMs;
-    const confirmed=lastExitedSession===sid||await Promise.race([
-      exited,
+    const drained=Promise.all([lastExitedSession===sid?true:exited,control.drain().then(()=>true)])
+      .then(results=>results.every(Boolean));
+    const confirmed=await Promise.race([
+      drained,
       new Promise(resolve=>{timer=setTimeout(()=>resolve(false),stopBudget);}),
     ]).finally(()=>clearTimeout(timer));
     if(!confirmed)
       throw new Error('WebRTC worker Stop unconfirmed: native process still running');
+    inputStopping=false;
     return jsonResult({ok:true,sessionId:sid});
   }
+  function stop({session_id:sid}){
+    if(stopRequest){
+      if(stopRequest.sid!==sid)return Promise.reject(new Error('WebRTC viewer session not found'));
+      return stopRequest.promise;
+    }
+    const promise=stopCore(sid).finally(()=>{stopRequest=null;});
+    stopRequest={sid,promise};return promise;
+  }
+  const state=()=>{
+    if(expired())shutdown();
+    if(!stopRequest&&!child&&!pendingExit&&!control.pending)inputStopping=false;
+    return {sessionId:current??pendingExit?.session??(control.pending?lastExitedSession:null),active,inputEnabled,stopping:inputStopping||Boolean(pendingExit)||(!current&&control.pending>0),epoch:inputEpoch};
+  };
+  const control=createWebRtcSessionControl({state,now});
   // Do not expose the internal alreadyExited override to callers.
-  return {offer,heartbeat,stop,shutdown:()=>shutdown(),
+  return {offer,heartbeat,stop,control,status:()=>{const {epoch,...value}=state();return jsonResult(value);},shutdown:()=>shutdown(),
     get activeSession(){return current;},
   };
 }
@@ -361,4 +391,6 @@ export const desktopWebRtcHandlers={
   desktop_webrtc_offer:(args,extra)=>bridge.offer(args,extra),
   desktop_webrtc_heartbeat:args=>bridge.heartbeat(args),
   desktop_webrtc_stop:args=>bridge.stop(args),
+  desktop_webrtc_status:()=>bridge.status(),
+  desktop_webrtc_control:(args,extra)=>bridge.control(args,extra),
 };

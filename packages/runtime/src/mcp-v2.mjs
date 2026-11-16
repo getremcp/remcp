@@ -56,7 +56,7 @@ export async function startRuntimeMcpServer({ version, instructions, onError = (
       const registered = server.registerTool(
         definition.name,
         toolConfig(definition, fromJsonSchema),
-        async (args, context) => invokeTool(definition.name, args || {}, { signal: context?.mcpReq?.signal }),
+        async (args, context) => invokeTool(definition.name, args || {}, { signal: context?.mcpReq?.signal, nativeIce:context?.mcpReq?._meta?.['remcp/native-ice'] }),
       );
       registrations.set(definition.name, registered);
        if (!initiallySupported.has(definition.name)) registered.disable();

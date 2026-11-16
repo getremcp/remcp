@@ -50,7 +50,7 @@ try {
 
 export function windowsNativeWorkerTrusted(filename,{
   env=process.env,run=spawnSync,statFile=lstatSync,now=Date.now,
-  cache=null,extension='.py',timeoutMs=3500,
+  cache=null,extension='.py',timeoutMs=10000,
 }={}){
   if(typeof filename!=='string'||!path.win32.isAbsolute(filename)||
      typeof env.LOCALAPPDATA!=='string'||!path.win32.isAbsolute(env.LOCALAPPDATA)||
@@ -69,8 +69,7 @@ export function windowsNativeWorkerTrusted(filename,{
       return cache.valid;
     const exe=path.win32.join(env.SystemRoot,'System32',
       'WindowsPowerShell','v1.0','powershell.exe');
-    const result=run(exe,['-NoProfile','-NonInteractive','-EncodedCommand',
-      Buffer.from(VERIFY_SCRIPT,'utf16le').toString('base64')],{
+    const result=run(exe,['-NoProfile','-NonInteractive','-Command',VERIFY_SCRIPT],{
       encoding:'utf8',timeout:timeoutMs,windowsHide:true,maxBuffer:4096,
       env:{
         SystemRoot:env.SystemRoot,WINDIR:env.WINDIR||env.SystemRoot,

@@ -1,10 +1,11 @@
 import os from 'node:os';
+import {callAgentRuntimeTool} from './agent-media-ice.mjs';
 import { VERSION } from './version.mjs';
 import { runAgentNetworkProbe } from './agent-network-probe-client.mjs';
 import { sendRelayMessage } from './agent-utilities.mjs';
 
 export function createAgentResponder({ inFlight, onPendingChange, getRuntimeState, serverUrl, deviceToken,
-  assertResponseAllowed = () => {},
+  assertResponseAllowed = () => {}, assertRequestAllowed = () => {}, e2eeEndpoint = null,
 }) {
   async function respond(ws, message) {
     onPendingChange(1);
@@ -13,7 +14,7 @@ export function createAgentResponder({ inFlight, onPendingChange, getRuntimeStat
     const controller = new AbortController();
     inFlight.set(message.id, controller);
     const reply = payload => {
-      try { assertResponseAllowed(); }
+      try { assertResponseAllowed(message); }
       catch {
         // Policy can tighten while a tool awaits I/O. Do not transmit even
         // an error over the old TLS-only session after local revocation.
@@ -25,15 +26,21 @@ export function createAgentResponder({ inFlight, onPendingChange, getRuntimeStat
     };
     const { mcp, runtimeDown, runtimeVersion, runtimeRestarts, callTimeoutMs } = getRuntimeState();
     try {
+      assertRequestAllowed(message);
       let result;
-      if (message.method === 'ping') {
+      if (message.method === 'e2ee/identity' && e2eeEndpoint) {
+        result = e2eeEndpoint.identity();
+      } else if (message.method === 'e2ee/packet' && e2eeEndpoint) {
+        try { result = await e2eeEndpoint.handle(message.params?.packet, { signal:controller.signal }); }
+        catch { throw new Error('e2ee_request_rejected'); }
+      } else if (message.method === 'ping') {
         result = { ok: true, hostname: os.hostname(), platform: process.platform, arch: process.arch, uptimeSeconds: Math.floor(os.uptime()), agentVersion: VERSION, runtimeVersion, runtimeRestarts };
       } else if (message.method === 'network_probe') {
         result = await runAgentNetworkProbe({serverUrl,deviceToken,signal:controller.signal});
       } else if (!runtimeDown && mcp) {
         const options = { timeout: callTimeoutMs, signal: controller.signal };
         if (message.method === 'tools/list') result = await mcp.listTools(undefined, options);
-        else if (message.method === 'tools/call') result = await mcp.callTool(message.params, undefined, options);
+        else if (message.method === 'tools/call') result = await callAgentRuntimeTool({mcp,params:message.params,options,serverUrl,deviceToken});
         else throw new Error(`Unsupported relay method: ${message.method}`);
       } else {
         throw new Error('The ReMCP local runtime is restarting. Retry in a few seconds.');

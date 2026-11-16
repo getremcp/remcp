@@ -1,7 +1,8 @@
-// Persistent device-to-client E2EE requirement: an explicit owner safety
-// policy, not an implementation of E2EE. Hosted transport is TLS-only today.
+// Owner-controlled encryption identity, peer grants, and no-downgrade policy.
 import process from 'node:process';
 import { loadConfig, saveConfig } from './config.mjs';
+import { manageEncryptedClient } from './e2ee-client-profile.mjs';
+import { loadDeviceE2eeProfile, initializeDeviceE2ee, manageE2eePeer } from './e2ee-identity.mjs';
 import { restartPersistentServiceIfInstalled } from './service.mjs';
 
 export function persistedE2eeRequired(config) {
@@ -32,25 +33,55 @@ export function setE2eeRequirement(config, required, {
   return restart(next, { deferLinux: true, deferWindows: true });
 }
 
-export function manageE2eePolicy(action = 'status') {
+export async function describeLocalE2ee(config){
+  const requirementConfigured=effectiveE2eeRequirement(config);
+  try{
+    const profile=await loadDeviceE2eeProfile(config);
+    return {requirementConfigured,available:Boolean(profile),
+      transport:profile?'remcp-hpke-auth-p256-v1':'tls-only',liveSessionVerified:false,
+      ...(profile?{fingerprint:profile.identity.fingerprint}:{})};
+  }catch{
+    return {requirementConfigured,available:false,transport:'unavailable',liveSessionVerified:false,
+      reason:'OS vault locked or local pairing no longer matches its encryption identity'};
+  }
+}
+export async function manageE2eePolicy(action = 'status', flags = {}) {
   const config = loadConfig(false) || {};
   const mode = String(action || 'status').toLowerCase();
+  if (mode.startsWith('client-')) {
+    console.log(JSON.stringify(await manageEncryptedClient(mode,flags),null,2));
+    return;
+  }
+  if (mode === 'init' || mode === 'rotate') {
+    const publicIdentity = await initializeDeviceE2ee(config,{rotate:mode==='rotate'});
+    const next = { ...config, e2eeIdentity:true };
+    saveConfig(next);
+    console.log(JSON.stringify({ ...publicIdentity, device:config.deviceId,
+      next:'Verify the client fingerprint independently, then use remcp e2ee trust --public-key <key> --fingerprint <fingerprint> --mode read|control. remcp e2ee require rejects plaintext tool calls.' }, null, 2));
+    restartPersistentServiceIfInstalled(next, { deferLinux:true, deferWindows:true });
+    return;
+  }
+  if (['trust','peers','revoke'].includes(mode)) {
+    console.log(JSON.stringify(await manageE2eePeer(config, mode, flags), null, 2));
+    if(mode==='revoke')restartPersistentServiceIfInstalled(config,{deferLinux:true,deferWindows:true});
+    return;
+  }
   if (mode === 'status') {
+    const status = await describeLocalE2ee(config);
     console.log(JSON.stringify({
       required: effectiveE2eeRequirement(config),
       persisted: persistedE2eeRequired(config),
-      available: false,
-      transport: 'tls-only',
-      behavior: 'An E2EE requirement refuses hosted relay connections; it does not enable E2EE.',
+      ...status,
+      behavior: 'Strict mode accepts only authenticated encrypted tool calls from locally pinned peers.',
     }, null, 2));
     return;
   }
   if (!['require', 'on', 'off'].includes(mode))
-    throw new Error('Usage: remcp e2ee [status|require|off]');
+    throw new Error('Usage: remcp e2ee [init|rotate|status|require|off|trust|peers|revoke]');
   const required = mode !== 'off';
   const restarted = setE2eeRequirement(config, required);
   if (required) {
-    console.log('E2EE required: ReMCP will refuse TLS-only relay connections until genuine E2EE is implemented.');
+    console.log('E2EE required: plaintext tool calls are refused. An initialized OS-vault identity and a trusted client are required.');
   } else {
     console.log('Persistent E2EE requirement disabled; REMCP_REQUIRE_E2EE=1 still takes precedence.');
   }

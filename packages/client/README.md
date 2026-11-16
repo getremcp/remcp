@@ -145,6 +145,16 @@ the client and the runtime, and restarts the service so it takes effect immediat
 - Revoking a device in the workspace closes the connection; the agent then stops retrying and says so
   instead of reconnecting forever.
 
+## Encrypted AI access and desktop media
+
+Initialize the paired device with `remcp e2ee init`, independently verify its fingerprint, and approve each client locally with `remcp e2ee trust --public-key <key> --fingerprint <fingerprint> --mode read|control`. `remcp e2ee require` rejects plaintext tool calls. Private identities stay in macOS Keychain, Windows CurrentUser DPAPI or Linux Secret Service.
+
+On the computer running your AI application, use `remcp e2ee client-init`, `remcp e2ee client-pin --device <UUID> --public-key <device key> --fingerprint <device fingerprint>`, then `remcp e2ee client-login --device <UUID>`. Configure the AI application's stdio server to launch `remcp mcp --device <UUID>`. The local bridge decrypts the device's tools and results; the dedicated hosted relay forwards opaque HPKE packets. Ordinary hosted MCP clients still use their existing authorization and TLS.
+
+For native WebRTC screen capture, run `remcp desktop install --python <absolute path to trusted Python 3.11–3.14>`. Vendor dependencies install into a private virtual environment with pinned wheel hashes. Screen capture requires explicit Start and operating system permission. Optional control is session-bound; Stop waits for worker exit and queued input completion. `remcp desktop status` reports availability and `remcp desktop off` disables media.
+
+See the repository's [enrollment and encryption boundaries](../../docs/E2EE.md), including browser key enrollment, independent fingerprints, revocation and browser JavaScript delivery trust.
+
 ## Development
 
 ```bash

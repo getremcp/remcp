@@ -14,10 +14,9 @@ const HEARTBEAT_INTERVAL_MS = 15_000;
 // pong must not create a new device session during transient NIC packet loss.
 const HEARTBEAT_MAX_MISSED_TICKS = 2;
 const HANDSHAKE_TIMEOUT_MS = 12_000;
-// E2EE is not negotiated by the hosted relay in this release. A caller that
-// explicitly requires device-to-client encryption must NEVER silently use the
-// TLS-only relay. The default is unchanged for existing installations.
-export function assertAgentE2eeAdmission(environment = process.env, configRequired = false) {
+// Only a loaded device endpoint with an OS-vault identity admits strict E2EE.
+// Environment variables cannot manufacture encryption availability.
+export function assertAgentE2eeAdmission(environment = process.env, configRequired = false, secureTransportReady = false) {
   // The owner-controlled config survives service restarts and auto-updates.
   // Env requirements remain stronger: "0" cannot override a persisted "true".
   if (configRequired !== true && configRequired !== false && configRequired !== undefined)
@@ -25,7 +24,7 @@ export function assertAgentE2eeAdmission(environment = process.env, configRequir
   const requirement = environment?.REMCP_REQUIRE_E2EE;
   if (requirement !== undefined && requirement !== '0' && requirement !== '1')
     throw new Error('Invalid REMCP_REQUIRE_E2EE: expected 0 or 1');
-  if (requirement === '1' || configRequired === true)
+  if ((requirement === '1' || configRequired === true) && secureTransportReady !== true)
     throw new Error('E2EE required but unavailable in this release; refusing TLS-only relay connection');
 }
 
@@ -37,13 +36,13 @@ export function createAgentRelayConnection({
   sendMetricsSample, reportInstallOnce, flushTelemetry,
   checkForUpdate, schedulePostConnectUpdateChecks, clearPostConnectUpdateChecks, stop,
   checkUpdatesOnConnect = false, requireE2ee = false,
-  readCurrentE2eeRequirement = null,
+  readCurrentE2eeRequirement = null, secureTransportReady = false,
   heartbeatIntervalMs = HEARTBEAT_INTERVAL_MS, handshakeTimeoutMs = HANDSHAKE_TIMEOUT_MS,
 }) {
   const assertCurrentPolicy=()=>{
-    assertAgentE2eeAdmission(process.env,requireE2ee);
+    assertAgentE2eeAdmission(process.env,requireE2ee,secureTransportReady);
     if(typeof readCurrentE2eeRequirement==='function')
-      assertAgentE2eeAdmission(process.env,readCurrentE2eeRequirement());
+      assertAgentE2eeAdmission(process.env,readCurrentE2eeRequirement(),secureTransportReady);
   };
   assertCurrentPolicy();
   let revoked = false;
@@ -150,7 +149,11 @@ export function createAgentRelayConnection({
       setSocket(null);
       const handshakeRevoked = String(response.headers['x-remcp-revoked'] || '') === '1';
       const handshakeDisabled = String(response.headers['x-remcp-disabled'] || '') === '1';
-      if (handshakeRevoked) revoked = true;
+      if (handshakeRevoked) {
+        revoked = true;
+        markStopping?.();
+        void Promise.resolve().then(()=>stop?.()).catch(()=>{});
+      }
       console.error(`ReMCP relay refused the connection (HTTP ${response.statusCode})${handshakeRevoked ? ': this device was revoked' : handshakeDisabled ? ': this device is temporarily disabled' : ''}.`);
       response.resume();
       request.destroy();
@@ -253,6 +256,9 @@ export function createAgentRelayConnection({
       if (isStopping()) return;
       // A replacement owner or revoked device takes precedence over a reconnect hint.
       if (code === 1008 || revoked) {
+        revoked = true;
+        markStopping?.();
+        void Promise.resolve().then(()=>stop?.()).catch(()=>{});
         console.error('ReMCP access for this device was revoked. Pair the machine again from the ReMCP workspace: remcp connect --server <url> --code <code> --install');
         return;
       }

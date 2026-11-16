@@ -16,7 +16,7 @@ export const compactRuntimeGroups = Object.freeze({
     'computer_snapshot','list_windows','ui_snapshot','ui_find','wait_for_ui','display_inventory',
     'computer_action','window_action','launch_app','app_catalog','app_task','app_execute','app_navigate','ui_action','type_text','keyboard','pointer','drag_drop','scroll',
     'clipboard','open_path','reveal_path','notification','record_screen',
-    'desktop_webrtc_offer','desktop_webrtc_heartbeat','desktop_webrtc_stop',
+    'desktop_webrtc_offer','desktop_webrtc_heartbeat','desktop_webrtc_stop','desktop_webrtc_status','desktop_webrtc_control',
   ]),
   view_image: Object.freeze(['read_image','take_screenshot','screenshot_region']),
   control_browser: Object.freeze([

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.259 — 2026-11-16
+
+- Add source-only optional native WebRTC media and a pinned vendor wheel lock for Windows, macOS and Linux, installed through the matching first-party client.
+- Add native media status and session-bound input control with explicit consent, sequence replay rejection and proven native process Stop fencing.
+- Accept validated short-lived TURN data only from the trusted paired agent over private stdio metadata; reject model-selected relay destinations and credentials.
+- Preserve source-only Windows helper integrity and operating system capture/input permissions. No first-party DLL or unsigned media executable is added.
+
 ## 0.2.258 — 2026-11-15
 
 - Keep `@remcp/runtime` exactly version-aligned with the candidate public client and its DLL-free source-release Windows manifests.

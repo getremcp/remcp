@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "protocol": "remcp-media-stdio-v1",
+  "files": {
+    "gst_frames.py": "73ca8cc58f1824f7297cfbb52170129d40d37d85e3c625bf2285014701f2ebaa",
+    "native_platform_capture.py": "de8676b3b1cafb9f9be670287f90093fbd17836c0215420c850f7e8eedc35fb8",
+    "portal_capture.py": "55c36c193fb25f93871d98547d4e67f12d567fb690538ee31dc5ae9bb91bc0fe",
+    "portal_token_store.py": "beda3cca1fdbf6f347b25a74cd690dd1f459606c2a5ac09a33b72aa6871ac4e9",
+    "session_lease.py": "b2fa75fdad3e0770b9e8d70e03607ca9774ece4b1b771c39841cc26cb16ddd42",
+    "synthetic_track.py": "7e5025c655c287b220fb70613b59ef50c9f076bea36a46a7690f3ddb719c1363",
+    "windows_native_mutex.py": "c5e9fee1c65a6d1b8865a0a87869840994ef38e64083c23c5f66200946e5e7b1",
+    "windows_parent_watch.py": "8a27402ca7ff167b9af400cf75f0a3fd5b43450bc3aaca291f0ea8ba3c0275a1",
+    "worker_stdio.py": "194cdfb53ba93ff1597015e4da56cbcc9a1e565c69209a6d21330040e2cf84f4",
+    "install_probe.py": "4eab505050de104a6481411654e0949d243a484d06c8d7fda80d237ee364d1b2",
+    "requirements.lock": "e5c0b8cd3daf6efb87c38c011e9eb2f1b213221a26c7e77697ee81c936b8e982"
+  }
+}

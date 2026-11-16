@@ -10,6 +10,10 @@ import { normalizedServerUrl, sendRelayMessage, jitter, deviceMetrics } from './
 import { createAgentUpdateMonitor, UPDATE_CHECK_INTERVAL_MS } from './agent-update-monitor.mjs';
 import { nextFleetManifestDelayMs } from './agent-update-rollout.mjs';
 import { createAgentResponder } from './agent-responder.mjs';
+import { createAgentE2eeEndpoint } from './agent-e2ee-endpoint.mjs';
+import {callAgentRuntimeTool} from './agent-media-ice.mjs';
+import {desktopMediaEnvironment} from './cli/desktop-media-install.mjs';
+import { loadDeviceE2eeProfile } from './cli/e2ee-identity.mjs';
 import { assertAgentE2eeAdmission, createAgentRelayConnection } from './agent-relay-connection.mjs';
 import { createRuntimeCapabilities, normalizeRuntimeToolNames } from './agent-runtime-capabilities.mjs';
 
@@ -27,9 +31,8 @@ const RUNTIME_RESTART_MAX_MS = 30_000;
 const CALL_TIMEOUT_MARGIN_MS = 10_000;
 
 export async function runAgent(options) {
-  // Reject an explicitly requested E2EE session before any runtime or relay
-  // startup: this release has authenticated TLS, not end-to-end encryption.
-  assertAgentE2eeAdmission(process.env, options.requireE2ee);
+  const e2eeProfile = await loadDeviceE2eeProfile(options);
+  assertAgentE2eeAdmission(process.env, options.requireE2ee, Boolean(e2eeProfile));
   const serverUrl = normalizedServerUrl(options.serverUrl, { allowInsecure: options.allowInsecureTransport === true || process.env.REMCP_ALLOW_INSECURE_TRANSPORT === 'true' });
   const deviceToken = String(options.deviceToken || '');
   const deviceId = String(options.deviceId || '');
@@ -71,6 +74,11 @@ export async function runAgent(options) {
   // "online" forever and every later call failed with an opaque "Not connected". Now the
   // transport is watched and the runtime is restarted with backoff.
   let mcp = null;
+  const e2eeEndpoint = e2eeProfile ? createAgentE2eeEndpoint({
+    ...e2eeProfile, deviceId,
+    invokeRuntimeTool:(mcp,params,options)=>callAgentRuntimeTool({mcp,params,options,serverUrl,deviceToken,encrypted:true}),
+    getRuntimeState: () => ({ mcp, runtimeDown, callTimeoutMs }),
+  }) : null;
   let transport = null;
   let runtimeRestartDelay = RUNTIME_RESTART_BASE_MS;
   let runtimeRestartTimer = null;
@@ -80,11 +88,11 @@ export async function runAgent(options) {
     // The SDK's stdio transport does not inherit the environment by default; spreading
     // process.env here is what gives the runtime its REMCP_RUNTIME_* configuration, PATH,
     // HOME and the telemetry opt-out.
-    const env = { ...process.env };
+    const env = { ...process.env, ...desktopMediaEnvironment(options.desktopMedia,runtimeEntry) };
     // The paired agent is the trusted local launcher. Keep standalone runtimes fail-closed,
     // while explicitly enabling browser control for runtimes spawned by an authenticated device.
     if (!Object.hasOwn(env, 'REMCP_BROWSER_REMOTE_ENABLED')) env.REMCP_BROWSER_REMOTE_ENABLED = '1';
-    if (!telemetryEnabled) env.REMCP_RUNTIME_DISABLE_TELEMETRY = '1';
+    if (!telemetryEnabled || e2eeProfile) env.REMCP_RUNTIME_DISABLE_TELEMETRY = '1';
     return env;
   }
 
@@ -249,13 +257,17 @@ export async function runAgent(options) {
     }
   }
 
+  function assertMessagePolicy(message) {
+    const encrypted = Boolean(e2eeEndpoint &&
+      ['e2ee/packet', 'e2ee/identity', 'ping'].includes(message?.method));
+    assertAgentE2eeAdmission(process.env, options.requireE2ee, encrypted);
+    if (typeof options.readCurrentE2eeRequirement === 'function')
+      assertAgentE2eeAdmission(process.env, options.readCurrentE2eeRequirement(), encrypted);
+  }
   const respond = createAgentResponder({
-    serverUrl, deviceToken,
-    assertResponseAllowed: () => {
-      assertAgentE2eeAdmission(process.env, options.requireE2ee);
-      if (typeof options.readCurrentE2eeRequirement === 'function')
-        assertAgentE2eeAdmission(process.env, options.readCurrentE2eeRequirement());
-    },
+    serverUrl, deviceToken, e2eeEndpoint,
+    assertRequestAllowed: message => assertMessagePolicy(message),
+    assertResponseAllowed: message => assertMessagePolicy(message),
     inFlight,
     onPendingChange: delta => { pendingRequests = Math.max(0, pendingRequests + delta); },
     getRuntimeState: () => ({ mcp, runtimeDown, runtimeVersion, runtimeRestarts, callTimeoutMs }),
@@ -298,7 +310,7 @@ export async function runAgent(options) {
     respond, inFlight, sendMetricsSample, reportInstallOnce, flushTelemetry,
     checkForUpdate, schedulePostConnectUpdateChecks, clearPostConnectUpdateChecks, stop,
     checkUpdatesOnConnect: Array.isArray(options.updateRecheckDelaysMs),
-    requireE2ee: options.requireE2ee,
+    requireE2ee: options.requireE2ee, secureTransportReady: Boolean(e2eeEndpoint),
     readCurrentE2eeRequirement: options.readCurrentE2eeRequirement,
   });
 
@@ -318,6 +330,7 @@ export async function runAgent(options) {
   async function stop() {
     if (stopPromise) return stopPromise;
     stopping = true;
+    e2eeEndpoint?.close();
     clearTimeout(runtimeRestartTimer);
     runtimeCapabilities.clearRetry();
     clearReconnect();
