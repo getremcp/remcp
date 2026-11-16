@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import {spawnSync} from 'node:child_process';
 import {createE2eeVault} from '../src/cli/e2ee-vault.mjs';
 import {createE2eeIdentity,exportE2eeIdentity,importE2eeIdentity} from '../src/agent-e2ee-crypto.mjs';
 
@@ -27,6 +28,21 @@ test('native OS vault persists a real HPKE identity and no plaintext key file',{
     record.peers.push({fingerprint:'synthetic-test-peer',mode:'read'});
     await vault.write(record);
     assert.deepEqual(await vault.read(),record);
+    if(process.platform==='linux'){
+      // The MCP SDK intentionally omits DBUS_SESSION_BUS_ADDRESS and
+      // XDG_RUNTIME_DIR from stdio child environments by default.
+      const vaultUrl=new URL('../src/cli/e2ee-vault.mjs',import.meta.url).href;
+      const childScript=`import {createE2eeVault} from ${JSON.stringify(vaultUrl)};
+        const record=await createE2eeVault({directory:process.argv[1],profile:'client'}).read();
+        if(!record?.identity||!Array.isArray(record.peers))throw new Error('native vault unavailable');
+        process.stdout.write('vault-session-fallback-ok');`;
+      const child=spawnSync(process.execPath,['--input-type=module','--eval',childScript,directory],{
+        env:{HOME:os.homedir(),PATH:process.env.PATH,USER:process.env.USER,LOGNAME:process.env.LOGNAME},
+        encoding:'utf8',timeout:20000,
+      });
+      assert.equal(child.status,0,child.stderr.slice(0,400));
+      assert.equal(child.stdout.trim(),'vault-session-fallback-ok');
+    }
     await vault.remove();assert.equal(await vault.read(),null);
   }finally{await vault.remove();await fs.rm(directory,{recursive:true,force:true});}
 });

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.262 — 2026-11-16
+
+- Remain version-aligned with the Linux E2EE stdio vault repair, native X11 capture and owned WebRTC session lifecycle.
+
 ## 0.2.261 — 2026-11-16
 
 - Keep status, heartbeat and Stop reachable for an owned active or stopping WebRTC session when fresh desktop discovery becomes unavailable. New capture and input retain their existing readiness and permission checks.

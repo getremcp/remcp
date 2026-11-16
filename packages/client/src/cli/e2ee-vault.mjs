@@ -10,9 +10,30 @@ import {createMacE2eeStore} from './e2ee-keychain.mjs';
 
 const SERVICE='site.remcp.e2ee', LIMIT=128*1024;
 const unavailable=()=>new Error('E2EE OS vault unavailable or locked; unlock Keychain/Secret Service, or sign in as the Windows owner.');
-function run(command,args,input='') {
+
+// MCP stdio hosts commonly inherit only HOME, PATH and USER. Recover the
+// current Linux user's own session bus without contacting another user's bus
+// or falling back to a plaintext identity file.
+export async function linuxSecretServiceEnvironment({
+  environment=process.env,uid=process.getuid?.(),lstat=fs.lstat,
+}={}){
+  if(environment.DBUS_SESSION_BUS_ADDRESS)return environment;
+  if(!Number.isSafeInteger(uid)||uid<0)throw unavailable();
+  const directory=environment.XDG_RUNTIME_DIR||'/run/user/'+uid;
+  if(!path.posix.isAbsolute(directory))throw unavailable();
+  const bus=path.posix.join(directory,'bus');
+  try{
+    const [dirStat,busStat]=await Promise.all([lstat(directory),lstat(bus)]);
+    if(!dirStat.isDirectory()||dirStat.isSymbolicLink()||dirStat.uid!==uid||
+        (dirStat.mode&0o077)!==0||!busStat.isSocket()||busStat.isSymbolicLink()||
+        busStat.uid!==uid)throw unavailable();
+  }catch{throw unavailable();}
+  return {...environment,XDG_RUNTIME_DIR:directory,
+    DBUS_SESSION_BUS_ADDRESS:'unix:path='+bus};
+}
+function run(command,args,input='',options={}) {
   return new Promise((resolve,reject)=>{
-    const child=spawn(command,args,{stdio:['pipe','pipe','pipe'],windowsHide:true});
+    const child=spawn(command,args,{stdio:['pipe','pipe','pipe'],windowsHide:true,...options});
     let output='',size=0,settled=false;
     const timer=setTimeout(()=>{child.kill();finish(unavailable());},15000);
     function finish(error,value){if(settled)return;settled=true;clearTimeout(timer);error?reject(error):resolve(value);}
@@ -71,7 +92,8 @@ export function createE2eeVault({directory=configDir,profile='device'}={}) {
   async function read() {
     let result;
     if(process.platform==='linux'){
-      result=await run(await secretTool(),['lookup','service',SERVICE,'account',account]);
+      result=await run(await secretTool(),['lookup','service',SERVICE,'account',account],
+        '',{env:await linuxSecretServiceEnvironment()});
       if(result.code===1&&!result.output)return null;
     } else if(process.platform==='win32'){
       let ciphertext;
@@ -89,7 +111,8 @@ export function createE2eeVault({directory=configDir,profile='device'}={}) {
     if(!text||Buffer.byteLength(text)>48*1024)throw new Error('E2EE vault record too large');
     let result;
     if(process.platform==='linux'){
-      result=await run(await secretTool(),['store','--label=ReMCP E2EE '+profile,'service',SERVICE,'account',account],text+'\n');
+      result=await run(await secretTool(),['store','--label=ReMCP E2EE '+profile,'service',SERVICE,'account',account],
+        text+'\n',{env:await linuxSecretServiceEnvironment()});
     }else if(process.platform==='win32'){
       const ciphertext=await dpapi({operation:'seal',account,value:text});
       await fs.mkdir(directory,{recursive:true,mode:0o700});
@@ -109,7 +132,8 @@ export function createE2eeVault({directory=configDir,profile='device'}={}) {
   }
   async function remove() {
     let result;
-    if(process.platform==='linux')result=await run(await secretTool(),['clear','service',SERVICE,'account',account]);
+    if(process.platform==='linux')result=await run(await secretTool(),['clear','service',SERVICE,'account',account],
+      '',{env:await linuxSecretServiceEnvironment()});
     else if(process.platform==='win32'){await fs.rm(file,{force:true});return;}
     else throw unavailable();
     if(result.code!==0&&result.code!==44&&result.code!==1)throw unavailable();

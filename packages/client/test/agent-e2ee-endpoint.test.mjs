@@ -39,6 +39,14 @@ test('read grant filters tools and denies control including unannotated tools',a
   await assert.rejects(f.client.callTool({name:'unknown'}),/tool_not_authorized/);
   assert.equal(f.calls.length,0);
 });
+test('a live client downgraded from control to read loses write access immediately',async()=>{
+  const f=await fixture({mode:'control'});
+  assert.equal((await f.client.listTools()).tools.some(t=>t.name==='write'),true);
+  f.setPeer({publicKey:f.owner.publicKey,fingerprint:f.owner.fingerprint,mode:'read'});
+  assert.deepEqual((await f.client.listTools()).tools.map(t=>t.name),['read']);
+  await assert.rejects(f.client.callTool({name:'write',arguments:{text:'must not write'}}),/tool_not_authorized/);
+  assert.equal(f.calls.length,0);
+});
 test('per-peer allowlist applies to both catalog and actual calls',async()=>{
   const f=await fixture({tools:['read']});
   assert.equal((await f.client.listTools()).tools.length,1);
