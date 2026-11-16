@@ -1,0 +1,14 @@
+title = "ReMCP source integrity checksums"
+[extend]
+useDefault = true
+
+# A public source SHA-256 is not an authentication token. Match both the
+# exact generated manifest path and the verified portal_token_store.py digest.
+# All other values, files and default credential rules remain active.
+[[allowlists]]
+targetRules = ["generic-api-key"]
+description = "Verified public portal source checksum"
+condition = "AND"
+regexTarget = "secret"
+paths = ['^(?:runtime/src/native/webrtc|packages/runtime/src/native/webrtc)/source-manifest\.json$']
+regexes = ['^beda3cca1fdbf6f347b25a74cd690dd1f459606c2a5ac09a33b72aa6871ac4e9$']
