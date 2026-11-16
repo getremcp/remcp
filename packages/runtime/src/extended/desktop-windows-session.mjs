@@ -33,7 +33,9 @@ export async function windowsDesktopSessionStatus({ runPowerShellFn = runPowerSh
   try {
     const result = await runPowerShellFn(WINDOWS_DESKTOP_PROBE, {
       label:'Windows interactive desktop readiness',
-      timeout:6000,
+      // Cold PowerShell can exceed six seconds while native video is encoding.
+      // Still require an actual positive session result; never infer consent.
+      timeout:12000,
     });
     return classifyWindowsDesktopSession(JSON.parse(String(result?.stdout || '').trim()));
   } catch {

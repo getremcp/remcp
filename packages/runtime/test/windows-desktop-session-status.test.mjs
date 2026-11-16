@@ -68,7 +68,7 @@ test('bounded native probe only reports session metadata, no user identities', a
   });
   assert.equal(status.available, false);
   assert.equal(status.reason, 'windows_session_0');
-  assert.ok(options.timeout <= 6000);
+  assert.ok(options.timeout > 0 && options.timeout <= 12000);
 });
 
 test('PowerShell probe failure is unknown and does not block a user desktop', async () => {
