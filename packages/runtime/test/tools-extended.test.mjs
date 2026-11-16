@@ -1,7 +1,7 @@
 import { readFilesSource } from './helpers/files-source.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { chmodSync, existsSync, mkdirSync, readFileSync, statSync, symlinkSync, truncateSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, readFileSync, readdirSync, statSync, symlinkSync, truncateSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { body, freshWorkspace, isError } from './helpers.mjs';
@@ -303,8 +303,14 @@ test('take_screenshot either returns an image or explains what is missing', asyn
     // Windows session that nobody is signed in to, or macOS Screen Recording that was never granted.
     assert.match(body(result), /no graphical session|Could not capture the screen|Install one of|Screen Recording|interactive desktop session|grim/);
   } else {
-    assert.equal(result.content[1].type, 'image');
-    assert.equal(result.content[1].mimeType, 'image/png');
+    const inline = result.content.find(item => item.type === 'image');
+    if (inline) assert.equal(inline.mimeType, 'image/png');
+    else {
+      assert.match(body(result), /above the .*inline limit.*saved at .*read_binary/s);
+      const captures = readdirSync(root).filter(name => /^capture-.*\.png$/.test(name));
+      assert.equal(captures.length, 1, 'large capture must remain available for bounded binary reads');
+      assert.ok(statSync(join(root, captures[0])).size > 0);
+    }
   }
 });
 
