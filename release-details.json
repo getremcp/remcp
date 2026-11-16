@@ -1,9 +1,8 @@
 {
-  "version": "0.2.260",
-  "title": "Enable native encrypted desktop control on X11 Linux workstations.",
+  "version": "0.2.261",
+  "title": "Preserve live desktop session lifecycle during Windows discovery retries.",
   "changes": [
-    "Add bounded owner-local X11 capture for XFCE and other Xorg desktops through a hash-pinned MSS wheel. Keep Wayland on its existing OS-consented Portal path.",
-    "Require a local display, an owner-private authority file, bounded primary-monitor geometry and one capture thread with explicit native cleanup. Reject remote X displays and XWayland override.",
-    "Preserve HPKE grants, session-bound input, private TURN delivery, heartbeat and Stop fencing. No new MCP tool definition or native binary bundle."
+    "Keep lifecycle commands available for an already owned WebRTC session during transient desktop discovery failure, including native Stop quarantine. New captures and input keep their existing permission and readiness checks.",
+    "Verified actual Windows x64 native video and HPKE clipboard control with periodic heartbeats, native Stop confirmation and input rejection after Stop."
   ]
 }

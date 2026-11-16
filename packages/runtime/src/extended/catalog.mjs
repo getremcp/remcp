@@ -17,7 +17,7 @@ import { displayInventoryAvailable, regionScreenshotBackends } from './desktop-l
 import { hydrateLinuxDesktopEnv } from './desktop-linux-session-env.mjs';
 import { diagnosticHandlers, gnomeScreencastSupported, recordScreenAvailable } from './diagnostics.mjs';
 import { documentHandlers } from './documents.mjs';
-import { desktopWebRtcHandlers, webRtcWorkerAvailable } from './desktop-webrtc-bridge.mjs';
+import { desktopWebRtcHandlers, webRtcWorkerAvailable, desktopWebRtcSessionAvailable } from './desktop-webrtc-bridge.mjs';
 
 function define(name, title, description, inputSchema, annotations, handler, requires = []) {
   const enriched = enrichSchemaDescriptions(inputSchema);
@@ -386,8 +386,12 @@ export async function capabilitySnapshot() {
     : capabilities;
 }
 
-function isSupported(definition, capabilities) {
-  return (definition.requires || []).every(name => capabilities[name] !== false);
+const WEBRTC_LIFECYCLE_TOOLS = new Set([
+  'desktop_webrtc_status', 'desktop_webrtc_heartbeat', 'desktop_webrtc_stop',
+]);
+function isSupported(definition, capabilities, hasWebRtcSession = desktopWebRtcSessionAvailable) {
+  return (definition.requires || []).every(name => capabilities[name] !== false) ||
+    WEBRTC_LIFECYCLE_TOOLS.has(definition.name) && hasWebRtcSession();
 }
 
 function publicShape(definition) {
@@ -399,9 +403,9 @@ export function allExtendedTools() {
   return extendedToolDefinitions.map(publicShape);
 }
 
-export async function advertisedExtendedTools(capabilities = null) {
+export async function advertisedExtendedTools(capabilities = null, {hasWebRtcSession = desktopWebRtcSessionAvailable} = {}) {
   const current = capabilities ?? await capabilitySnapshot();
-  return extendedToolDefinitions.filter(definition => isSupported(definition, current)).map(publicShape);
+  return extendedToolDefinitions.filter(definition => isSupported(definition, current, hasWebRtcSession)).map(publicShape);
 }
 
 export async function capabilityFingerprint() {

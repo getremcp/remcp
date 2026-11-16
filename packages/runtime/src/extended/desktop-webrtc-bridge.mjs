@@ -384,10 +384,14 @@ export function createDesktopWebRtcBridge({
   // Do not expose the internal alreadyExited override to callers.
   return {offer,heartbeat,stop,control,status:()=>{const {epoch,...value}=state();return jsonResult(value);},shutdown:()=>shutdown(),
     get activeSession(){return current;},
+    get hasSession(){return Boolean(state().sessionId);},
   };
 }
 
 const bridge=createDesktopWebRtcBridge();
+// Existing-session lifecycle RPCs cannot grant capture or input. Keep Stop
+// reachable while native exit is pending, even if discovery becomes unavailable.
+export const desktopWebRtcSessionAvailable=()=>bridge.hasSession;
 export const desktopWebRtcHandlers={
   desktop_webrtc_offer:(args,extra)=>bridge.offer(args,extra),
   desktop_webrtc_heartbeat:args=>bridge.heartbeat(args),
