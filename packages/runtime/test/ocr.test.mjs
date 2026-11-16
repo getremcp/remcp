@@ -196,5 +196,5 @@ test('computer snapshot/action expose OCR through the compact universal tool sur
   assert.ok(snapshot?.inputSchema?.properties?.ocr_max_words);
   assert.ok(action?.inputSchema?.properties?.ocr_text);
   assert.ok(action?.inputSchema?.properties?.target?.enum?.includes('ocr'));
-  assert.equal(tools.length, 47, 'OCR adds no separate tool; the 4 registered app tools (catalog, navigation, task, execute) bring this development catalog to 47');
+  assert.equal(tools.length, 49, 'OCR stays within computer_snapshot/action; the catalog includes app automation and five session-bound WebRTC tools');
 });
