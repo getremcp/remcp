@@ -3,6 +3,6 @@
   "title": "Fix macOS E2EE initialization from an interactive terminal.",
   "changes": [
     "Pass the generated wrapping key through the Keychain command stdin instead of triggering an interactive password-data prompt. Keep secrets out of process arguments and retain existing Keychain identities and encrypted file format.",
-    "Add real controlling-terminal Keychain coverage alongside duplicate-initializer, quoting, locked-vault and missing-key regression checks."
+    "Add real controlling-terminal Keychain coverage alongside duplicate-initializer, command-input validation, locked-vault and missing-key regression checks."
   ]
 }
