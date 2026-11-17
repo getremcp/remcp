@@ -1,5 +1,5 @@
-// security(1)'s hidden-input prompt truncates at 128 bytes. Store only a
-// random 32-byte wrapping key there; authenticated ciphertext stays on disk.
+// Keep the random wrapping key in Keychain and authenticated ciphertext on disk.
+// security(1)'s hidden-input prompt reads /dev/tty; use its stdin command mode.
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import {randomBytes,randomUUID,createCipheriv,createDecipheriv} from 'node:crypto';
@@ -14,14 +14,17 @@ export function createMacE2eeStore({run,service,account,directory,profile,unavai
     }catch(error){if(error.code==='ENOENT')return null;throw error;}
   }
   async function key(create=false){
+    if(typeof account!=='string'||!/^[0-9a-f]{64}$/.test(account)||
+        typeof service!=='string'||service.length>128||!/^[A-Za-z0-9._-]+$/.test(service))throw unavailable();
     let result=await run('/usr/bin/security',['find-generic-password','-a',account,'-s',service,'-w']);
     if(result.code===44&&create){
       if(await readCiphertext())throw unavailable();
       const secret=randomBytes(32).toString('base64url');
-      const stored=await run('/usr/bin/security',['add-generic-password','-a',account,'-s',service,'-w'],
-        secret+'\n'+secret+'\n');
-      // Another initializer may have won. Read its key; never overwrite it.
-      if(stored.code!==0&&stored.code!==45)throw unavailable();
+      // One stdin command and EOF: no getpass, key in argv, shell or ACL widening.
+      await run('/usr/bin/security',['-i'],
+        `add-generic-password -a ${account} -s ${service} -w ${secret}\n`);
+      // Some security versions exit 1 at EOF. Require a valid OS read-back,
+      // including when another initializer won; never overwrite an item.
       result=await run('/usr/bin/security',['find-generic-password','-a',account,'-s',service,'-w']);
     }
     const encoded=result.output.trim();

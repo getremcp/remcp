@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.263 — 2026-11-17
+
+- Remain version-aligned with the macOS Keychain terminal initialization repair. Native runtime and desktop media implementations are unchanged.
+
 ## 0.2.262 — 2026-11-16
 
 - Remain version-aligned with the Linux E2EE stdio vault repair, native X11 capture and owned WebRTC session lifecycle.

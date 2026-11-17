@@ -1,8 +1,8 @@
 {
-  "version": "0.2.262",
-  "title": "Restore Linux E2EE vault access for ordinary MCP stdio hosts.",
+  "version": "0.2.263",
+  "title": "Fix macOS E2EE initialization from an interactive terminal.",
   "changes": [
-    "Recover only the current owner’s private Linux session bus when an MCP host omits D-Bus environment variables. Verify private directory and socket ownership; never fall back to plaintext key storage.",
-    "Preserve native X11 capture and reliable WebRTC lifecycle from 0.2.260–0.2.261. Verify encrypted read grants and immediate control-to-read downgrade rejection."
+    "Pass the generated wrapping key through the Keychain command stdin instead of triggering an interactive password-data prompt. Keep secrets out of process arguments and retain existing Keychain identities and encrypted file format.",
+    "Add real controlling-terminal Keychain coverage alongside duplicate-initializer, quoting, locked-vault and missing-key regression checks."
   ]
 }
