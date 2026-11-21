@@ -14,12 +14,16 @@ import {createE2eeDeviceClient} from '../src/agent-e2ee-client.mjs';
 import {fileURLToPath} from 'node:url';
 
 test('strict real agent uses OS key, rejects plaintext, and encrypts local runtime calls',{
-  skip:process.env.REMCP_E2EE_NATIVE_VAULT_QA!=='1'||process.platform==='win32'?
-    'Requires owner OS vault and POSIX fixture launcher':false,timeout:20000,
+  skip:process.env.REMCP_E2EE_NATIVE_VAULT_QA!=='1'?
+    'Requires owner OS vault and explicit native QA':false,
+  // Keychain and Windows DPAPI can be slower across fresh owner processes;
+  // keep bounded native deadlines without hiding a failed encrypted call.
+  timeout:process.platform==='win32'?75000:process.platform==='darwin'?65000:20000,
 },async()=>{
   const root=await fs.mkdtemp(path.join(os.tmpdir(),'remcp-secure-agent-'));
   const vault=createE2eeVault({directory:root});
-  const runtime=path.join(root,'modules','@example','runtime');
+  const runtime=path.join(root,process.platform==='win32'?'node_modules':'modules',
+    '@example','runtime');
   await fs.mkdir(runtime,{recursive:true});
   const telemetry=path.join(root,'runtime-telemetry'),effects=path.join(root,'effects');
   const script=`
@@ -77,19 +81,27 @@ test('strict real agent uses OS key, rejects plaintext, and encrypts local runti
   `;
   const child=spawn(process.execPath,['--input-type=module','--eval',launch],{
     cwd:fileURLToPath(new URL('..',import.meta.url)),
-    env:{...process.env,REMCP_CONFIG_DIR:root,REMCP_NPM:npm},stdio:['ignore','pipe','pipe']});
+    // The installed Windows ReMCP agent sets uppercase NPM_CONFIG_PREFIX.
+    // Override that exact environment key: Windows treats differently cased
+    // names as the same variable, and a lowercase duplicate can be ignored.
+    env:{...process.env,REMCP_CONFIG_DIR:root,...(process.platform==='win32'
+      ?{REMCP_NPM:'',NPM_CONFIG_PREFIX:root}:{REMCP_NPM:npm})},
+    stdio:['ignore','pipe','pipe']});
   let logs='';child.stdout.on('data',x=>{logs+=x;});child.stderr.on('data',x=>{logs+=x;});
   const wait=async check=>{
-    const end=Date.now()+8000;
+    const end=Date.now()+(process.platform==='win32'?35000:process.platform==='darwin'?25000:8000);
     while(Date.now()<end){if(await check())return;await new Promise(r=>setTimeout(r,20));}
     throw new Error('secure_agent_fixture_timed_out');
   };
   try{
     await wait(()=>frames.some(m=>m.type==='hello'));
     const first=socket;
-    socket.send(JSON.stringify({type:'request',id:'plaintext-denied',method:'tools/call',
-      params:{name:'write',arguments:{text:'must not execute'}}}));
-    await wait(()=>socket!==first&&frames.filter(m=>m.type==='hello').length>=2);
+    // A new plaintext call is refused on the same authenticated socket. The agent must not
+    // terminate it (that made the computer look offline for valid encrypted clients).
+    await assert.rejects(rpc('tools/call',{name:'write',arguments:{text:'must not execute'}}),
+      /agent_rejected/);
+    assert.equal(socket,first,'the authenticated WebSocket survives a plaintext refusal');
+    assert.equal(frames.filter(m=>m.type==='hello').length,1,'a refusal must not force a reconnect');
     await assert.rejects(fs.readFile(effects),{code:'ENOENT'});
     const client=createE2eeDeviceClient({identity:owner,deviceId:config.deviceId,
       pinnedDevice:device.fingerprint,describe:()=>rpc('e2ee/identity'),
@@ -102,7 +114,16 @@ test('strict real agent uses OS key, rejects plaintext, and encrypts local runti
     assert.ok(!JSON.stringify(frames).includes(secret));
     assert.ok(!logs.includes(secret));
   }finally{
-    child.kill('SIGTERM');await once(child,'exit');
+    // A Windows child can exit before the fixture begins cleanup; awaiting
+    // a second 'exit' event would hang and conceal the actual test failure.
+    if(child.exitCode===null&&child.signalCode===null){
+      const exited=once(child,'exit',{signal:AbortSignal.timeout(4000)});
+      child.kill('SIGTERM');
+      await exited.catch(error=>{
+        if(error?.name!=='AbortError')throw error;
+        child.kill('SIGKILL');
+      });
+    }
     for(const s of wss.clients)s.terminate();
     await new Promise(r=>wss.close(r));await new Promise(r=>httpServer.close(r));
     await vault.remove();await fs.rm(root,{recursive:true,force:true});

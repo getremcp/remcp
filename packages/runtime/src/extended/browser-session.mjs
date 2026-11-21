@@ -13,12 +13,14 @@ import { clamp, commandExists, jsonResult, optionalString, requireEnum, spawnDet
 import { MAX_CDP_MESSAGE_BYTES, PRODUCTION_SESSION_IDLE_MS, assertResolvedBrowserUrl, assertResolvedPageUrl, chooseTarget, endpointUrl, ensureBrowserEndpoint, productionBrowserSessions, requestJson, validatedTargetWebSocketUrl } from './browser-endpoint.mjs';
 import { getBrowserViewport } from './browser-viewport.mjs';
 import { assertLiveTargetOrigin } from './browser-target-origin.mjs';
+import { connectCdpWebSocket, disposeCdpWebSocket } from './browser-websocket-handshake.mjs';
 
 export class CdpSession {
   constructor(url, timeoutMs) {
     this.url = url;
     this.timeoutMs = timeoutMs;
     this.socket = null;
+    this.connecting = null;
     this.nextId = 1;
     this.pending = new Map();
     this.waiters = new Map();
@@ -27,18 +29,19 @@ export class CdpSession {
   }
 
   async open() {
-    if (typeof WebSocket !== 'function') throw new Error('This Node.js runtime does not provide WebSocket support');
-    await new Promise((resolve, reject) => {
-      const socket = new WebSocket(this.url);
-      const timer = setTimeout(() => {
-        try { socket.close(); } catch {}
-        reject(new Error('CDP websocket connection timed out'));
-      }, this.timeoutMs);
-      socket.addEventListener('open', () => { clearTimeout(timer); this.socket = socket; this.closed = false; resolve(); }, { once: true });
-      socket.addEventListener('error', event => { clearTimeout(timer); try { socket.close(); } catch {}; reject(new Error(event?.message || 'CDP websocket error')); }, { once: true });
-      socket.addEventListener('message', event => this.onMessage(event));
-      socket.addEventListener('close', () => this.onClose());
-    });
+    if (this.connecting) throw new Error('CDP websocket connection already pending');
+    if (!this.closed) throw new Error('CDP websocket already open');
+    const controller = new AbortController();
+    this.connecting = controller;
+    try {
+      await connectCdpWebSocket({
+        url:this.url, timeoutMs:this.timeoutMs, signal:controller.signal,
+        onConnected:socket => { this.socket = socket; this.closed = false; },
+        onMessage:(socket,event) => { if (this.socket === socket) this.onMessage(event); },
+        onLiveError:socket => { if (this.socket === socket) this.close(); },
+        onClosed:socket => { if (this.socket === socket) this.onClose(); },
+      });
+    } finally { if (this.connecting === controller) this.connecting = null; }
     return this;
   }
 
@@ -77,6 +80,9 @@ export class CdpSession {
 
   onClose() {
     this.closed = true;
+    // A retained session must not pin the detached WebSocket after disconnect.
+    disposeCdpWebSocket(this.socket);
+    this.socket = null;
     for (const pending of this.pending.values()) {
       clearTimeout(pending.timer);
       pending.reject(new Error('CDP websocket closed'));
@@ -163,6 +169,7 @@ export class CdpSession {
   }
 
   close() {
+    this.connecting?.abort();
     if (this.closed) return;
     try { this.socket?.close(); } catch {}
     this.onClose();

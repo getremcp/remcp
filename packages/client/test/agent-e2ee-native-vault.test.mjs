@@ -35,13 +35,24 @@ test('native OS vault persists a real HPKE identity and no plaintext key file',{
       const childScript=`import {createE2eeVault} from ${JSON.stringify(vaultUrl)};
         const record=await createE2eeVault({directory:process.argv[1],profile:'client'}).read();
         if(!record?.identity||!Array.isArray(record.peers))throw new Error('native vault unavailable');
-        process.stdout.write('vault-session-fallback-ok');`;
+        process.stdout.write('vault-session-read-ok');`;
+      const childEnv={HOME:os.homedir(),PATH:process.env.PATH,
+        USER:process.env.USER,LOGNAME:process.env.LOGNAME};
+      const sessionBus=process.env.DBUS_SESSION_BUS_ADDRESS;
+      const standardBus='unix:path=/run/user/'+process.getuid()+'/bus';
+      // The default owner bus can be recovered from a stripped stdio env.
+      // dbus-run-session instead creates a private /tmp bus; removing that
+      // address would look up the *real login* vault rather than this QA vault.
+      // Preserve only the isolated address and let the vault verify its owner.
+      if(sessionBus&&sessionBus!==standardBus&&
+          !sessionBus.startsWith(standardBus+',guid=')){
+        childEnv.DBUS_SESSION_BUS_ADDRESS=sessionBus;
+      }
       const child=spawnSync(process.execPath,['--input-type=module','--eval',childScript,directory],{
-        env:{HOME:os.homedir(),PATH:process.env.PATH,USER:process.env.USER,LOGNAME:process.env.LOGNAME},
-        encoding:'utf8',timeout:20000,
+        env:childEnv,encoding:'utf8',timeout:20000,
       });
       assert.equal(child.status,0,child.stderr.slice(0,400));
-      assert.equal(child.stdout.trim(),'vault-session-fallback-ok');
+      assert.equal(child.stdout.trim(),'vault-session-read-ok');
     }
     await vault.remove();assert.equal(await vault.read(),null);
   }finally{await vault.remove();await fs.rm(directory,{recursive:true,force:true});}

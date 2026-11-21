@@ -27,18 +27,21 @@ test('macOS CLI shim is idempotent and uninstall removes only its managed marker
     const content = fs.readFileSync(shim, 'utf8');
     const profilePath = path.join(process.env.HOME, '.zshrc');
     const originalProfile = fs.readFileSync(profilePath, 'utf8');
+    const loginProfilePath = path.join(process.env.HOME, '.zprofile');
+    const loginProfile = fs.readFileSync(loginProfilePath, 'utf8');
     const again = ensureMacCliCommand({}, { cliPath:'/opt/remcp/remcp', nodePath:'/opt/node/bin/node' });
     const repeatedProfile = fs.readFileSync(profilePath, 'utf8');
     removeMacCliCommand();
     const removed = !fs.existsSync(shim);
     const cleanedProfile = fs.readFileSync(profilePath, 'utf8');
+    const cleanedLoginProfile = fs.readFileSync(loginProfilePath, 'utf8');
     fs.writeFileSync(shim, '#!/bin/sh\\necho user-owned\\n');
     const refused = ensureMacCliCommand({}, { cliPath:'/opt/remcp/remcp', nodePath:'/opt/node/bin/node' });
     const untouched = fs.readFileSync(shim, 'utf8').includes('user-owned');
     console.log(JSON.stringify({
       content, validPath:shim === again,
       repeatedProfile:repeatedProfile === originalProfile,
-      removed, cleanedProfile, refused, untouched,
+      removed, cleanedProfile, loginProfile, cleanedLoginProfile, refused, untouched,
     }));
   `;
   const child = spawnSync(process.execPath, ['--input-type=module', '-e', script], {
@@ -53,6 +56,8 @@ test('macOS CLI shim is idempotent and uninstall removes only its managed marker
   assert.equal(report.repeatedProfile,true);
   assert.equal(report.removed,true);
   assert.doesNotMatch(report.cleanedProfile,/ReMCP CLI PATH/);
+  assert.match(report.loginProfile,/ReMCP CLI PATH/);
+  assert.doesNotMatch(report.cleanedLoginProfile,/ReMCP CLI PATH/);
   assert.equal(report.refused,null);
   assert.equal(report.untouched,true);
 });

@@ -12,17 +12,20 @@ import {
 
 const bin = resolve('bin/remcp.mjs');
 
-test('persistent opt-in refuses TLS-only before runtime/network, including env=0', async () => {
+test('persistent E2EE opt-in rejects TLS-only, while missing pairing fails before vault access', async () => {
+  // The persisted requirement remains strict even if the environment says "0".
   assert.throws(() => assertAgentE2eeAdmission({REMCP_REQUIRE_E2EE:'0'}, true),
     /E2EE required but unavailable/);
   assert.throws(() => createAgentRelayConnection({requireE2ee:true}),
     /E2EE required but unavailable/);
+  // Invalid pairing is rejected earlier than strict admission: never touch the
+  // signed-in owner's real OS vault or attempt to dial this synthetic relay.
   await assert.rejects(runAgent({
     requireE2ee:true,
     serverUrl:'http://127.0.0.1:1',
     allowInsecureTransport:true,
-    deviceToken:'synthetic', deviceId:'synthetic', telemetryEnabled:false, autoUpdate:false,
-  }), /E2EE required but unavailable/);
+    deviceToken:'synthetic', deviceId:'', telemetryEnabled:false, autoUpdate:false,
+  }), /serverUrl, deviceToken and deviceId are required/);
 });
 
 test('CLI persists and audits strict policy on Linux, macOS and Windows service configuration', () => {
@@ -43,6 +46,8 @@ test('CLI persists and audits strict policy on Linux, macOS and Windows service 
       assert.equal(persisted.requireE2ee,true);
       assert.equal(JSON.parse(cli('status').stdout).required,true);
       assert.equal(JSON.parse(cli('status').stdout).available,false);
+      assert.equal(JSON.parse(cli('status').stdout).identityConfigured,false);
+      assert.match(JSON.parse(cli('status').stdout).reason,/accessible owner OS vault/);
       assert.equal(JSON.parse(cli('status').stdout).transport,'tls-only');
       assert.equal(cli('require').status,0,'idempotent require');
       const disabled = cli('off');

@@ -51,3 +51,34 @@ test/drain.test.mjs:generic-api-key:33
 # Restrict exceptions to the original commit/path/rule/line only.
 fddebe534f27246e1fa36cfeb5eebf12ef4fceb4:runtime/test/browser-pointer-identity.test.mjs:generic-api-key:41
 fddebe534f27246e1fa36cfeb5eebf12ef4fceb4:runtime/test/browser-pointer-identity.test.mjs:generic-api-key:50
+
+# BEGIN REVIEWED HISTORICAL FIXTURE REPEATS 2026-11-18
+# Exact six later commit copies of four previously reviewed false positives.
+# Historical lines were compared byte-for-byte with their trusted original
+# fingerprints above. No new token or credential was introduced by these copies.
+# These are commit + file + generic-api-key + line exceptions only.
+11fe0a50cfd26af78f957a3bbf9a3868766d9d75:docs/ops/STRIPE_SANDBOX_WEBHOOK_PROBE.md:generic-api-key:187
+11fe0a50cfd26af78f957a3bbf9a3868766d9d75:test/helpers/stripe-billing-fixture.mjs:generic-api-key:9
+11fe0a50cfd26af78f957a3bbf9a3868766d9d75:test/stripe-billing-currency-variants.test.mjs:generic-api-key:10
+11fe0a50cfd26af78f957a3bbf9a3868766d9d75:test/webrtc-dedicated-server.test.mjs:generic-api-key:167
+7e829b3e0c7c3eaf9860862db61b31eeb6cd0796:docs/ops/STRIPE_SANDBOX_WEBHOOK_PROBE.md:generic-api-key:187
+7e829b3e0c7c3eaf9860862db61b31eeb6cd0796:test/helpers/stripe-billing-fixture.mjs:generic-api-key:9
+7e829b3e0c7c3eaf9860862db61b31eeb6cd0796:test/stripe-billing-currency-variants.test.mjs:generic-api-key:10
+7e829b3e0c7c3eaf9860862db61b31eeb6cd0796:test/webrtc-dedicated-server.test.mjs:generic-api-key:167
+7fdba43f98faa437b1f56010f023801cfae7348a:docs/ops/STRIPE_SANDBOX_WEBHOOK_PROBE.md:generic-api-key:187
+7fdba43f98faa437b1f56010f023801cfae7348a:test/helpers/stripe-billing-fixture.mjs:generic-api-key:9
+7fdba43f98faa437b1f56010f023801cfae7348a:test/stripe-billing-currency-variants.test.mjs:generic-api-key:10
+7fdba43f98faa437b1f56010f023801cfae7348a:test/webrtc-dedicated-server.test.mjs:generic-api-key:167
+8cc9e722c59da119f92b76274b21892d4f323616:docs/ops/STRIPE_SANDBOX_WEBHOOK_PROBE.md:generic-api-key:187
+8cc9e722c59da119f92b76274b21892d4f323616:test/helpers/stripe-billing-fixture.mjs:generic-api-key:9
+8cc9e722c59da119f92b76274b21892d4f323616:test/stripe-billing-currency-variants.test.mjs:generic-api-key:10
+8cc9e722c59da119f92b76274b21892d4f323616:test/webrtc-dedicated-server.test.mjs:generic-api-key:167
+8f5920e47c5fb06f56828b0c81daf83716432d99:docs/ops/STRIPE_SANDBOX_WEBHOOK_PROBE.md:generic-api-key:187
+8f5920e47c5fb06f56828b0c81daf83716432d99:test/helpers/stripe-billing-fixture.mjs:generic-api-key:9
+8f5920e47c5fb06f56828b0c81daf83716432d99:test/stripe-billing-currency-variants.test.mjs:generic-api-key:10
+8f5920e47c5fb06f56828b0c81daf83716432d99:test/webrtc-dedicated-server.test.mjs:generic-api-key:167
+bfce8965a8c6a9204ddc857b19748297e2e7a612:docs/ops/STRIPE_SANDBOX_WEBHOOK_PROBE.md:generic-api-key:187
+bfce8965a8c6a9204ddc857b19748297e2e7a612:test/helpers/stripe-billing-fixture.mjs:generic-api-key:9
+bfce8965a8c6a9204ddc857b19748297e2e7a612:test/stripe-billing-currency-variants.test.mjs:generic-api-key:10
+bfce8965a8c6a9204ddc857b19748297e2e7a612:test/webrtc-dedicated-server.test.mjs:generic-api-key:167
+# END REVIEWED HISTORICAL FIXTURE REPEATS 2026-11-18

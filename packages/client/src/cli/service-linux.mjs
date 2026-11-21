@@ -204,6 +204,47 @@ export function linuxCliShimText(cliPath, nodePath) {
     + '\nexport PATH\nexec ' + shellQuote(nodePath) + ' ' + shellQuote(entry) + ' "$@"\n';
 }
 
+const linuxCliPathBlockStart = '# >>> ReMCP CLI PATH >>>';
+const linuxCliPathBlockEnd = '# <<< ReMCP CLI PATH <<<';
+
+// Put the managed command before NVM's global bins after the shell's normal
+// startup logic. This updates only the owning user's shell profiles, never
+// Node versions, npm packages, system profiles, or another account.
+export function ensureLinuxCliInShellPath(homeDir = home) {
+  if (process.platform !== 'linux' || process.getuid?.() === 0) return;
+  const block = [linuxCliPathBlockStart,
+    'case ":$PATH:" in',
+    '  *":$HOME/.local/bin:"*) ;;',
+    '  *) export PATH="$HOME/.local/bin:$PATH" ;;',
+    'esac', linuxCliPathBlockEnd].join('\n');
+  for (const basename of ['.bashrc', '.profile']) {
+    const profile = path.join(homeDir, basename);
+    let current = '';
+    let mode = 0o600;
+    try {
+      const stat = fs.lstatSync(profile);
+      if (!stat.isFile() || stat.isSymbolicLink() || stat.uid !== process.getuid()) continue;
+      if (stat.size > 1024 * 1024) continue;
+      mode = stat.mode & 0o777;
+      current = fs.readFileSync(profile, 'utf8');
+    } catch (error) {
+      if (error?.code !== 'ENOENT') continue;
+    }
+    const start = current.indexOf(linuxCliPathBlockStart);
+    const end = start >= 0 ? current.indexOf(linuxCliPathBlockEnd, start) : -1;
+    // An unclosed marker might be user-maintained; do not rewrite it.
+    if (start >= 0 && end < 0) continue;
+    const replacement = start >= 0
+      ? current.slice(0, start) + block + current.slice(end + linuxCliPathBlockEnd.length)
+      : current + (current && !current.endsWith('\n') ? '\n' : '') + '\n' + block + '\n';
+    if (replacement === current) continue;
+    const temporary = profile + '.' + process.pid + '.tmp';
+    fs.writeFileSync(temporary, replacement, { mode, flag:'wx' });
+    try { fs.renameSync(temporary, profile); }
+    catch (error) { fs.unlinkSync(temporary); throw error; }
+  }
+}
+
 export function ensureLinuxCliCommand(cliPath, nodePath) {
   if (process.platform !== 'linux') return;
   const destination = process.getuid?.() === 0
@@ -218,4 +259,5 @@ export function ensureLinuxCliCommand(cliPath, nodePath) {
   const temp = destination + '.' + process.pid + '.tmp';
   fs.writeFileSync(temp, content, { mode:0o755 });
   fs.renameSync(temp, destination);
+  ensureLinuxCliInShellPath();
 }

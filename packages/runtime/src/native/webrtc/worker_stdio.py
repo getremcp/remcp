@@ -197,7 +197,7 @@ def exclusive_native_worker(runtime_dir=None):
 
 class ScreenWorker:
     def __init__(self, source, video_profile="balanced"):
-        if video_profile not in ("balanced", "sharp"):
+        if video_profile not in ("economy", "balanced", "smooth", "sharp"):
             raise ValueError("Unsupported bounded capture video profile")
         self.source = source
         self.video_profile = video_profile
@@ -302,7 +302,11 @@ class ScreenWorker:
                 await self.stop(sid)
                 return
 
-    async def offer(self, sid, sdp):
+    async def offer(self, sid, sdp, profile=None):
+        if profile is not None:
+            from video_profiles import video_profile
+            video_profile(profile)
+            self.video_profile = profile
         if self.generation is not None or self.peer is not None:
             raise ValueError("screen_busy")
         if not isinstance(sid, str) or not SESSION_ID.fullmatch(sid):
@@ -341,7 +345,7 @@ class ScreenWorker:
             if self.source == "synthetic":
                 track = SyntheticVideoTrack()
             elif native_source_allowed(self.source):
-                self.native_capture = NativeDesktopCapture(self.source)
+                self.native_capture = NativeDesktopCapture(self.source, profile=self.video_profile)
                 track = self.native_capture.track
             else:
                 from gst_frames import GstFrameBridge, GstVideoTrack
@@ -395,7 +399,7 @@ class ScreenWorker:
         result = {"requestId": request_id}
         try:
             if op == "offer":
-                answer = await self.offer(sid,request.get("sdp"))
+                answer = await self.offer(sid,request.get("sdp"),request.get("video_profile"))
                 result.update(answer)
             elif op == "ice-config":
                 self.set_private_ice(sid,request.get("config"))
@@ -454,8 +458,8 @@ async def main():
     parser.add_argument("--source",choices=["synthetic","gst-test","portal",
                                           "avfoundation","gdigrab","x11"],
                         default=default_source)
-    parser.add_argument("--video-profile",choices=["balanced","sharp"],
-                        default="balanced",help="Opt-in 1080p at 8 fps (sharp)")
+    parser.add_argument("--video-profile",choices=["economy","balanced","smooth","sharp"],
+                        default="balanced",help="Bounded resolution/frame-rate profile")
     args=parser.parse_args()
     if args.source in ("synthetic","gst-test"):
         if (sys.platform != "linux" or os.environ.get(

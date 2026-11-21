@@ -109,16 +109,12 @@ export function createDesktopWebRtcBridge({
       confirmExit(true);
     };
     // Node may emit error + close without exit when spawning the worker fails.
-    // close is emitted only after the process has ended and pipes have closed;
-    // do not treat the error or kill request itself as native Stop evidence.
-    // A PyInstaller onefile bootloader is a PARENT process. Its 'exit'
-    // event does not prove the Python media CHILD exited; wait for 'close'
-    // (including inherited stdout pipe closure) instead.
-    if(!frozenTree)target.once('exit',onExit);
+    // An exit event alone proves only the direct launcher died: a capture
+    // descendant may still hold the inherited stdout pipe. Require close
+    // after all attached stdio drains on ALL platforms, including POSIX.
+    // This remains weaker than independently verified cgroup/pidfd Stop.
     target.once('close',onExit);
-    if(alreadyExited||!frozenTree&&(
-       target.exitCode!==null&&target.exitCode!==undefined||
-       target.signalCode!==null&&target.signalCode!==undefined)){
+    if(alreadyExited){
       onExit();
     }else if(frozenTree){
       // Closing the private stdio pipe makes the frozen child clean up its
@@ -261,20 +257,22 @@ export function createDesktopWebRtcBridge({
     child=worker;stdout='';
     worker.stdout.on('data',chunk=>{if(child===worker)receive(chunk);});
     worker.once('error',()=>{if(child===worker)shutdown();});
-    // For a frozen onefile worker only 'close' verifies the parent's exit
-    // plus stdio closure. This is stronger than the bootstrapper's 'exit',
-    // but not a full Windows Job Object descendant-containment guarantee.
-    worker.once('exit',()=>{if(child===worker&&!frozenExe)shutdown(true);});
+    // Exit never clears the Stop fence; the OS may still have descendants
+    // holding stdio. Even after close a separate containment proof is needed
+    // before production native-capture Stop can be considered verified.
+    worker.once('exit',()=>{if(child===worker&&!frozenExe)shutdown();});
     worker.once('close',()=>{if(child===worker)shutdown(true);});
   }
 
-  async function offer({session_id:sid,mode,sdp,input_control=false},extra={}){
+  async function offer({session_id:sid,mode,sdp,input_control=false,video_profile},extra={}){
     if(!UUID.test(String(sid))||mode!=='view'||typeof sdp!=='string'||
        Buffer.byteLength(sdp)>MAX_SDP||sdp.length<100)
       throw new Error('Invalid view-only WebRTC offer');
     if(!stopRequest&&!child&&!pendingExit&&!control.pending)inputStopping=false;
     if(current!==null||child||pendingExit||control.pending||inputStopping||stopRequest)
       throw new Error('Another WebRTC session is active');
+    if(video_profile!==undefined&&!['economy','balanced','smooth','sharp'].includes(video_profile))
+      throw new Error('Invalid bounded video profile');
     if(typeof input_control!=='boolean')throw new Error('Invalid input consent');
     inputEnabled=input_control;inputStopping=false;inputEpoch=String(now())+':'+sid;
     lastExitedSession=null;
@@ -305,7 +303,7 @@ export function createDesktopWebRtcBridge({
         const configured=await send('ice-config',sid,{config},offerTimeout);
         if(configured.sessionId!==sid)throw new Error('Invalid private device ICE acknowledgement');
       }
-      const answer=await send('offer',sid,{sdp},offerTimeout);
+      const answer=await send('offer',sid,{sdp,...(video_profile===undefined?{}:{video_profile})},offerTimeout);
       if(cancelled||!child||current!==sid||answer.sessionId!==sid||
          answer.type!=='answer'||typeof answer.sdp!=='string'||
          Buffer.byteLength(answer.sdp)>MAX_SDP||expired())

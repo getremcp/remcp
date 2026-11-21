@@ -16,7 +16,7 @@ from av import VideoFrame
 # The default keeps today's bounded 720p CPU/bandwidth envelope. Sharper
 # 1080p is an explicit experimental local-worker opt-in, capped at 8 fps to
 # avoid an unbounded increase in pixel/encoder work on portable computers.
-VIDEO_PROFILES = {"balanced": (1280, 720, 15), "sharp": (1920, 1080, 8)}
+from video_profiles import VIDEO_PROFILES
 WIDTH, HEIGHT, FPS = VIDEO_PROFILES["balanced"]
 FRAME_BYTES = WIDTH * HEIGHT * 3
 Gst.init(None)

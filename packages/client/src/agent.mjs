@@ -13,7 +13,9 @@ import { createAgentResponder } from './agent-responder.mjs';
 import { createAgentE2eeEndpoint } from './agent-e2ee-endpoint.mjs';
 import {callAgentRuntimeTool} from './agent-media-ice.mjs';
 import {desktopMediaEnvironment} from './cli/desktop-media-install.mjs';
-import { loadDeviceE2eeProfile } from './cli/e2ee-identity.mjs';
+import { prepareAgentE2eeProfile } from './cli/e2ee-automatic.mjs';
+import {startNativeE2eeEnrollment} from './cli/e2ee-native-enrollment.mjs';
+import {startLocalE2eeApprovalServer} from './cli/e2ee-local-approval.mjs';
 import { assertAgentE2eeAdmission, createAgentRelayConnection } from './agent-relay-connection.mjs';
 import { createRuntimeCapabilities, normalizeRuntimeToolNames } from './agent-runtime-capabilities.mjs';
 
@@ -30,14 +32,19 @@ const RUNTIME_RESTART_MAX_MS = 30_000;
 // timeout while the device keeps working invisibly.
 const CALL_TIMEOUT_MARGIN_MS = 10_000;
 
-export async function runAgent(options) {
-  const e2eeProfile = await loadDeviceE2eeProfile(options);
-  assertAgentE2eeAdmission(process.env, options.requireE2ee, Boolean(e2eeProfile));
+export async function runAgent(options,{prepareE2eeProfile=prepareAgentE2eeProfile}={}) {
+  // Isolated transport tests inject a null E2EE profile without ever touching
+  // the signed-in owner's OS vault. A mandatory E2EE policy is still checked
+  // below and cannot be bypassed by this dependency injection.
+  // Reject unsafe or incomplete relay configuration before accessing the owner's OS vault.
   const serverUrl = normalizedServerUrl(options.serverUrl, { allowInsecure: options.allowInsecureTransport === true || process.env.REMCP_ALLOW_INSECURE_TRANSPORT === 'true' });
   const deviceToken = String(options.deviceToken || '');
   const deviceId = String(options.deviceId || '');
-  const deviceName = String(options.deviceName || os.hostname());
   if (!serverUrl || !deviceToken || !deviceId) throw new Error('serverUrl, deviceToken and deviceId are required');
+  if(typeof prepareE2eeProfile!=='function')throw new TypeError('Invalid E2EE provider');
+  const e2eeProfile = await prepareE2eeProfile(options);
+  assertAgentE2eeAdmission(process.env, options.requireE2ee, Boolean(e2eeProfile));
+  const deviceName = String(options.deviceName || os.hostname());
   const agentUrl = serverUrl.replace(/^http/, 'ws') + '/agent';
   const callTimeoutMs = Math.max(5_000, Number(options.rpcTimeoutMs || 120000) - CALL_TIMEOUT_MARGIN_MS);
   const telemetryEnabled = options.telemetryEnabled !== false;
@@ -79,6 +86,17 @@ export async function runAgent(options) {
     invokeRuntimeTool:(mcp,params,options)=>callAgentRuntimeTool({mcp,params,options,serverUrl,deviceToken,encrypted:true}),
     getRuntimeState: () => ({ mcp, runtimeDown, callTimeoutMs }),
   }) : null;
+  let localE2eeApproval = null;
+  if (e2eeEndpoint && process.platform !== 'win32') {
+    try {
+      localE2eeApproval = await startLocalE2eeApprovalServer({endpoint:e2eeEndpoint,config:options});
+    } catch {
+      // Never weaken transport policy or auto-trust peers on socket failure.
+      // Encrypted clients with existing grants continue to work normally.
+      console.error('Owner-local E2EE enrollment is unavailable; existing encrypted grants are unchanged.');
+    }
+  }
+  const nativeE2eeApproval=e2eeEndpoint?startNativeE2eeEnrollment({endpoint:e2eeEndpoint,config:options}):null;
   let transport = null;
   let runtimeRestartDelay = RUNTIME_RESTART_BASE_MS;
   let runtimeRestartTimer = null;
@@ -259,7 +277,7 @@ export async function runAgent(options) {
 
   function assertMessagePolicy(message) {
     const encrypted = Boolean(e2eeEndpoint &&
-      ['e2ee/packet', 'e2ee/identity', 'ping'].includes(message?.method));
+      ['e2ee/packet', 'e2ee/identity', 'e2ee/enroll', 'e2ee/cancel', 'ping'].includes(message?.method));
     assertAgentE2eeAdmission(process.env, options.requireE2ee, encrypted);
     if (typeof options.readCurrentE2eeRequirement === 'function')
       assertAgentE2eeAdmission(process.env, options.readCurrentE2eeRequirement(), encrypted);
@@ -330,6 +348,7 @@ export async function runAgent(options) {
   async function stop() {
     if (stopPromise) return stopPromise;
     stopping = true;
+    nativeE2eeApproval?.close();
     e2eeEndpoint?.close();
     clearTimeout(runtimeRestartTimer);
     runtimeCapabilities.clearRetry();
@@ -341,7 +360,7 @@ export async function runAgent(options) {
     if (recurringUpdateTimer) clearInterval(recurringUpdateTimer);
     for (const controller of inFlight.values()) controller.abort();
     activeSocket?.terminate();
-    stopPromise = Promise.allSettled([mcp?.close(), transport?.close()]).then(results => {
+    stopPromise = Promise.allSettled([mcp?.close(), transport?.close(), localE2eeApproval?.close()]).then(results => {
       for (const result of results) if (result.status === 'rejected') console.error('Agent cleanup failed:', result.reason?.message || 'unknown error');
     });
     return stopPromise;

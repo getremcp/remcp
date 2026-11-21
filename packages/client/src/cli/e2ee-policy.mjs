@@ -4,6 +4,8 @@ import { loadConfig, saveConfig } from './config.mjs';
 import { manageEncryptedClient } from './e2ee-client-profile.mjs';
 import { loadDeviceE2eeProfile, initializeDeviceE2ee, manageE2eePeer } from './e2ee-identity.mjs';
 import { restartPersistentServiceIfInstalled } from './service.mjs';
+import {approveE2eeFromTerminal} from './e2ee-local-consent.mjs';
+import {requestLocalE2eeApproval} from './e2ee-local-approval.mjs';
 
 export function persistedE2eeRequired(config) {
   const value = config?.requireE2ee;
@@ -37,17 +39,32 @@ export async function describeLocalE2ee(config){
   const requirementConfigured=effectiveE2eeRequirement(config);
   try{
     const profile=await loadDeviceE2eeProfile(config);
-    return {requirementConfigured,available:Boolean(profile),
+    return {requirementConfigured,identityConfigured:config?.e2eeIdentity===true,
+      available:Boolean(profile),
       transport:profile?'remcp-hpke-auth-p256-v1':'tls-only',liveSessionVerified:false,
-      ...(profile?{fingerprint:profile.identity.fingerprint}:{})};
+      ...(profile?{fingerprint:profile.identity.fingerprint}:{
+        reason:'E2EE identity is not configured; automatic setup requires a paired device and an accessible owner OS vault',
+      })};
   }catch{
-    return {requirementConfigured,available:false,transport:'unavailable',liveSessionVerified:false,
+    return {requirementConfigured,identityConfigured:config?.e2eeIdentity===true,
+      available:false,transport:'unavailable',liveSessionVerified:false,
       reason:'OS vault locked or local pairing no longer matches its encryption identity'};
   }
 }
 export async function manageE2eePolicy(action = 'status', flags = {}) {
   const config = loadConfig(false) || {};
   const mode = String(action || 'status').toLowerCase();
+  if (mode === 'approve') {
+    const result=await approveE2eeFromTerminal({code:flags.code});
+    console.log(JSON.stringify(result,null,2));
+    console.log('Now return to the browser and verify the encrypted system-information call.');
+    return;
+  }
+  if (mode === 'requests') {
+    const result=await requestLocalE2eeApproval('pending');
+    console.log(JSON.stringify(result,null,2));
+    return;
+  }
   if (mode.startsWith('client-')) {
     console.log(JSON.stringify(await manageEncryptedClient(mode,flags),null,2));
     return;
@@ -57,7 +74,7 @@ export async function manageE2eePolicy(action = 'status', flags = {}) {
     const next = { ...config, e2eeIdentity:true };
     saveConfig(next);
     console.log(JSON.stringify({ ...publicIdentity, device:config.deviceId,
-      next:'Verify the client fingerprint independently, then use remcp e2ee trust --public-key <key> --fingerprint <fingerprint> --mode read|control. remcp e2ee require rejects plaintext tool calls.' }, null, 2));
+      next:'Verify the client fingerprint independently, then use remcp e2ee trust --public-key <key> --fingerprint <fingerprint> --mode read --tools get_system_info (or --mode control). remcp e2ee require rejects plaintext tool calls.' }, null, 2));
     restartPersistentServiceIfInstalled(next, { deferLinux:true, deferWindows:true });
     return;
   }
@@ -77,7 +94,7 @@ export async function manageE2eePolicy(action = 'status', flags = {}) {
     return;
   }
   if (!['require', 'on', 'off'].includes(mode))
-    throw new Error('Usage: remcp e2ee [init|rotate|status|require|off|trust|peers|revoke]');
+    throw new Error('Usage: remcp e2ee [init|rotate|status|require|off|trust|peers|revoke|requests|approve]');
   const required = mode !== 'off';
   const restarted = setE2eeRequirement(config, required);
   if (required) {

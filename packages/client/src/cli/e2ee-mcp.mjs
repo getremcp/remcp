@@ -2,9 +2,7 @@
 // Hosted relay sees only e2ee_transport packets, never device tool arguments/results.
 import {Server} from '@modelcontextprotocol/server';
 import {serveStdio} from '@modelcontextprotocol/server/stdio';
-import {createE2eeDeviceClient} from '../agent-e2ee-client.mjs';
-import {loadEncryptedClient} from './e2ee-client-profile.mjs';
-import {connectEncryptedRelay} from './e2ee-oauth.mjs';
+import {prepareEncryptedMcpConnection} from './e2ee-mcp-enrollment.mjs';
 import {VERSION} from '../version.mjs';
 
 export function createEncryptedMcpServer({client,version=VERSION}){
@@ -24,24 +22,7 @@ export function createEncryptedMcpServer({client,version=VERSION}){
   return server;
 }
 export async function runEncryptedMcp(flags={}){
-  const {vault,record,identity}=await loadEncryptedClient();
-  const deviceId=String(flags.device||'');
-  const pin=record.devices.find(item=>item.device===deviceId);
-  if(!pin)throw new Error('Pin this device with remcp e2ee client-pin before starting encrypted MCP');
-  const relay=await connectEncryptedRelay({vault,pin,port:flags['oauth-port']?Number(flags['oauth-port']):42831});
-  const forward=async(operation,packet,{signal}={})=>{
-    const result=await relay.callTool({name:'e2ee_transport',arguments:{device:deviceId,operation,
-      ...(packet?{packet}:{})}},{signal,timeout:120000});
-    if(result?.isError)throw new Error('Encrypted device transport unavailable');
-    const data=result?.structuredContent?.data;
-    if(!data)throw new Error('Encrypted transport returned an invalid response');
-    return data;
-  };
-  const encrypted=createE2eeDeviceClient({identity,deviceId,pinnedDevice:pin.fingerprint,
-    describe:options=>forward('identity',undefined,options),
-    dispatch:(packet,options)=>forward('packet',packet,options)});
-  // Verify the pinned device and local grant before announcing tools to the AI.
-  await encrypted.listTools();
+  const {client:encrypted,relay}=await prepareEncryptedMcpConnection(flags);
   const handle=serveStdio(()=>createEncryptedMcpServer({client:encrypted}),{
     legacy:'serve',onerror:()=>process.stderr.write('Encrypted MCP protocol error\n'),
   });

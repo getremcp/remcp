@@ -9,6 +9,8 @@ const exact=(o,keys)=>Object.keys(o).length===keys.length&&
 const number=(v,min,max)=>typeof v==='number'&&Number.isFinite(v)&&v>=min&&v<=max;
 const seq=v=>Number.isSafeInteger(v)&&v>=1&&v<=2_147_483_647;
 const text=v=>typeof v==='string'&&v.length<=4_096&&!/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(v);
+const clipboardText=v=>typeof v==='string'&&v.length<=65_536&&
+  !/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(v)&&new TextEncoder().encode(v).length<=65_536;
 const shortcut=v=>typeof v==='string'&&v.length>=1&&v.length<=64&&
   /^[A-Za-z0-9+_-]+$/.test(v);
 const coord=v=>number(v,0,1);
@@ -19,7 +21,8 @@ export function parseWebRtcControlInput(o){
   if(o.kind==='pointer'){
     if(!knownPointer.has(o.op)||!coord(o.x)||!coord(o.y))return null;
     const keys=o.op==='move'?['seq','kind','op','x','y']:
-      ['seq','kind','op','x','y','button'];
+      ['seq','kind','op','x','y','button',...(o.click_count===undefined?[]:['click_count'])];
+    if(o.click_count!==undefined&&(o.op!=='click'||![1,2].includes(o.click_count)))return null;
     if(!exact(o,keys))return null;
     if(o.op!=='move'&&!knownButtons.has(o.button))return null;
     if(o.op==='right_click'&&o.button!=='right')return null;
@@ -49,8 +52,7 @@ export function parseWebRtcControlInput(o){
     if(o.op==='read'||o.op==='clear'){
       if(!exact(o,['seq','kind','op']))return null;
     }else if(o.op==='write'){
-      if(!exact(o,['seq','kind','op','text'])||!text(o.text)||
-         new TextEncoder().encode(o.text).length>4_096)return null;
+      if(!exact(o,['seq','kind','op','text'])||!clipboardText(o.text))return null;
     }else return null;
     return {...o};
   }
@@ -82,7 +84,8 @@ export function toDeviceTool(input,display){
     button:input.button,hold_ms:120,duration_ms:160,
   }};
   if(input.kind==='pointer')return {name:'pointer',arguments:{
-    action:input.op,x,y,...(input.op!=='move'?{button:input.button}:{})}};
+    action:input.op,x,y,...(input.op!=='move'?{button:input.button}:{}),
+    ...(input.click_count===undefined?{}:{click_count:input.click_count})}};
   if(input.kind==='scroll')return {name:'scroll',arguments:{
     delta_x:input.dx,delta_y:input.dy,x,y}};
   return null;

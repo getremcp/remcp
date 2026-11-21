@@ -91,7 +91,7 @@ ReMCP ships a native `gemini-extension.json` in the public repository and the re
 Users can install directly from GitHub today:
 
 ```bash
-gemini extensions install https://github.com/antonbaider/remcp
+gemini extensions install https://github.com/getremcp/remcp
 ```
 
 Gemini CLI copies the extension locally. ReMCP's remote MCP entry uses OAuth discovery, so there is
@@ -112,7 +112,7 @@ Users can install ReMCP from GitHub before registry approval:
 1. Open the **Powers** panel in Kiro.
 2. Choose **Add Custom Power**.
 3. Choose **Import power from GitHub**.
-4. Enter `https://github.com/antonbaider/remcp`.
+4. Enter `https://github.com/getremcp/remcp`.
 5. Install the power, complete ReMCP OAuth when prompted, and use a paired computer.
 
 After registry approval, users can discover ReMCP directly in <https://kiro.dev/powers/>.
@@ -139,7 +139,7 @@ ReMCP is published or indexed in these active MCP discovery layers:
 
 - **Glama:** <https://glama.ai/mcp/connectors/site.remcp/re-mcp>
 - **Awesome Remote MCP Servers:** ReMCP is listed under Developer Tools after [PR #435](https://github.com/punkpeye/awesome-remote-mcp-servers/pull/435) was merged; the directory points to `https://remcp.site/mcp`.
-- **Official MCP Registry:** published as `io.github.getremcp/remcp`; GitHub resolves the project release URL `antonbaider/remcp` to the transferred repository owned by `getremcp`, so the Registry namespace remains valid while project-facing links use `antonbaider/remcp`. The former `io.github.antonbaider/remcp` Registry identity is legacy only.
+- **Official MCP Registry:** published as `io.github.getremcp/remcp`; GitHub resolves the project release URL `antonbaider/remcp` to the transferred repository owned by `getremcp`, so the Registry namespace remains valid while project-facing links use `getremcp/remcp`. The former `io.github.antonbaider/remcp` Registry identity is legacy only.
 
 **Former Smithery listing:** The old ReMCP page returns HTTP 404. Smithery discontinued its API, CLI, and publishing service on 31 October 2026 ([official notice](https://www.smithery.ai/future)); it is no longer an active ReMCP listing.
 

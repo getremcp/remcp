@@ -1,5 +1,6 @@
 import {createE2eeIdentity,exportE2eeIdentity,importE2eeIdentity,e2eeFingerprint} from '../agent-e2ee-crypto.mjs';
 import {createE2eeVault} from './e2ee-vault.mjs';
+import {withEncryptedClientVaultLock} from './e2ee-client-mutation.mjs';
 
 export function encryptedClientEndpoint(value='https://mcp.remcp.site/mcp'){
   const url=new URL(String(value));
@@ -14,7 +15,7 @@ export async function loadEncryptedClient(){
   return {vault,record,identity:await importE2eeIdentity(record.identity)};
 }
 export async function manageEncryptedClient(action,flags={}){
-  if(action==='client-init'){
+  if(action==='client-init')return withEncryptedClientVaultLock(async()=>{
     const vault=createE2eeVault({profile:'client'}),record=await vault.read();
     if(record){
       const identity=await importE2eeIdentity(record.identity);
@@ -23,10 +24,10 @@ export async function manageEncryptedClient(action,flags={}){
     const identity=await createE2eeIdentity();
     await vault.write({version:1,identity:await exportE2eeIdentity(identity),devices:[],oauth:{}});
     return {publicKey:identity.publicKey,fingerprint:identity.fingerprint};
-  }
-  const {vault,record}=await loadEncryptedClient();
-  if(action==='client-devices')return record.devices;
-  if(action==='client-login'){
+  });
+  if(action==='client-devices'||action==='client-login'){
+    const {vault,record}=await loadEncryptedClient();
+    if(action==='client-devices')return record.devices;
     const pin=record.devices.find(item=>item.device===String(flags.device||''));
     if(!pin)throw new Error('Pin this device before authorizing encrypted MCP');
     const {connectEncryptedRelay}=await import('./e2ee-oauth.mjs');
@@ -35,19 +36,23 @@ export async function manageEncryptedClient(action,flags={}){
   }
   const device=String(flags.device||'');
   if(!/^[0-9a-f-]{36}$/i.test(device))throw new Error('Paired --device UUID is required');
-  if(action==='client-forget'){
-    record.devices=record.devices.filter(item=>item.device!==device);
-  }else if(action==='client-pin'){
-    const fingerprint=String(flags.fingerprint||'').toLowerCase(),publicKey=String(flags['public-key']||'');
-    if(!/^[0-9a-f]{64}$/.test(fingerprint)||await e2eeFingerprint(publicKey)!==fingerprint)
-      throw new Error('Device public key must match the independently confirmed full fingerprint');
-    const server=encryptedClientEndpoint(flags.server);
-    const issuer=new URL(server).hostname==='mcp.remcp.site'?'https://remcp.site':new URL(server).origin;
-    if(record.devices.length>=32&&!record.devices.some(item=>item.device===device))
-      throw new Error('Maximum 32 trusted devices');
-    record.devices=[...record.devices.filter(item=>item.device!==device),
-      {device,publicKey,fingerprint,server,issuer}];
-  }else throw new Error('Unknown encrypted client action');
-  await vault.write(record);
-  return {action,device};
+  if(!['client-forget','client-pin'].includes(action))throw new Error('Unknown encrypted client action');
+  return withEncryptedClientVaultLock(async()=>{
+    const {vault,record}=await loadEncryptedClient();
+    if(action==='client-forget'){
+      record.devices=record.devices.filter(item=>item.device!==device);
+    }else{
+      const fingerprint=String(flags.fingerprint||'').toLowerCase(),publicKey=String(flags['public-key']||'');
+      if(!/^[0-9a-f]{64}$/.test(fingerprint)||await e2eeFingerprint(publicKey)!==fingerprint)
+        throw new Error('Device public key must match the independently confirmed full fingerprint');
+      const server=encryptedClientEndpoint(flags.server);
+      const issuer=new URL(server).hostname==='mcp.remcp.site'?'https://remcp.site':new URL(server).origin;
+      if(record.devices.length>=32&&!record.devices.some(item=>item.device===device))
+        throw new Error('Maximum 32 trusted devices');
+      record.devices=[...record.devices.filter(item=>item.device!==device),
+        {device,publicKey,fingerprint,server,issuer}];
+    }
+    await vault.write(record);
+    return {action,device};
+  });
 }

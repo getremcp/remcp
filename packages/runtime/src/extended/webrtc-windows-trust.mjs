@@ -50,12 +50,14 @@ try {
 
 export function windowsNativeWorkerTrusted(filename,{
   env=process.env,run=spawnSync,statFile=lstatSync,now=Date.now,
-  cache=null,extension='.py',timeoutMs=10000,
+  // Bound the full ACL chain check even on I/O-constrained Windows VMs.
+  // A timeout still fails closed; no NTFS ownership or ACE rule is bypassed.
+  cache=null,extension='.py',timeoutMs=30000,
 }={}){
   if(typeof filename!=='string'||!path.win32.isAbsolute(filename)||
      typeof env.LOCALAPPDATA!=='string'||!path.win32.isAbsolute(env.LOCALAPPDATA)||
      !env.SystemRoot||!Number.isSafeInteger(timeoutMs)||
-     timeoutMs<500||timeoutMs>10_000)return false;
+     timeoutMs<500||timeoutMs>30_000)return false;
   const root=path.win32.resolve(env.LOCALAPPDATA,'ReMCP');
   const absolute=path.win32.resolve(filename);
   if(!['.py','.exe','.json'].includes(extension)||

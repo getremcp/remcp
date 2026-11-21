@@ -80,7 +80,7 @@ printf '%s\\n' '${join(root, 'modules')}'
     autoUpdate: false,
     telemetryEnabled: false,
     runtime: { kind: 'npm', packageName: '@example/runtime', packageSpec: '@example/runtime@1.0.0', entry: 'index.mjs' },
-  });
+  },{prepareE2eeProfile:async()=>null});
 
   await waitFor(() => acceptedConnections === 1, 'the agent should establish its initial relay connection');
 

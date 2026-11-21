@@ -10,7 +10,7 @@ import { VERSION } from '../src/version.mjs';
 const root = fileURLToPath(new URL('..', import.meta.url));
 const source = pathToFileURL(path.join(root, 'src', 'cli.mjs')).href;
 
-function statusWithMismatchedNpmPrefix({ runtimePresent, historicalMissingCli = false, historicalInstalledCli = false, historicalAliasCli = false }) {
+function statusWithMismatchedNpmPrefix({ runtimePresent, historicalMissingCli = false, historicalInstalledCli = false, historicalAliasCli = false, historicalNvmVersion = false }) {
   const dir = mkdtempSync(path.join(tmpdir(), 'remcp-status-npm-prefix-'));
   try {
     const home = path.join(dir, 'home');
@@ -32,6 +32,18 @@ function statusWithMismatchedNpmPrefix({ runtimePresent, historicalMissingCli = 
       writeFileSync(path.join(path.dirname(oldCli), '..', 'package.json'),
         JSON.stringify({ name:'@remcp/remcp', version:'0.2.100' }));
       installations.push({ cliPath:oldCli });
+    }
+    if (historicalNvmVersion) {
+      const oldCli = path.join(home, '.nvm', 'versions', 'node', 'v24.22.1', 'lib',
+        'node_modules', '@remcp', 'remcp', 'bin', 'remcp.mjs');
+      mkdirSync(path.dirname(oldCli), { recursive:true });
+      writeFileSync(oldCli, '// old dormant NVM CLI');
+      writeFileSync(path.join(path.dirname(oldCli), '..', 'package.json'),
+        JSON.stringify({ name:'@remcp/remcp', version:'0.2.202' }));
+      const oldRuntime = path.join(path.dirname(oldCli), '..', '..', '..', 'runtime');
+      mkdirSync(oldRuntime, { recursive:true });
+      writeFileSync(path.join(oldRuntime, 'package.json'),
+        JSON.stringify({ name:'@remcp/runtime', version:'0.2.202' }));
     }
     if (historicalAliasCli) {
       const oldAlias = path.join(dir, 'prior-bin', 'remcp');
@@ -98,4 +110,17 @@ test('status does not mistake symlink aliases as independent npm packages', () =
   assert.equal(status.update.knownPackageCopies, 1);
   assert.equal(status.update.additionalKnownPackageCopies, 0);
   assert.equal(status.update.multipleInstallations, false);
+});
+
+test('status warns about dormant old NVM package even with healthy active agent', () => {
+  const status = statusWithMismatchedNpmPrefix({
+    runtimePresent:true, historicalNvmVersion:true,
+  });
+  assert.equal(status.client.version, VERSION);
+  assert.equal(status.update.activeVersionConsistent, true);
+  assert.equal(status.update.knownInstallationsConsistent, false);
+  assert.equal(status.update.versionConsistent, false);
+  assert.equal(status.update.outdatedKnownPackageCopies, 1);
+  assert.deepEqual(status.update.outdatedKnownVersions, ['0.2.202']);
+  assert.equal(status.update.state, 'unknown'); // local fixture has no version server
 });

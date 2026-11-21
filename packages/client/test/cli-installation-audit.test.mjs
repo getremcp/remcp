@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { auditKnownInstallations } from '../src/cli/installation-audit.mjs';
+import { auditKnownInstallations, knownInstallationVersionHealth } from '../src/cli/installation-audit.mjs';
 
 function packageCli(root, version='0.2.209') {
   const pkg = path.join(root, 'node_modules', '@remcp', 'remcp');
@@ -113,4 +113,37 @@ test('explicit CLI symlink remains one alias even under a symlinked ancestor', (
   assert.equal(report.packageCopyCount, 1);
   assert.equal(report.aliases.length, 1, 'count the actual CLI symlink exactly once');
   assert.equal(report.aliases[0].resolvesTo, fs.realpathSync(canonical));
+}));
+
+test('bounded NVM discovery finds dormant older versions even with managed bin aliases', () => usingFixture(dir => {
+  const active = packageCli(path.join(dir, 'managed'), '0.2.263');
+  const legacyRoot = path.join(dir, '.nvm', 'versions', 'node', 'v24.22.1');
+  const legacy = packageCli(path.join(legacyRoot, 'lib'), '0.2.202');
+  const oldBin = path.join(legacyRoot, 'bin', 'remcp');
+  fs.mkdirSync(path.dirname(oldBin), { recursive:true });
+  fs.symlinkSync(active, oldBin); // shell alias was repaired, old physical package remains.
+  const report = auditKnownInstallations({ installations:[] }, {
+    currentCliPath:active, serviceCliPath:active, scanNvm:true, nvmHome:dir,
+  });
+  assert.equal(report.packageCopyCount, 2);
+  assert.equal(report.copies.some(copy => copy.version === '0.2.202'), true);
+  assert.equal(fs.existsSync(legacy), true);
+  const health = knownInstallationVersionHealth(report, {
+    clientVersion:'0.2.263', runtimeVersion:'0.2.263',
+  });
+  assert.equal(health.consistent, false);
+  assert.equal(health.outdatedPackageCopies, 1);
+  assert.deepEqual(health.outdatedVersions, ['0.2.202']);
+}));
+
+test('npx cache alone never marks active package version unhealthy', () => usingFixture(dir => {
+  const active = packageCli(path.join(dir, 'managed'), '0.2.263');
+  const cached = packageCli(path.join(dir, '.npm', '_npx', 'old-id'), '0.2.101');
+  const audit = auditKnownInstallations({ installations:[{ cliPath:cached }] }, {
+    currentCliPath:active, serviceCliPath:active,
+  });
+  assert.equal(audit.packageCopyCount, 2);
+  assert.deepEqual(knownInstallationVersionHealth(audit, {
+    clientVersion:'0.2.263', runtimeVersion:'0.2.263',
+  }), { consistent:true, outdatedPackageCopies:0, outdatedVersions:[] });
 }));

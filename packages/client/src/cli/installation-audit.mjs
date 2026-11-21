@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 
 const CLIENT_PACKAGE = '@remcp/remcp';
@@ -12,8 +13,55 @@ function isExplicitCliAlias(cliPath) {
   catch { return false; } // A concurrently removed entry cannot be trusted.
 }
 
-// Inventory only paths previously recorded by this owner and the two current CLI
-// entrypoints. Never crawl npm/node directories or infer running processes.
+// Only inspect the known owner paths and a bounded, literal NVM version directory.
+// This detects dormant CLI copies even when old NVM bin symlinks were replaced.
+// It never crawls arbitrary npm caches or treats package copies as running agents.
+function nvmPackageEntries(homeDir) {
+  const versionDir = path.join(homeDir, '.nvm', 'versions', 'node');
+  let versions;
+  try { versions = fs.readdirSync(versionDir, { withFileTypes:true }); }
+  catch { return []; }
+  return versions
+    .filter(item => item.isDirectory() && /^v\d+\.\d+\.\d+$/.test(item.name))
+    .slice(0, 32)
+    .map(item => ({ path:path.join(versionDir, item.name, 'lib', 'node_modules',
+      '@remcp', 'remcp', 'bin', 'remcp.mjs'), source:'nvm_version' }));
+}
+
+export function knownInstallationVersionHealth(audit, { clientVersion, runtimeVersion } = {}) {
+  // An npx cache is not an installed shell command. Keep it visible to doctor,
+  // but do not allow its lifetime to turn a healthy installation into an incident.
+  const installed = (audit?.copies || []).filter(copy => copy.kind !== 'npx_cache');
+  const outdated = installed.filter(copy => copy.version !== clientVersion
+    || (runtimeVersion && copy.runtimeVersion && copy.runtimeVersion !== runtimeVersion));
+  return {
+    consistent: outdated.length === 0,
+    outdatedPackageCopies: outdated.length,
+    // Do not include local filesystem paths in the concise status response.
+    outdatedVersions: [...new Set(outdated.map(copy => copy.version))],
+  };
+}
+
+export function summarizeUpdateInstallations(audit, {
+  clientVersion, runtimeVersion, serviceCliVersion, serviceRuntimeVersion, firstParty,
+} = {}) {
+  const known = knownInstallationVersionHealth(audit, {
+    clientVersion, runtimeVersion:firstParty ? clientVersion : null,
+  });
+  const cli = [clientVersion, serviceCliVersion].filter(Boolean);
+  const runtime = [runtimeVersion, serviceRuntimeVersion].filter(Boolean);
+  const activeVersionConsistent = firstParty
+    ? new Set([...cli, ...runtime]).size <= 1
+    : new Set(cli).size <= 1 && new Set(runtime).size <= 1;
+  return {
+    activeVersionConsistent,
+    knownInstallationsConsistent:known.consistent,
+    versionConsistent:activeVersionConsistent && known.consistent,
+    outdatedKnownPackageCopies:known.outdatedPackageCopies,
+    outdatedKnownVersions:known.outdatedVersions,
+  };
+}
+
 function installedPackageAt(cliPath) {
   if (typeof cliPath !== 'string' || !cliPath.trim() || !fs.existsSync(cliPath)) return null;
   let resolved;
@@ -39,12 +87,15 @@ function installedPackageAt(cliPath) {
   } catch { return null; }
 }
 
-export function auditKnownInstallations(config, { currentCliPath, serviceCliPath } = {}) {
+export function auditKnownInstallations(config, {
+  currentCliPath, serviceCliPath, scanNvm = false, nvmHome = process.env.HOME || os.homedir(),
+} = {}) {
   const history = Array.isArray(config?.installations) ? config.installations.slice(-MAX_HISTORY) : [];
   const candidates = [
     { path:currentCliPath, source:'invoked_cli' },
     { path:serviceCliPath, source:'managed_service' },
     ...history.map(item => ({ path:item?.cliPath, source:'saved_history' })),
+    ...(scanNvm ? nvmPackageEntries(nvmHome) : []),
   ];
   const packages = new Map();
   const aliases = [];
@@ -75,7 +126,7 @@ export function auditKnownInstallations(config, { currentCliPath, serviceCliPath
     cliPaths:[...item.cliPaths],
   }));
   return {
-    scope:'recorded_paths_only',
+    scope:'recorded_paths_and_bounded_nvm',
     processConcurrency:'not_measured',
     packageCopyCount:copies.length,
     otherCopyCount:copies.filter(item => !item.isInvoked && !item.isManagedService).length,

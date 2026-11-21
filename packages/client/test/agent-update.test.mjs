@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { supervisorRestart, updateDecision } from '../src/agent.mjs';
 import { globalCliEntry, globalInstalledVersion, updateInvocationArgs } from '../src/agent-update.mjs';
 import { VERSION } from '../src/version.mjs';
@@ -12,6 +13,25 @@ test('agent refuses a non-loopback plaintext relay unless explicitly overridden'
     deviceId: 'fixture-device',
     autoUpdate: false,
   }), /must use https/i);
+});
+
+test('relay URL and required fields are validated before the established E2EE vault', async () => {
+  const source = readFileSync(new URL('../src/agent.mjs', import.meta.url), 'utf8');
+  const urlCheck = source.indexOf('normalizedServerUrl(options.serverUrl');
+  const requiredCheck = source.indexOf("if (!serverUrl || !deviceToken || !deviceId)");
+  const providerCheck = source.indexOf("typeof prepareE2eeProfile!=='function'");
+  const vaultLoad = source.indexOf('await prepareE2eeProfile(options)');
+  assert.ok(urlCheck >= 0 && requiredCheck > urlCheck &&
+    providerCheck > requiredCheck && vaultLoad > providerCheck,
+    'invalid relay configuration must be rejected before any owner-vault access');
+
+  const { runAgent } = await import('../src/agent.mjs');
+  const options = { deviceId: 'fixture-device', deviceToken: 'fixture-token',
+    e2eeIdentity: true, requireE2ee: true, autoUpdate: false };
+  await assert.rejects(() => runAgent({ ...options, serverUrl: 'http://relay.example.test' }),
+    /must use https/i);
+  await assert.rejects(() => runAgent({ ...options, serverUrl: 'https://relay.example.test', deviceToken: '' }),
+    /serverUrl, deviceToken and deviceId are required/);
 });
 
 const advertised = (cli, runtime) => ({ cli, runtime, minimum: '0.1.0' });

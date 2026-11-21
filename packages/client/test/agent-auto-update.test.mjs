@@ -93,7 +93,7 @@ printf '%s\\n' '${modules}'
       packageSpec:`@example/runtime@${VERSION}`,
       entry:'index.mjs',
     },
-  });
+  },{prepareE2eeProfile:async()=>null});
 
   const deadline = Date.now() + 5000;
   while (versionChecks < 3 && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 25));

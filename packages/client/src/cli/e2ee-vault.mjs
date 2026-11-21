@@ -17,8 +17,25 @@ const unavailable=()=>new Error('E2EE OS vault unavailable or locked; unlock Key
 export async function linuxSecretServiceEnvironment({
   environment=process.env,uid=process.getuid?.(),lstat=fs.lstat,
 }={}){
-  if(environment.DBUS_SESSION_BUS_ADDRESS)return environment;
   if(!Number.isSafeInteger(uid)||uid<0)throw unavailable();
+  const supplied=environment.DBUS_SESSION_BUS_ADDRESS;
+  if(supplied){
+    // Inherited D-Bus addresses must be owner-validated, not blindly trusted.
+    const match=/^unix:path=(\/[^,;\r\n\0]+)(?:,guid=[0-9a-fA-F]{32})?$/.exec(supplied);
+    if(!match||path.posix.normalize(match[1])!==match[1])throw unavailable();
+    const bus=match[1],directory=path.posix.dirname(bus);
+    try{
+      const [dirStat,busStat]=await Promise.all([lstat(directory),lstat(bus)]);
+      // dbus-run-session can bind an owner-owned socket in root's sticky /tmp.
+      const privateOwner=dirStat.uid===uid&&(dirStat.mode&0o077)===0;
+      const stickyRoot=dirStat.uid===0&&(dirStat.mode&0o1000)!==0&&
+        (dirStat.mode&0o002)!==0;
+      if(!dirStat.isDirectory()||dirStat.isSymbolicLink()||
+          (!privateOwner&&!stickyRoot)||!busStat.isSocket()||
+          busStat.isSymbolicLink()||busStat.uid!==uid)throw unavailable();
+    }catch{throw unavailable();}
+    return environment;
+  }
   const directory=environment.XDG_RUNTIME_DIR||'/run/user/'+uid;
   if(!path.posix.isAbsolute(directory))throw unavailable();
   const bus=path.posix.join(directory,'bus');

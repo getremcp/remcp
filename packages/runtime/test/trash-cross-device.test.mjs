@@ -11,7 +11,8 @@ const { invokeTool } = await import('../src/invoke.mjs');
 function differentMount() {
   if (process.platform !== 'linux') return null;
   const homeDevice = statSync(homedir()).dev;
-  for (const candidate of ['/tmp', '/dev/shm']) {
+  // /tmp can have per-user quotas despite free global space; prefer isolated tmpfs.
+  for (const candidate of ['/dev/shm', '/tmp']) {
     try {
       if (statSync(candidate).dev !== homeDevice) {
         accessSync(candidate, constants.W_OK);

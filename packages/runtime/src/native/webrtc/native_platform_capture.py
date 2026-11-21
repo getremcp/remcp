@@ -8,6 +8,7 @@ import ctypes
 import sys
 
 from aiortc import VideoStreamTrack
+from video_profiles import video_profile
 
 
 def native_source_allowed(source, platform=None):
@@ -101,11 +102,13 @@ class PermissionGuardedDesktopTrack(VideoStreamTrack):
     frame can proceed to the encoder after that observed revocation.
     """
 
-    def __init__(self, source_track, platform, permission_check=native_permission_granted):
+    def __init__(self, source_track, platform, permission_check=native_permission_granted,
+                 profile="balanced"):
         super().__init__()
         self.source_track = source_track
         self.platform = platform
         self.permission_check = permission_check
+        self.max_width, self.max_height, _fps = video_profile(profile)
 
     def require_permission(self):
         try:
@@ -120,7 +123,7 @@ class PermissionGuardedDesktopTrack(VideoStreamTrack):
         self.require_permission()
         frame = await self.source_track.recv()
         self.require_permission()
-        return bound_video_frame(frame)
+        return bound_video_frame(frame, self.max_width, self.max_height)
 
     def stop(self):
         super().stop()
@@ -133,7 +136,8 @@ class NativeDesktopCapture:
     """One trusted screen source and stoppable aiortc MediaPlayer video track."""
 
     def __init__(self, source, *, platform=None, media_player_cls=None,
-                 permission_check=native_permission_granted):
+                 permission_check=native_permission_granted, profile="balanced"):
+        width, height, fps = video_profile(profile)
         target = platform or sys.platform
         if not native_source_allowed(source, target):
             raise ValueError("invalid_native_screen_source")
@@ -143,7 +147,7 @@ class NativeDesktopCapture:
             from xorg_capture import X11VideoTrack
             self.player = None
             self.track = PermissionGuardedDesktopTrack(
-                X11VideoTrack(), target, permission_check=permission_check)
+                X11VideoTrack(fps=fps), target, permission_check=permission_check, profile=profile)
             return
         real_media_player = media_player_cls is None
         if real_media_player:
@@ -151,10 +155,10 @@ class NativeDesktopCapture:
             media_player_cls = MediaPlayer
         if source == "avfoundation":
             input_name = "Capture screen 0:none"
-            options = {"framerate": "6", "pixel_format": "nv12"}
+            options = {"framerate": str(fps), "pixel_format": "nv12"}
         else:
             input_name = "desktop"
-            options = {"framerate": "6", "draw_mouse": "1"}
+            options = {"framerate": str(fps), "draw_mouse": "1"}
         self.player = media_player_cls(input_name, format=source, options=options)
         raw_track = getattr(self.player, "video", None)
         if raw_track is None:
@@ -164,12 +168,21 @@ class NativeDesktopCapture:
             self.player.audio.stop()
             raise RuntimeError("native_audio_track_forbidden")
         if real_media_player:
+            from aiortc.contrib.media import MediaRelay
+            self.relay = MediaRelay()
             self.track = PermissionGuardedDesktopTrack(
-                raw_track, target, permission_check=permission_check)
+                self.relay.subscribe(raw_track, buffered=False), target,
+                permission_check=permission_check, profile=profile)
         else:
             self.track = raw_track
 
     def close(self):
-        if self.track is not None:
-            track, self.track = self.track, None
+        track, self.track = self.track, None
+        if track is not None:
             track.stop()
+        # A relay proxy stops its subscription, not the native MediaPlayer.
+        # Explicitly close the source so no capture survives Stop.
+        player, self.player = self.player, None
+        raw = getattr(player, "video", None)
+        if raw is not None and raw is not track:
+            raw.stop()

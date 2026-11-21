@@ -418,22 +418,22 @@ function mouseInfo(button='left') {
   if(b==='middle')return {button:'$.kCGMouseButtonCenter',down:'$.kCGEventOtherMouseDown',up:'$.kCGEventOtherMouseUp',drag:'$.kCGEventOtherMouseDragged'};
   return {button:'$.kCGMouseButtonLeft',down:'$.kCGEventLeftMouseDown',up:'$.kCGEventLeftMouseUp',drag:'$.kCGEventLeftMouseDragged'};
 }
-
 export async function pointer(args = {}) {
   const action=requireEnum(args.action,'action',['move','click','double_click','right_click','down','up']);
   const x=Number(args.x),y=Number(args.y);
   const info=mouseInfo(action==='right_click'?'right':args.button);
+  const count=args.click_count===undefined?1:Number(args.click_count);
+  if(![1,2].includes(count))throw new Error('Invalid click sequence ordinal');
   const p=`$.CGPointMake(${Number.isFinite(x)?x:0},${Number.isFinite(y)?y:0})`;
   const op=action==='move'?'post($.kCGEventMouseMoved,0);'
     :action==='down'?`post(${info.down},1);`
     :action==='up'?`post(${info.up},1);`
     :action==='double_click'?`post(${info.down},1);post(${info.up},1);post(${info.down},2);post(${info.up},2);`
-    :`post(${info.down},1);post(${info.up},1);`;
+    :`post(${info.down},${count});post(${info.up},${count});`;
   const script=`ObjC.import('ApplicationServices');var p=${p};function post(t,c){var e=$.CGEventCreateMouseEvent(null,t,p,${info.button});if(c)$.CGEventSetIntegerValueField(e,$.kCGMouseEventClickState,c);$.CGEventPost($.kCGHIDEventTap,e);}${op}`;
   await runOsa(script,{javascript:true,label:'pointer'});
   return text(`Pointer ${action} completed.`);
 }
-
 export async function dragDrop(args = {}) {
   const info=mouseInfo(args.button);
   const script=`ObjC.import('ApplicationServices');function post(t,x,y){var p=$.CGPointMake(x,y);var e=$.CGEventCreateMouseEvent(null,t,p,${info.button});$.CGEventPost($.kCGHIDEventTap,e);}post(${info.down},${args.from_x},${args.from_y});delay(${clamp(args.hold_ms,120,0,5000)/1000});post(${info.drag},${args.to_x},${args.to_y});delay(${clamp(args.duration_ms,120,0,5000)/1000});post(${info.up},${args.to_x},${args.to_y});`;

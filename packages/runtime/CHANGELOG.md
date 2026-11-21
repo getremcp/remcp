@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.264 — 2026-11-18
+
+- Preserve pairing-bound HPKE identity and reviewed native permissions while adding safe, automatically recoverable first-time enrollment and local cancellation of pending browser or AI-client approvals.
+- Improve consented WebRTC remote desktop control, keyboard/mouse/clipboard handling, quality profiles and Stop/reconnect fencing. Media remains DTLS-SRTP, not independently verified application-layer E2EE.
+- Carry forward source-only Windows C# helpers with unchanged verified SHA-256 and release-version-aligned metadata. No DLL or signed native capture binary is added.
+
 ## 0.2.263 — 2026-11-17
 
 - Remain version-aligned with the macOS Keychain terminal initialization repair. Native runtime and desktop media implementations are unchanged.

@@ -33,7 +33,7 @@ test('real endpoint executes an encrypted request and no plaintext reaches relay
   assert.ok(f.wire.every(value=>!value.includes(secret)&&!value.includes('"name":"write"')));
 });
 test('read grant filters tools and denies control including unannotated tools',async()=>{
-  const f=await fixture({mode:'read'});
+  const f=await fixture({mode:'read',tools:['read']});
   assert.deepEqual((await f.client.listTools()).tools.map(t=>t.name),['read']);
   await assert.rejects(f.client.callTool({name:'write',arguments:{text:'x'}}),/tool_not_authorized/);
   await assert.rejects(f.client.callTool({name:'unknown'}),/tool_not_authorized/);
@@ -42,7 +42,7 @@ test('read grant filters tools and denies control including unannotated tools',a
 test('a live client downgraded from control to read loses write access immediately',async()=>{
   const f=await fixture({mode:'control'});
   assert.equal((await f.client.listTools()).tools.some(t=>t.name==='write'),true);
-  f.setPeer({publicKey:f.owner.publicKey,fingerprint:f.owner.fingerprint,mode:'read'});
+  f.setPeer({publicKey:f.owner.publicKey,fingerprint:f.owner.fingerprint,mode:'read',tools:['read']});
   assert.deepEqual((await f.client.listTools()).tools.map(t=>t.name),['read']);
   await assert.rejects(f.client.callTool({name:'write',arguments:{text:'must not write'}}),/tool_not_authorized/);
   assert.equal(f.calls.length,0);
@@ -51,6 +51,12 @@ test('per-peer allowlist applies to both catalog and actual calls',async()=>{
   const f=await fixture({tools:['read']});
   assert.equal((await f.client.listTools()).tools.length,1);
   await assert.rejects(f.client.callTool({name:'write'}),/tool_not_authorized/);
+});
+test('a read-only annotation cannot authorize a tool without an explicit owner grant',async()=>{
+  const f=await fixture({mode:'read'});
+  assert.deepEqual((await f.client.listTools()).tools,[]);
+  await assert.rejects(f.client.callTool({name:'read',arguments:{text:'secret'}}),/tool_not_authorized/);
+  assert.equal(f.calls.length,0);
 });
 test('authenticated replay and fresh ciphertext with the same call ID execute once',async()=>{
   const f=await fixture(),body={method:'tools/call',params:{name:'write',arguments:{text:'once'}}};

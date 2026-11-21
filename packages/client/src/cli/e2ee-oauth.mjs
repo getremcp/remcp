@@ -4,6 +4,7 @@ import {randomBytes,timingSafeEqual,createHash} from 'node:crypto';
 import {Client,StreamableHTTPClientTransport,UnauthorizedError} from '@modelcontextprotocol/client';
 import {openInBrowser} from './connect.mjs';
 import {VERSION} from '../version.mjs';
+import {withEncryptedClientVaultLock} from './e2ee-client-mutation.mjs';
 
 export async function connectEncryptedRelay({vault,pin,port=42831}){
   if(!Number.isSafeInteger(port)||port<1024||port>65535)throw new Error('Invalid OAuth loopback port');
@@ -45,13 +46,13 @@ export async function connectEncryptedRelay({vault,pin,port=42831}){
     if(ctx?.issuer!==issuer)throw new Error('Unexpected OAuth issuer');
   };
   const load=async()=>((await vault.read())?.oauth||{})[storageKey]||{};
-  const save=async patch=>{
+  const save=async patch=>withEncryptedClientVaultLock(async()=>{
     const record=await vault.read();
     if(!record?.identity)throw new Error('Encrypted MCP identity was removed');
     const oauth={...(record.oauth||{})};
     oauth[storageKey]={...(oauth[storageKey]||{}),...patch};
     await vault.write({...record,oauth});
-  };
+  });
   const provider={
     redirectUrl:redirect,
     clientMetadata:{client_name:'ReMCP encrypted MCP bridge',application_type:'native',

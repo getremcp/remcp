@@ -1,4 +1,6 @@
 import process from 'node:process';
+import os from 'node:os';
+import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { runtimeConfig } from '../config.mjs';
 import { assertAllowedCommand } from '../policy.mjs';
@@ -17,6 +19,21 @@ import {
   waitForProcessActivity,
 } from '../sessions.mjs';
 import { clampInteger, fail, requireInteger, requireString, structured, text, truncate } from '../util.mjs';
+
+// A managed agent can pin its own npm prefix for self-updates. That internal
+// prefix must not break NVM in a terminal launched on behalf of the user.
+// Preserve any unrelated npm prefix explicitly configured by the user.
+export function terminalChildEnvironment(env = process.env, homeDir = env.HOME || os.homedir()) {
+  const child = { ...env };
+  if (process.platform === 'win32') return child;
+  const managedPrefix = path.resolve(homeDir, '.local', 'share', 'remcp', 'managed-agent');
+  for (const key of ['NPM_CONFIG_PREFIX', 'npm_config_prefix']) {
+    if (typeof child[key] === 'string' && path.resolve(child[key]) === managedPrefix) {
+      delete child[key];
+    }
+  }
+  return child;
+}
 
 function shellCommand() {
   if (runtimeConfig.defaultShell) return runtimeConfig.defaultShell;
@@ -100,7 +117,7 @@ export async function startProcessTool(args, extra = {}) {
   // tree; a pipeline such as `sleep 20 | cat` otherwise survives force_terminate.
   const child = spawn(shell, shellArgs(command, shell), {
     cwd: process.cwd(),
-    env: process.env,
+    env: terminalChildEnvironment(),
     stdio: ['pipe', 'pipe', 'pipe'],
     windowsHide: true,
     windowsVerbatimArguments: usesWindowsCmd(shell),

@@ -96,7 +96,7 @@ Then verify that the five ReMCP skills appear under the `remcp:` namespace and t
 The public repository was submitted through Claude Platform on **September 18, 2026**:
 
 ```text
-https://github.com/antonbaider/remcp
+https://github.com/getremcp/remcp
 ```
 
 Anthropic accepted the submission and currently reports **Submitted and pending review**. The plugin

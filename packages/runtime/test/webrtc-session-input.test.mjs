@@ -43,12 +43,26 @@ test('queued actions cannot run after capture expiry or Stop, and unknown payloa
   assert.equal(f.calls.length,0);
 });
 
-test('native clipboard text stays literal, preserves CRLF and rejects oversize without content in errors',async()=>{
+test('native clipboard preserves literal CRLF, enforces 64 KiB UTF-8 and never leaks oversized content',async()=>{
   const original='{"literal":"clipboard"}\r\nПривет';
   const f=fixture({clipboard:async()=>({content:[{type:'text',text:original}]})});
   const reply=await f.control({session_id:sid,input:{seq:1,kind:'clipboard',op:'read'}});
   assert.equal(JSON.parse(reply.content[0].text).text,original);
-  const g=fixture({clipboard:async()=>({content:[{type:'text',text:'private-'.repeat(700)}]})});
-  await assert.rejects(g.control({session_id:sid,input:{seq:1,kind:'clipboard',op:'read'}}),error=>
-    error.message.includes('4 KiB')&&!error.message.includes('private-'));
+  for(const [value,allowed] of [
+    ['private-'.repeat(700),true],
+    ['x'.repeat(65_536),true],
+    ['x'.repeat(65_537),false],
+    ['ж'.repeat(32_768),true],
+    ['ж'.repeat(32_769),false],
+  ]){
+    const g=fixture({clipboard:async()=>({content:[{type:'text',text:value}]})});
+    const input={session_id:sid,input:{seq:1,kind:'clipboard',op:'read'}};
+    if(allowed){
+      const accepted=await g.control(input);
+      assert.equal(JSON.parse(accepted.content[0].text).text,value);
+    }else{
+      await assert.rejects(g.control(input),error=>
+        error.message.includes('64 KiB')&&!error.message.includes(value.slice(0,12)));
+    }
+  }
 });

@@ -19,12 +19,20 @@ Security fixes are applied to the latest released version. Users should update b
 ## Operational guidance
 
 Use HTTPS/WSS, keep device credentials private, revoke devices that are lost or retired, and review mutating MCP actions before approval. Never commit `.env` files, OAuth tokens, Firebase Admin private keys, or device credentials.
+
+## Device-to-client encryption boundaries
+
+ReMCP's default remote-control/MCP traffic is TLS-protected, **not** automatically end-to-end encrypted. The authenticated backend can process ordinary tool requests, results and file data. An independently pinned, owner-authorized HPKE client may send selected tool requests/results as opaque ciphertext through the relay. The authorized AI host/device still sees plaintext at its endpoints, while metadata, sizes and timing remain observable to the service. Device E2EE key availability or `remcp e2ee status` alone does not verify that a live request is encrypted.
+
+Read-only peer grants should be limited to explicit owner-approved tool names. An MCP `readOnlyHint` is advisory and does not certify tool safety. Legacy clients before the corresponding hardening release may have weaker default read grants. Operators should review actual tool behavior and upgrade before relying on stricter authorization.
+
+The authenticated HPKE implementation does not promise forward secrecy against later compromise of the recipient's long-term key, post-quantum security or FIPS 140-3 validation. The local client's JavaScript/runtime and the owner's machine remain trusted endpoints; malicious tools or compromised endpoints are outside the confidentiality guarantees. See the [E2EE setup and limitations](https://github.com/antonbaider/remcp/blob/main/docs/E2EE.md).
+
 ## User file and screenshot privacy
 
-The workspace file manager reads or streams files from the device on demand. ReMCP does
+The ordinary workspace file manager reads or streams files from the device on demand. ReMCP does
 not create a server-side document library or store file contents in PostgreSQL.
-The authenticated backend and device relay do process file bytes in transit. This is
-not end-to-end encryption between a browser and its paired device.
+For ordinary workspace downloads and file actions, the authenticated backend and device relay process file bytes in transit; this route is **not** device-to-browser E2EE. A separately enrolled encrypted MCP tool call can instead transport its tool-result bytes under HPKE, but does not convert the ordinary file-manager route into an encrypted channel.
 
 Downloads use user- and device-bound, expiring tickets. Absolute device paths are
 sent in authenticated POST request bodies, not download URLs or normal access logs.

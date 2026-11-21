@@ -30,9 +30,9 @@ export function createWebRtcSessionControl({state,handlers=desktopHandlers,now=D
       const result={ok:true,seq:parsed.seq};
       if(parsed.kind==='clipboard'&&parsed.op==='read'){
         const text=reply.content?.find(c=>c.type==='text')?.text;
-        if(typeof text!=='string'||new TextEncoder().encode(text).length>4096||
+        if(typeof text!=='string'||new TextEncoder().encode(text).length>65536||
             /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(text))
-          throw new Error('Remote clipboard unavailable or exceeds 4 KiB');
+          throw new Error('Remote clipboard unavailable or exceeds 64 KiB');
         result.text=text;
       }
       return jsonResult(result);

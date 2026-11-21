@@ -100,7 +100,11 @@ export function ensureMacCliCommand(config = {}, { cliPath = '', nodePath = '' }
   fs.writeFileSync(temporary, launcher, { mode:0o755 });
   fs.chmodSync(temporary, 0o755);
   fs.renameSync(temporary, shim);
-  upsertManagedPathBlock(interactiveShellProfile());
+  const profile = interactiveShellProfile();
+  upsertManagedPathBlock(profile);
+  if (profile === path.join(home, '.zshrc')) {
+    upsertManagedPathBlock(path.join(home, '.zprofile'));
+  }
   return shim;
 }
 
@@ -111,7 +115,11 @@ export function removeMacCliCommand() {
     const existing = fs.readFileSync(shim, 'utf8');
     if (existing.includes(remcpCliShimMarker)) fs.unlinkSync(shim);
   } catch {}
-  removeManagedPathBlock(interactiveShellProfile());
+  const profile = interactiveShellProfile();
+  removeManagedPathBlock(profile);
+  if (profile === path.join(home, '.zshrc')) {
+    removeManagedPathBlock(path.join(home, '.zprofile'));
+  }
 }
 
 function macServicePlist(cliPath, nodePath = process.execPath) {

@@ -48,10 +48,13 @@ def bounded_primary_monitor(monitor):
 
 
 class X11VideoTrack(VideoStreamTrack):
-    """Six fps, one native connection owned and closed on one capture thread."""
+    """Bounded 1–30 fps; one native connection owned by one capture thread."""
 
-    def __init__(self, *, display=None, factory=None):
+    def __init__(self, *, display=None, factory=None, fps=15):
         super().__init__()
+        if type(fps) is not int or not 1 <= fps <= 30:
+            raise ValueError("invalid_capture_frame_rate")
+        self.fps = fps
         self.display = display or x11_owner_display()
         if not self.display:
             raise PermissionError("x11_owner_display_unavailable")
@@ -101,12 +104,12 @@ class X11VideoTrack(VideoStreamTrack):
         if self.closed:
             raise RuntimeError("x11_capture_stopped")
         await asyncio.sleep(max(0, self.deadline - time.monotonic()))
-        self.deadline = time.monotonic() + 1 / 6
+        self.deadline = time.monotonic() + 1 / self.fps
         frame = await asyncio.get_running_loop().run_in_executor(self.pool, self._grab)
         if self.closed:
             raise RuntimeError("x11_capture_stopped")
         frame.pts, frame.time_base = self.pts, Fraction(1, 90000)
-        self.pts += 15000
+        self.pts += 90000 // self.fps
         return frame
 
     def _close(self):

@@ -2,16 +2,17 @@
   "version": 1,
   "protocol": "remcp-media-stdio-v1",
   "files": {
-    "gst_frames.py": "73ca8cc58f1824f7297cfbb52170129d40d37d85e3c625bf2285014701f2ebaa",
-    "native_platform_capture.py": "68234355c59f3fafb5ed5bf94e6290a27b7e0b0c83a89dbda310768830c9fc5b",
+    "gst_frames.py": "e16f92c2ffe68315599fd3090d037aaed89e2ed376530bb3632c1311fdf53af6",
+    "native_platform_capture.py": "f27d522c48ea671051e7ae9477fb5153ac6c0e4eb4c272ab3e148bfa9ca67f2e",
     "portal_capture.py": "55c36c193fb25f93871d98547d4e67f12d567fb690538ee31dc5ae9bb91bc0fe",
     "portal_token_store.py": "beda3cca1fdbf6f347b25a74cd690dd1f459606c2a5ac09a33b72aa6871ac4e9",
-    "xorg_capture.py": "20f8b7f767617e1d8d41c94ce7e714e5065af2fc003760056c327bed14b117b2",
+    "video_profiles.py": "e4a033420222afd4cf199c3f5756d34eae00979a8e1e6261d7add488da2d6be4",
+    "xorg_capture.py": "c5987e72a2fd3f388122ed591e3dc704dbe588e4d87dba2636930bd9b6481660",
     "session_lease.py": "b2fa75fdad3e0770b9e8d70e03607ca9774ece4b1b771c39841cc26cb16ddd42",
     "synthetic_track.py": "7e5025c655c287b220fb70613b59ef50c9f076bea36a46a7690f3ddb719c1363",
     "windows_native_mutex.py": "c5e9fee1c65a6d1b8865a0a87869840994ef38e64083c23c5f66200946e5e7b1",
     "windows_parent_watch.py": "8a27402ca7ff167b9af400cf75f0a3fd5b43450bc3aaca291f0ea8ba3c0275a1",
-    "worker_stdio.py": "37dfa3a7d0bf94e1b15276f592012c322a997e66c4a61c30554a77c4ea6fd882",
+    "worker_stdio.py": "936ec552e1524dbef16479e65f48d31931965e63bf3db0ee804933f4a95ac4b6",
     "install_probe.py": "bb14bf797a5d5c36c8f75552f2cb91d5cb8fd5e1426601c90ae898152090c905",
     "requirements.lock": "76cfcc52bbf4d9ecbee71fdf04261ad6ade7c70ddcff11d1b0f027410b2dc3d5"
   }

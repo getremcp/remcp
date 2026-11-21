@@ -15,7 +15,7 @@ import { assertRuntimeTrust, assertSecureServerUrl, pairWithDeviceCode } from '.
 import { diagnoseLocalRuntime, installedVersion, runtimeAllowedRoots } from './cli/doctor.mjs';
 import { configFile, npm, officialOrigin, runtimeConfigFile } from './cli/env.mjs';
 import { currentInstallationInfo, ensureMacCliCommand, installPersistentAgent, persistentServiceState, persistentServiceStatus, servicePlatform, rememberCurrentInstallation, restartPersistentServiceIfInstalled, serviceInstallationInfo, uninstallPersistentService } from './cli/service.mjs';
-import { auditKnownInstallations } from './cli/installation-audit.mjs';
+import { auditKnownInstallations, summarizeUpdateInstallations } from './cli/installation-audit.mjs';
 import { scheduleMacTemperatureRepair } from './cli/mac-native-temperature.mjs';
 import { guardSupervisorDisconnect } from './cli/supervised-agent-lifecycle.mjs';
 import { repairMacTemperatureAfterStart } from './cli/npm-global.mjs';
@@ -44,7 +44,7 @@ function parse(argv) {
 }
 
 function printHelp() {
-  console.log(`ReMCP ${VERSION}\n\nCommands:\n  remcp connect [--no-qr]\n  remcp start\n  remcp status\n  remcp doctor\n  remcp update [--repair] [--no-restart]\n  remcp auto-update [status|on|off]\n  remcp desktop [status|install --python <absolute path>|off]\n  remcp e2ee [init|rotate|status|require|off|trust|peers|revoke|client-init|client-pin|client-login]\n  remcp mcp --device <id> (encrypted stdio MCP for AI clients)\n  remcp install\n  remcp uninstall\n  remcp uninstall --purge\n  remcp telemetry [status|on|off]\n  remcp godmode [status|on|off]\n  remcp --version\n\nPairing commands are generated in the ReMCP workspace.\n\nUsage metrics are opt-out (tool names, timings, outcomes only, sent to your own ReMCP\naccount through the paired agent). Disable them at any time with: remcp telemetry off\n\nUnrestricted mode (remcp godmode on) lifts the access roots and the command guardrails for this\ncomputer only. The MCP configuration tool cannot enable it; protect remote terminal access.`);
+  console.log(`ReMCP ${VERSION}\n\nCommands:\n  remcp connect [--no-qr]\n  remcp start\n  remcp status\n  remcp doctor\n  remcp update [--repair] [--no-restart]\n  remcp auto-update [status|on|off]\n  remcp desktop [status|install --python <absolute path>|off]\n  remcp e2ee [init|rotate|status|require|off|trust|peers|revoke|requests|approve|client-init|client-pin|client-login]\n  remcp mcp --device <id> (encrypted stdio MCP for AI clients)\n  remcp install\n  remcp uninstall\n  remcp uninstall --purge\n  remcp telemetry [status|on|off]\n  remcp godmode [status|on|off]\n  remcp --version\n\nPairing commands are generated in the ReMCP workspace.\n\nUsage metrics are opt-out (tool names, timings, outcomes only, sent to your own ReMCP\naccount through the paired agent). Disable them at any time with: remcp telemetry off\n\nUnrestricted mode (remcp godmode on) lifts the access roots and the command guardrails for this\ncomputer only. The MCP configuration tool cannot enable it; protect remote terminal access.`);
 }
 
 // The running agent snapshots update policy at startup. A saved toggle alone does not
@@ -381,13 +381,14 @@ export async function main(argv = process.argv.slice(2)) {
     const installationAudit = auditKnownInstallations(cfg, {
       currentCliPath:currentInstall.cliPath,
       serviceCliPath:service.installed ? serviceInstall.cliPath : null,
+      scanNvm:true,
     });
     const multipleInstallations = installationAudit.packageCopyCount > 1;
-    const knownCliVersions = [VERSION, serviceInstall.cliVersion].filter(Boolean);
-    const knownRuntimeVersions = [installedRuntime, serviceInstall.runtimeVersion].filter(Boolean);
-    const versionConsistent = cfg.runtime.packageName === '@remcp/runtime'
-      ? new Set([...knownCliVersions, ...knownRuntimeVersions]).size <= 1
-      : new Set(knownCliVersions).size <= 1 && new Set(knownRuntimeVersions).size <= 1;
+    const versionHealth = summarizeUpdateInstallations(installationAudit, {
+      clientVersion:VERSION, runtimeVersion:installedRuntime,
+      serviceCliVersion:serviceInstall.cliVersion, serviceRuntimeVersion:serviceInstall.runtimeVersion,
+      firstParty:cfg.runtime.packageName === '@remcp/runtime',
+    });
     const clientMeetsTarget = Boolean(targetClient && !isNewer(targetClient, VERSION));
     const configuredRuntimeMeetsTarget = Boolean(!targetRuntime || (configuredRuntime && !isNewer(targetRuntime, configuredRuntime)));
     const runtimeMeetsTarget = Boolean(!targetRuntime || (installedRuntime && !isNewer(targetRuntime, installedRuntime)));
@@ -407,7 +408,7 @@ export async function main(argv = process.argv.slice(2)) {
       ? 'unknown'
       : !upToDate
         ? 'update_available'
-        : versionConsistent
+        : versionHealth.versionConsistent
           ? (isNewer(VERSION, targetClient) ? 'ahead' : 'current')
           : 'mixed_current';
     const report = {
@@ -443,7 +444,7 @@ export async function main(argv = process.argv.slice(2)) {
         knownPackageCopies:installationAudit.packageCopyCount,
         additionalKnownPackageCopies:installationAudit.otherCopyCount,
         installationCountScope:'verified_physical_packages_not_running_agents',
-        versionConsistent,
+        ...versionHealth,
         state:updateState,
         upToDate,
       },
