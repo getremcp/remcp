@@ -60,12 +60,13 @@ def screen_source_options(remember=False, restore_token=None):
 
 
 class ScreenCastGrant:
-    def __init__(self, *, remember=False, restore_token=None):
+    def __init__(self, *, remember=False, restore_token=None, token_received=None):
         if restore_token is not None and (not remember or not valid_token(restore_token)):
             raise ValueError("Invalid ScreenCast restoration request")
         self.remember = remember
         self.restore_token = restore_token
         self.new_restore_token = None
+        self.token_received = token_received
         self.event_loop = asyncio.get_running_loop()
         self.connection = Gio.bus_get_sync(Gio.BusType.SESSION, None)
         self.glib_loop = GLib.MainLoop()
@@ -141,6 +142,21 @@ class ScreenCastGrant:
                 # permission picker that can approve a later session.
                 await self._close_request(expected_path)
 
+    def _remember_start_token(self, token):
+        """Save the replacement at Start(), before PipeWire setup can fail.
+
+        XDG restore tokens are one-use. The caller keeps the exclusive token
+        reservation and supplies an owner-only atomic persistence callback.
+        """
+        if not self.remember:
+            return
+        if valid_token(token):
+            self.new_restore_token = token
+            if self.token_received:
+                self.token_received(token)
+        elif self.restore_token and self.token_received:
+            self.token_received(None)
+
     async def start(self):
         if self.session or self.closed:
             raise RuntimeError("Portal grant already used")
@@ -170,10 +186,9 @@ class ScreenCastGrant:
                 "Start", "(osa{sv})", (self.session, ""))
             if self.closed:
                 raise RuntimeError("Screen sharing was stopped during OS consent")
-            node_id, serial = stream_from_response(started)
             token = unwrap(started.get("restore_token"))
-            if self.remember and valid_token(token):
-                self.new_restore_token = token
+            self._remember_start_token(token)
+            node_id, serial = stream_from_response(started)
             result, fds = await asyncio.to_thread(
                 self.connection.call_with_unix_fd_list_sync,
                 SERVICE, DESKTOP, SCREENCAST, "OpenPipeWireRemote",

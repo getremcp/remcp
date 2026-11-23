@@ -91,5 +91,6 @@ export function toDeviceTool(input,display){
   return null;
 }
 export const REQUIRED_CONTROL_TOOLS=Object.freeze([
-  'pointer','drag_drop','keyboard','scroll','type_text','clipboard','display_inventory',
+  'desktop_webrtc_control','pointer','drag_drop','keyboard','scroll',
+  'type_text','clipboard','display_inventory',
 ]);

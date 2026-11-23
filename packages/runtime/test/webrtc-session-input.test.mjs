@@ -66,3 +66,69 @@ test('native clipboard preserves literal CRLF, enforces 64 KiB UTF-8 and never l
     }
   }
 });
+
+test('Stop during an in-flight native input never acknowledges stale success',async()=>{
+  let unblock,entered;
+  const hold=new Promise(resolve=>{unblock=resolve;});
+  const started=new Promise(resolve=>{entered=resolve;});
+  let dispatched=0;
+  const f=fixture({type_text:async()=>{
+    dispatched++;entered();await hold;return result({ok:true});
+  }});
+  const call=f.control({session_id:sid,input:{seq:1,kind:'text',text:'synthetic'}});
+  try{
+    await started;
+    f.set({stopping:true});
+    unblock();
+    await assert.rejects(call,/WebRTC input session ended/);
+    await f.control.drain();
+    assert.equal(dispatched,1,'the already dispatched side effect cannot be undone');
+    assert.equal(f.control.pending,0);
+  }finally{unblock();}
+});
+
+for(const [name,revoke] of [
+  ['input permission revoked',(f)=>f.set({inputEnabled:false})],
+  ['capture epoch replaced',(f)=>f.set({epoch:'replacement'})],
+  ['RPC signal aborted',(_f,controller)=>controller.abort()],
+]){
+  test('in-flight native input refuses stale acknowledgement when '+name,async()=>{
+    let unblock,entered;
+    const hold=new Promise(resolve=>{unblock=resolve;});
+    const started=new Promise(resolve=>{entered=resolve;});
+    const f=fixture({type_text:async()=>{entered();await hold;return result({ok:true});}});
+    const controller=new AbortController();
+    const call=f.control({session_id:sid,input:{seq:1,kind:'text',text:'synthetic'}},
+      {signal:controller.signal});
+    try{
+      await started;
+      revoke(f,controller);
+      unblock();
+      await assert.rejects(call,/WebRTC input session ended/);
+      await f.control.drain();
+      assert.equal(f.control.pending,0);
+    }finally{unblock();}
+  });
+}
+
+test('pending native clipboard read never releases clipboard bytes after Stop',async()=>{
+  const syntheticClipboard='synthetic-private-clipboard-payload-not-user-data';
+  let entered,unblock;
+  const started=new Promise(resolve=>{entered=resolve;});
+  const blocked=new Promise(resolve=>{unblock=resolve;});
+  const f=fixture({clipboard:async()=>{
+    entered();await blocked;
+    return {content:[{type:'text',text:syntheticClipboard}]};
+  }});
+  const pending=f.control({session_id:sid,input:{seq:1,kind:'clipboard',op:'read'}});
+  try{
+    await started;
+    f.set({stopping:true});
+    unblock();
+    await assert.rejects(pending,error=>
+      /WebRTC input session ended/.test(error.message)&&
+      !error.message.includes(syntheticClipboard));
+    await f.control.drain();
+    assert.equal(f.control.pending,0);
+  }finally{unblock();}
+});

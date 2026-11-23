@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.265 — 2026-11-22
+
+- Preserve explicit owner authorization, native Stop proof and safe WebRTC session fencing while preparing the desktop control release candidate.
+- Maintain source-only Windows native interop and reviewed C# SHA-256 inventory; no new DLL or unchecked binary is shipped.
+- Keep sensitive desktop operations behind owner-consented control, not merely an advisory readOnlyHint tool annotation.
+
 ## 0.2.264 — 2026-11-18
 
 - Preserve pairing-bound HPKE identity and reviewed native permissions while adding safe, automatically recoverable first-time enrollment and local cancellation of pending browser or AI-client approvals.

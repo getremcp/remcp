@@ -4,7 +4,13 @@ A restore token is a bearer capability for the already-approved monitor. It
 must never be printed, shared over HTTP, or committed. The owning desktop user
 can remove it at any time; doing so forces the next OS consent dialogue.
 """
+import asyncio
+from contextlib import asynccontextmanager
 import os
+try:
+    import fcntl
+except ImportError:  # The Windows worker ships this POSIX-only module too.
+    fcntl = None
 import secrets
 import stat
 from pathlib import Path
@@ -33,6 +39,41 @@ class PortalTokenStore:
                 stat.S_IMODE(mode.st_mode) & 0o077):
             raise PermissionError("Portal token directory must be private to the owner")
         return folder
+
+    @asynccontextmanager
+    async def exclusive(self, timeout_seconds=90):
+        """Serialize OS one-use restore-token redemption across workers.
+
+        Keep this reservation from load() through ScreenCast.Start() and
+        save()/forget(), not for the duration of the video stream. No consent
+        is bypassed; GNOME still owns the initial grant and any revocation.
+        """
+        if fcntl is None:
+            raise OSError("Portal token reservation is supported on POSIX only")
+        folder = self._check_directory()
+        lock_path = folder / ("." + self.path.name + ".lock")
+        fd = os.open(lock_path, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600)
+        locked = False
+        try:
+            info = os.fstat(fd)
+            if (not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid()
+                    or stat.S_IMODE(info.st_mode) & 0o077 or info.st_nlink != 1):
+                raise PermissionError("Portal token lock is not owner-only")
+            deadline = asyncio.get_running_loop().time() + timeout_seconds
+            while True:
+                try:
+                    fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    locked = True
+                    break
+                except BlockingIOError:
+                    if asyncio.get_running_loop().time() >= deadline:
+                        raise TimeoutError("Waiting for an authorized ScreenCast grant timed out")
+                    await asyncio.sleep(0.1)
+            yield self
+        finally:
+            if locked:
+                fcntl.flock(fd, fcntl.LOCK_UN)
+            os.close(fd)
 
     def load(self):
         self._check_directory()

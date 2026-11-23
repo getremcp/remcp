@@ -1,11 +1,10 @@
 {
-  "version": "0.2.264",
-  "title": "Prepare owner-approved automatic E2EE enrollment and consented WebRTC desktop controls.",
+  "version": "0.2.265",
+  "title": "Strengthen owner-scoped encrypted desktop authorization and WebRTC lifecycle safeguards.",
   "changes": [
-    "Add first-time browser and AI-client enrollment with a device-local approval dialog, comparison code and encrypted proof before saving a pinned key. Known trusted clients reconnect automatically; device key changes or revoked grants fail closed.",
-    "Close pending approval prompts on Cancel, timeouts and lost HTTP responses. Reject replayed enrollment nonces and abort unfinished browser trust transactions; already committed owner grants require explicit device-local revocation.",
-    "Preserve owner-bound OS-vault identities across Linux Secret Service, macOS Keychain and Windows DPAPI. Strict E2EE startup waits for the owner vault without rotating established keys or falling back to plaintext tools.",
-    "Improve remote desktop quality controls, 480p/720p/1080p profiles, interactive keyboard/mouse/touch/clipboard, responsive fullscreen controls and compact idle previews. Preserve native Stop acknowledgments and block reconnect while a previous Stop is unconfirmed.",
-    "Keep real owner approval mandatory. WebRTC media uses DTLS-SRTP rather than an independently verified application-layer E2EE guarantee; external TURN/TLS, signed native media workers and fleet rollout remain separately gated."
+    "Refuse desktop-control and screen-sensitive AI tools under E2EE read-only grants even when a runtime accidentally reports permissive readOnlyHint metadata and the peer allowlist is misconfigured.",
+    "Keep per-peer explicit authorization and device-local consent for control-mode desktop input; retain owner revocation, session fencing, idempotent native Stop and fail-closed reconnection guards.",
+    "Extend encrypted control and WebRTC cancellation/race regression coverage on ASUS, plus source-only Windows and macOS QA evidence; do not activate production remote control.",
+    "Clarify that WebRTC media uses DTLS-SRTP and is not claimed to provide separately audited HPKE application-layer media encryption."
   ]
 }

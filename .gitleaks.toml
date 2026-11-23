@@ -11,4 +11,8 @@ description = "Verified public portal source checksum"
 condition = "AND"
 regexTarget = "secret"
 paths = ['^(?:runtime/src/native/webrtc|packages/runtime/src/native/webrtc)/source-manifest\.json$']
-regexes = ['^beda3cca1fdbf6f347b25a74cd690dd1f459606c2a5ac09a33b72aa6871ac4e9$']
+regexes = [
+  '^beda3cca1fdbf6f347b25a74cd690dd1f459606c2a5ac09a33b72aa6871ac4e9$',
+  '^13d3e34316f194354269d480eba6bf3b5bad5722b78843c48ad6773e326955b5$',
+  '^fab0f37458205acbcf201f8ba7b9d61b89806019064d40f82552d996a939b054$',
+]

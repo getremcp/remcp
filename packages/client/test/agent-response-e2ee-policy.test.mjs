@@ -92,6 +92,41 @@ test('strict policy refuses a new plaintext call without ending the encrypted se
   assert.equal(frames.filter(frame => frame.error).length, 1);
 });
 
+test('a refused plaintext call cannot interrupt an in-flight encrypted call', async () => {
+  const frames = [], inFlight = new Map();
+  let terminated = 0, finishEncrypted;
+  const encrypted = new Promise(resolve => { finishEncrypted = resolve; });
+  const ws = { readyState: 1, bufferedAmount: 0,
+    send: raw => frames.push(JSON.parse(raw)),
+    terminate: () => { terminated++; },
+  };
+  const respond = createAgentResponder({
+    inFlight, onPendingChange: () => {},
+    e2eeEndpoint: {
+      identity: () => ({}),
+      handle: () => encrypted,
+    },
+    getRuntimeState: () => ({
+      mcp: { callTool: async () => { throw new Error('plaintext must not run'); } },
+      runtimeDown: false, callTimeoutMs: 1000,
+    }),
+    assertRequestAllowed: message => messagePolicy(message, true),
+    assertResponseAllowed: message => messagePolicy(message, true),
+  });
+
+  const encryptedCall = respond(ws, { id: 'encrypted', method: 'e2ee/packet', params: { packet: {} } });
+  await respond(ws, { id: 'plaintext', method: 'tools/call', params: { name: 'write' } });
+  assert.deepEqual(frames, [{ type: 'response', id: 'plaintext',
+    error: { message: E2EE_REQUEST_REFUSED } }], 'only the refusal leaves the agent');
+  assert.equal(terminated, 0);
+
+  finishEncrypted({ ok: true });
+  await encryptedCall;
+  assert.deepEqual(frames.at(-1), { type: 'response', id: 'encrypted', result: { ok: true } });
+  assert.equal(terminated, 0, 'the encrypted call completes on the same socket');
+  assert.equal(inFlight.size, 0);
+});
+
 test('a request refusal never leaks policy internals', async () => {
   const frames = [];
   const respond = createAgentResponder({

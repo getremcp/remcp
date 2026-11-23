@@ -137,7 +137,6 @@ jobs:
       id-token: write
       attestations: write # only this tag-scoped release job may create provenance
       artifact-metadata: write # required by actions/attest v4 for public build artifacts
-      actions: write # dispatch the separately verified public release signer
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -149,6 +148,12 @@ jobs:
           registry-url: https://registry.npmjs.org
       - run: npm ci --no-audit --no-fund
       - run: npm test
+      - name: Verify immutable public release security regressions
+        run: >-
+          node --test
+          test/public-atomic-release-candidate.test.mjs
+          test/release-prepublish-preflight.test.mjs
+          test/public-release-asset-inventory.test.mjs
       # Trusted publishing requires npm >=11.5.1. The fixed Node 24 LTS
       # toolchain already bundles npm 11.19.1, so there is no extra mutable
       # global npm installation or unverified CI setup script.
@@ -245,7 +250,41 @@ jobs:
           # Partial releases must contain only the candidate's exact bytes.
           # Refuse untrusted assets, existing signatures and API outages before
           # any irreversible npm trusted-publishing operation.
-          node scripts/release-prepublish-preflight.mjs
+          node scripts/release-prepublish-preflight.mjs --require-absent
+      - name: Install verified Cosign for exact tagged release signatures
+        uses: sigstore/cosign-installer@ba7bc0a3fef59531c69a25acd34668d6d3fe6f22 # v4.1.0
+      - name: Sign and cryptographically verify the complete release before npm publication
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -Eeuo pipefail
+          umask 077
+          [[ "$GITHUB_REPOSITORY" == getremcp/remcp &&
+             "$GITHUB_REF" == "refs/tags/$GITHUB_REF_NAME" &&
+             "$GITHUB_EVENT_NAME" == push ]] || {
+            echo 'Only exact public tag pushes can create release signatures' >&2
+            exit 1
+          }
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          stage="$RUNNER_TEMP/remcp-signed-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          [[ ! -e "$stage" ]] || { echo 'Release stage exists; refusing reuse' >&2; exit 1; }
+          install -d -m 700 "$stage"
+          for file in chatgpt-app-submission.json submission/remcp-plugin.zip submission/remcp-openai-existing-plugin.zip submission/remcp-skills-only.zip remcp-release.intoto.jsonl; do
+            test -s "$file"
+            install -m 600 "$file" "$stage/$(basename "$file")"
+          done
+          (
+            cd "$stage"
+            sha256sum chatgpt-app-submission.json remcp-plugin.zip remcp-openai-existing-plugin.zip remcp-skills-only.zip |
+              LC_ALL=C sort -k2 > SHA256SUMS
+          )
+          chmod 600 "$stage/SHA256SUMS"
+          cosign sign-blob --yes "$stage/SHA256SUMS" --bundle "$stage/SHA256SUMS.sigstore.json"
+          chmod 600 "$stage/SHA256SUMS.sigstore.json"
+          node scripts/verify-public-atomic-release-candidate.mjs \
+            --directory "$stage" --tag "$GITHUB_REF_NAME" --source-sha "$GITHUB_SHA"
+          echo "REMCP_SIGNED_RELEASE_STAGE=$stage" >> "$GITHUB_ENV"
       - name: Publish @remcp/runtime
         run: |
           version="$(node -p "require('./packages/runtime/package.json').version")"
@@ -361,48 +400,42 @@ jobs:
             echo
             echo "Both packages are published with a signed provenance statement."
           } > "$notes"
-          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
-            # Reject untrusted extra/duplicate assets before uploading any files.
-            gh release view "$GITHUB_REF_NAME" --json assets | node scripts/release-assets-allowlist.mjs
-            if gh release view "$GITHUB_REF_NAME" --json assets --jq '.assets[].name' | grep -Eq '^(SHA256SUMS(\.sigstore\.json)?|remcp-release\.intoto\.jsonl)$'; then
-              echo "Signed or attested release assets are immutable; publish a new version" >&2
+          # Validate the signed candidate again and reject all existing
+          # Releases, including partial ones, before any publication write.
+          node scripts/release-prepublish-preflight.mjs --require-absent
+          stage="$REMCP_SIGNED_RELEASE_STAGE"
+          [[ -n "$stage" && -d "$stage" && ! -L "$stage" ]] || {
+            echo 'Missing signed release candidate' >&2
+            exit 1
+          }
+          node scripts/verify-public-atomic-release-candidate.mjs \
+            --directory "$stage" --tag "$GITHUB_REF_NAME" --source-sha "$GITHUB_SHA"
+          # Exactly one creation call with all seven pre-signed assets.
+          # No post-publication upload, edit, clobber, or signer dispatch.
+          gh release create "$GITHUB_REF_NAME" \
+            "$stage/chatgpt-app-submission.json" \
+            "$stage/remcp-plugin.zip" \
+            "$stage/remcp-openai-existing-plugin.zip" \
+            "$stage/remcp-skills-only.zip" \
+            "$stage/remcp-release.intoto.jsonl" \
+            "$stage/SHA256SUMS" \
+            "$stage/SHA256SUMS.sigstore.json" \
+            --title "$title" --notes-file "$notes" --verify-tag
+          # Independently read back each uploaded byte. The legacy allowlist
+          # permits partial inventories, so also demand exactly seven assets.
+          gh release view "$GITHUB_REF_NAME" --json assets |
+            node scripts/release-assets-allowlist.mjs --require-attestation
+          test "$(gh release view "$GITHUB_REF_NAME" --json assets --jq '.assets | length')" = 7
+          verified_dir="$(mktemp -d)"
+          trap 'rm -rf -- "$verified_dir"' EXIT
+          gh release download "$GITHUB_REF_NAME" --dir "$verified_dir"
+          for name in chatgpt-app-submission.json remcp-plugin.zip remcp-openai-existing-plugin.zip remcp-skills-only.zip remcp-release.intoto.jsonl SHA256SUMS SHA256SUMS.sigstore.json; do
+            cmp "$stage/$name" "$verified_dir/$name" || {
+              echo "Published signed release bytes differ: $name" >&2
               exit 1
-            fi
-            # A retry must not silently replace a previously published release asset.
-            # Compare existing bytes exactly, and add only missing asset names.
-            existing_dir="$(mktemp -d)"
-            trap 'rm -rf -- "$existing_dir"' EXIT
-            for asset in submission/remcp-plugin.zip submission/remcp-openai-existing-plugin.zip submission/remcp-skills-only.zip chatgpt-app-submission.json remcp-release.intoto.jsonl; do
-              name="$(basename "$asset")"
-              if gh release view "$GITHUB_REF_NAME" --json assets --jq '.assets[].name' | grep -Fx "$name" >/dev/null; then
-                gh release download "$GITHUB_REF_NAME" --pattern "$name" --dir "$existing_dir"
-                cmp "$asset" "$existing_dir/$(basename "$asset")" || {
-                  echo "Refusing to replace an existing $name from $GITHUB_REF_NAME" >&2
-                  exit 1
-                }
-              else
-                gh release upload "$GITHUB_REF_NAME" "$asset"
-              fi
-            done
-            gh release edit "$GITHUB_REF_NAME" --title "$title" --notes-file "$notes"
-          else
-            gh release create "$GITHUB_REF_NAME" submission/remcp-plugin.zip submission/remcp-openai-existing-plugin.zip submission/remcp-skills-only.zip chatgpt-app-submission.json remcp-release.intoto.jsonl --title "$title" --notes-file "$notes" --verify-tag
-          fi
-          # This is the final inventory gate before the checksum signer runs.
-          # Partial uploads, extra assets and dropped provenance must all fail.
-          gh release view "$GITHUB_REF_NAME" --json assets | node scripts/release-assets-allowlist.mjs --require-attestation
-      - name: Dispatch keyless signing of the exact published release assets
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -Eeuo pipefail
-          [[ "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || exit 1
-          # GITHUB_TOKEN can dispatch workflow_dispatch runs, but not ordinary
-          # release webhooks. An explicit dispatch is required here.
-          gh workflow run release-signatures.yml \
-            --repo "$GITHUB_REPOSITORY" --ref main \
-            -f release_tag="$GITHUB_REF_NAME"
+            }
+          done
+          echo "atomic_signed_release=verified tag=$GITHUB_REF_NAME assets=7"
 
   repair-release:
     name: repair partial npm/GitHub release

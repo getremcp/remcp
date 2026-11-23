@@ -49,6 +49,7 @@ async function boundedBytes(response, expectedLength) {
 
 export async function preflightExistingRelease({
   repository, tag, token, fetchFn = fetch, readFileFn = readFile,
+  requireAbsent = false,
 } = {}) {
   if (!/^[a-z\d_.-]+\/[a-z\d_.-]+$/i.test(repository || '') ||
       !/^v\d+\.\d+\.\d+$/.test(tag || '') ||
@@ -76,6 +77,11 @@ export async function preflightExistingRelease({
   }
   if (metadataResponse.status !== 200) {
     throw new Error('GitHub release preflight HTTP ' + metadataResponse.status);
+  }
+  // Atomic seven-asset publication must never mutate even an empty or
+  // incomplete Release. Preserve legacy partial-repair readback separately.
+  if (requireAbsent) {
+    throw new Error('Atomic release already exists; refusing publication');
   }
   let release;
   try {
@@ -125,10 +131,15 @@ export async function preflightExistingRelease({
 if (process.argv[1] &&
     import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
   try {
+    const args = process.argv.slice(2);
+    if (args.length > 1 || args.some(arg => arg !== '--require-absent')) {
+      throw new Error('Unsupported release preflight option');
+    }
     const result = await preflightExistingRelease({
       repository:process.env.GITHUB_REPOSITORY,
       tag:process.env.GITHUB_REF_NAME,
       token:process.env.GH_TOKEN,
+      requireAbsent:args.includes('--require-absent'),
     });
     console.log('release_prepublish_preflight=' + result.state +
       ' verified_assets=' + result.verified);

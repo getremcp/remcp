@@ -43,8 +43,8 @@ function mock({metadata=release(),metadataStatus=200,downloads={},
     assert.ok(Object.hasOwn(paths,name),'never read outside the four subjects');
     return paths[name];
   };
-  return {calls,run:() => preflightExistingRelease({
-    repository:repo,tag,token,fetchFn,readFileFn,
+  return {calls,run:(options={}) => preflightExistingRelease({
+    repository:repo,tag,token,fetchFn,readFileFn,...options,
   })};
 }
 
@@ -57,6 +57,22 @@ test('absent tag is safe but only an exact HTTP 404 authorizes first publication
       /preflight HTTP/,'HTTP '+code+' must fail closed');
   }
   await assert.rejects(mock({failMetadata:true}).run(),/API unavailable/);
+});
+
+test('atomic publication requires an absent release even on old partial replies',async()=>{
+  const absent=mock({metadataStatus:404});
+  assert.deepEqual(await absent.run({requireAbsent:true}),
+    {state:'absent',verified:0});
+  for(const namesOfRelease of [[], names.slice(0, 1), names]) {
+    const input=mock({metadata:release(...namesOfRelease)});
+    await assert.rejects(input.run({requireAbsent:true}), /Atomic release already exists/);
+    assert.equal(input.calls.length,1,
+      'must reject an existing release before any asset fetch');
+  }
+  for(const code of [401,403,429,500]) {
+    await assert.rejects(mock({metadataStatus:code}).run({requireAbsent:true}),
+      /preflight HTTP/);
+  }
 });
 
 test('empty and byte-identical incomplete release inventories may retry',async()=>{

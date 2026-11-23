@@ -4,13 +4,14 @@ import {createE2eeIdentity,sealE2eeMessage,sealE2eePacket,openE2eePacket,
   createE2eeReplayGuard} from '../src/agent-e2ee-crypto.mjs';
 import {createAgentE2eeEndpoint} from '../src/agent-e2ee-endpoint.mjs';
 import {createE2eeDeviceClient} from '../src/agent-e2ee-client.mjs';
+import {AI_DESKTOP_E2EE_TOOLS} from '../src/cli/e2ee-native-enrollment.mjs';
 const deviceId='device-1234';
-async function fixture({mode='control',tools,invoke}={}){
+async function fixture({mode='control',tools,invoke,catalog}={}){
   const device=await createE2eeIdentity(),owner=await createE2eeIdentity(),calls=[],wire=[];
   let peer={publicKey:owner.publicKey,fingerprint:owner.fingerprint,mode,tools};
   const endpoint=createAgentE2eeEndpoint({identity:device,deviceId,getPeer:async()=>peer,
     getRuntimeState:()=>({runtimeDown:false,mcp:{
-      listTools:async()=>({tools:[{name:'read',annotations:{readOnlyHint:true}},
+      listTools:async()=>({tools:catalog||[{name:'get_system_info',annotations:{readOnlyHint:true}},
         {name:'write',annotations:{readOnlyHint:false}},{name:'unknown'}]}),
       callTool:async(args,options)=>{
         calls.push(args);return invoke?invoke(args,options):{content:[{type:'text',text:args.arguments.text}]};
@@ -33,29 +34,50 @@ test('real endpoint executes an encrypted request and no plaintext reaches relay
   assert.ok(f.wire.every(value=>!value.includes(secret)&&!value.includes('"name":"write"')));
 });
 test('read grant filters tools and denies control including unannotated tools',async()=>{
-  const f=await fixture({mode:'read',tools:['read']});
-  assert.deepEqual((await f.client.listTools()).tools.map(t=>t.name),['read']);
+  const f=await fixture({mode:'read',tools:['get_system_info']});
+  assert.deepEqual((await f.client.listTools()).tools.map(t=>t.name),['get_system_info']);
   await assert.rejects(f.client.callTool({name:'write',arguments:{text:'x'}}),/tool_not_authorized/);
   await assert.rejects(f.client.callTool({name:'unknown'}),/tool_not_authorized/);
   assert.equal(f.calls.length,0);
 });
+test('read-only E2EE hard-denies desktop control despite a mistaken readOnlyHint',async()=>{
+  const harmless=['get_system_info','desktop_webrtc_status'];
+  const dangerous=AI_DESKTOP_E2EE_TOOLS.filter(name=>!harmless.includes(name));
+  assert.equal(dangerous.length,22,'review new AI desktop tools before allowing read-mode access');
+  const catalog=AI_DESKTOP_E2EE_TOOLS.map(name=>({name,
+    annotations:{readOnlyHint:true}}));
+  const f=await fixture({mode:'read',tools:catalog.map(tool=>tool.name),catalog});
+  assert.deepEqual((await f.client.listTools()).tools.map(tool=>tool.name),
+    ['get_system_info','desktop_webrtc_status']);
+  for(const name of dangerous){
+    await assert.rejects(f.client.callTool({name,arguments:{session_id:'invalid-synthetic-test'}}),
+      /tool_not_authorized/,name+' should never be allowed to read-only peers');
+  }
+  assert.equal(f.calls.length,0,'no control-capable runtime handler may execute');
+  const approved=await fixture({mode:'control',tools:['desktop_webrtc_offer'],catalog});
+  assert.deepEqual((await approved.client.listTools()).tools.map(tool=>tool.name),
+    ['desktop_webrtc_offer']);
+  await approved.client.callTool({name:'desktop_webrtc_offer',
+    arguments:{text:'synthetic-consented-only'}});
+  assert.equal(approved.calls.length,1,'separate explicit control grant must keep working');
+});
 test('a live client downgraded from control to read loses write access immediately',async()=>{
   const f=await fixture({mode:'control'});
   assert.equal((await f.client.listTools()).tools.some(t=>t.name==='write'),true);
-  f.setPeer({publicKey:f.owner.publicKey,fingerprint:f.owner.fingerprint,mode:'read',tools:['read']});
-  assert.deepEqual((await f.client.listTools()).tools.map(t=>t.name),['read']);
+  f.setPeer({publicKey:f.owner.publicKey,fingerprint:f.owner.fingerprint,mode:'read',tools:['get_system_info']});
+  assert.deepEqual((await f.client.listTools()).tools.map(t=>t.name),['get_system_info']);
   await assert.rejects(f.client.callTool({name:'write',arguments:{text:'must not write'}}),/tool_not_authorized/);
   assert.equal(f.calls.length,0);
 });
 test('per-peer allowlist applies to both catalog and actual calls',async()=>{
-  const f=await fixture({tools:['read']});
+  const f=await fixture({tools:['get_system_info']});
   assert.equal((await f.client.listTools()).tools.length,1);
   await assert.rejects(f.client.callTool({name:'write'}),/tool_not_authorized/);
 });
 test('a read-only annotation cannot authorize a tool without an explicit owner grant',async()=>{
   const f=await fixture({mode:'read'});
   assert.deepEqual((await f.client.listTools()).tools,[]);
-  await assert.rejects(f.client.callTool({name:'read',arguments:{text:'secret'}}),/tool_not_authorized/);
+  await assert.rejects(f.client.callTool({name:'get_system_info',arguments:{text:'secret'}}),/tool_not_authorized/);
   assert.equal(f.calls.length,0);
 });
 test('authenticated replay and fresh ciphertext with the same call ID execute once',async()=>{
@@ -103,4 +125,24 @@ test('cancellation reaches the local runtime and error content stays encrypted',
     epoch:f.endpoint.identity().epoch,session:p.session,call:p.call,
     direction:'response',replay:createE2eeReplayGuard()});
   assert.equal(JSON.parse(new TextDecoder().decode(clear)).error.message,'cancelled');
+});
+
+// Even a malformed runtime catalog and an overly broad saved "read" tool
+// list must never turn arbitrary terminal/file handlers into read authority.
+test('E2EE read mode rejects unfamiliar tools with forged readOnlyHint',async()=>{
+  const safe=['get_system_info','desktop_webrtc_status'];
+  const unsafe=['start_process','write_file','delete_file','read_file'];
+  const catalog=[...safe,...unsafe].map(name=>({name,
+    annotations:{readOnlyHint:true,destructiveHint:false}}));
+  const f=await fixture({mode:'read',tools:catalog.map(x=>x.name),catalog});
+  assert.deepEqual((await f.client.listTools()).tools.map(x=>x.name),safe);
+  for(const name of unsafe){
+    await assert.rejects(f.client.callTool({name,arguments:{text:'synthetic-no-os-effect'}}),
+      /tool_not_authorized/,name+' must not enter runtime from read scope');
+  }
+  assert.equal(f.calls.length,0,'unexpected tools must not reach the runtime');
+  const readOnly=await fixture({mode:'read',tools:safe,catalog});
+  assert.deepEqual((await readOnly.client.listTools()).tools.map(x=>x.name),safe);
+  await readOnly.client.callTool({name:'get_system_info',arguments:{text:'test-only'}});
+  assert.equal(readOnly.calls.length,1,'explicitly approved basic read remains available');
 });

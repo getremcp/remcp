@@ -7,6 +7,10 @@ import {checkEnrollmentIntent,validEnrollmentCode,ENROLL_TTL_MS} from './e2ee-en
 const encode=new TextEncoder(), decode=new TextDecoder('utf-8',{fatal:true});
 const deny=()=>{throw new Error('e2ee_request_rejected');};
 const TTL=120000, BUFFER_LIMIT=32*1024*1024, CALL_LIMIT=2048;
+// readOnlyHint comes from the mutable runtime catalog, not an authority.
+// A read grant allows only specifically reviewed basic-status capabilities.
+// Never infer new read powers from a forged annotation or overbroad OS grant.
+const READ_SAFE_E2EE_TOOLS=new Set(['get_system_info','desktop_webrtc_status']);
 export function createAgentE2eeEndpoint({identity,deviceId,getPeer,getRuntimeState,invokeRuntimeTool,now=Date.now}) {
   if(!identity?.keys||typeof getPeer!=='function'||typeof getRuntimeState!=='function')deny();
   const epoch=randomUUID(), replay=createE2eeReplayGuard();
@@ -43,6 +47,7 @@ export function createAgentE2eeEndpoint({identity,deviceId,getPeer,getRuntimeSta
     peer.mode==='control'
       ?(!peer.tools||peer.tools.includes(tool.name))
       :(Array.isArray(peer.tools)&&peer.tools.includes(tool.name)&&
+        READ_SAFE_E2EE_TOOLS.has(tool.name)&&
         tool.annotations?.readOnlyHint===true)));
   async function dispatch(request,peer,signal) {
     const {mcp,runtimeDown,callTimeoutMs=110000}=getRuntimeState();

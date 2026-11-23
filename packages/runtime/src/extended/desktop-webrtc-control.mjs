@@ -26,6 +26,11 @@ export function createWebRtcSessionControl({state,handlers=desktopHandlers,now=D
       const tool=toDeviceTool(parsed,display),handler=tool&&handlers[tool.name];
       if(typeof handler!=='function')throw new Error('Remote input unavailable');
       const reply=await handler(tool.arguments,extra);
+      // Native Stop/revocation may start while the OS input handler is
+      // pending. The side effect cannot be undone, but stale success must
+      // never cross the ended session or be replayed into its replacement.
+      if(!admitted(sid,s.epoch)||extra.signal?.aborted)
+        throw new Error('WebRTC input session ended');
       if(reply?.isError)throw new Error('Remote input failed');
       const result={ok:true,seq:parsed.seq};
       if(parsed.kind==='clipboard'&&parsed.op==='read'){

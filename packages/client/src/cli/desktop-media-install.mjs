@@ -1,6 +1,7 @@
 // Source-only optional media installation. The owner chooses a local Python.
 import fs from 'node:fs';
 import path from 'node:path';
+import os from 'node:os';
 import {spawn} from 'node:child_process';
 import {createHash,randomUUID} from 'node:crypto';
 import {VERSION} from '../version.mjs';
@@ -52,6 +53,53 @@ foreach($id in @($sid.Value,'S-1-5-18','S-1-5-32-544')){
 Set-Acl -LiteralPath $p -AclObject $acl
 `],{input:directory,timeout:15000});
 }
+// Fix legacy Mac native media paths only when each inode is owned by the
+// current user. The worker still independently enforces these permissions.
+export function prepareMacDesktopMediaRuntime({home=os.homedir(),
+  platform=process.platform,uid=process.getuid?.()}={}){
+  if(platform!=='darwin')return null;
+  if(typeof home!=='string'||!path.isAbsolute(home)||!Number.isInteger(uid))
+    throw new Error('Native media home and owner required');
+  const library=path.join(home,'Library');
+  const support=path.join(library,'Application Support');
+  const root=path.join(support,'ReMCP');
+  const directory=path.join(root,'webrtc-runtime');
+  for(const parent of [home,library,support,root]){
+    if(parent!==home){
+      try{fs.mkdirSync(parent,{mode:0o700});}
+      catch(error){if(error.code!=='EEXIST')throw error;}
+    }
+    const st=fs.lstatSync(parent);
+    if(!st.isDirectory()||st.isSymbolicLink()||st.uid!==uid||
+        (st.mode&0o022)!==0)throw new Error('Unsafe native media parent');
+  }
+  try{fs.mkdirSync(directory,{mode:0o700});}
+  catch(error){if(error.code!=='EEXIST')throw error;}
+  const dirFd=fs.openSync(directory,
+    fs.constants.O_RDONLY|fs.constants.O_DIRECTORY|fs.constants.O_NOFOLLOW);
+  try{
+    const st=fs.fstatSync(dirFd);
+    if(!st.isDirectory()||st.uid!==uid)
+      throw new Error('Unsafe native media runtime directory');
+    fs.fchmodSync(dirFd,0o700);
+    if((fs.fstatSync(dirFd).mode&0o777)!==0o700)
+      throw new Error('Native media runtime directory not private');
+    const lock=path.join(directory,'remcp-webrtc-native-worker.lock');
+    let lockFd;
+    try{lockFd=fs.openSync(lock,
+      fs.constants.O_RDONLY|fs.constants.O_NOFOLLOW|fs.constants.O_NONBLOCK);}
+    catch(error){if(error.code!=='ENOENT')throw error;}
+    if(lockFd!==undefined)try{
+      const info=fs.fstatSync(lockFd);
+      if(!info.isFile()||info.uid!==uid||info.nlink!==1)
+        throw new Error('Unsafe native media worker lock');
+      fs.fchmodSync(lockFd,0o600);
+      if((fs.fstatSync(lockFd).mode&0o777)!==0o600)
+        throw new Error('Native media worker lock not private');
+    }finally{fs.closeSync(lockFd);}
+  }finally{fs.closeSync(dirFd);}
+  return directory;
+}
 // Object spreads lose Windows process.env's case-insensitive lookup behavior.
 export function desktopMediaPlatformEnvironment(env=process.env,platform=process.platform){
   if(platform!=='win32')return {};
@@ -95,5 +143,6 @@ export async function installDesktopMedia({python,runtimeEntry,directory,run=exe
     '--require-hashes','-r',path.join(source,'requirements.lock')],{inherit:true});
   const probe=path.join(source,'install_probe.py');
   await run(executable,[probe,'--source',desktopMediaNativeSource()],{timeout:20000});
+  prepareMacDesktopMediaRuntime();
   return {version:1,protocol:'remcp-media-stdio-v1',enabled:true,python:executable,installedVersion:VERSION};
 }

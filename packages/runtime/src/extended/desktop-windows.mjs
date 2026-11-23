@@ -1,6 +1,7 @@
 import { msaaBrowserSnapshot, windowsUiRootScript } from './desktop-windows-msaa.mjs';
 import { strictWindowsActionGate } from './desktop-windows-action-guard.mjs';
 import { windowsWindowSelector } from './desktop-windows-window-selector.mjs';
+import { winFormsEditInterop } from './desktop-windows-winforms-edit.mjs';
 import { windowsInteropLoad } from './windows-interop.mjs';
 import { quoteWindowsArgument } from './windows-argv.mjs';
 import path from 'node:path';
@@ -47,6 +48,7 @@ export async function uiSnapshot(args = {}, {runPowerShellFn=runPowerShell}={}) 
   const browserDom = args.browser_dom === true;
   const script = String.raw`
 Add-Type -AssemblyName UIAutomationClient;Add-Type -AssemblyName UIAutomationTypes
+${winFormsEditInterop}
 ${windowsUiRootScript(args)}
 $windowForeground=($h -eq [RMFG]::GetForegroundWindow())
 $browserProvider=$null
@@ -101,9 +103,16 @@ while($q.Count -gt 0 -and $seen -lt ${maxNodes}){
   $id='win:'+$rid
   $patterns=New-Object System.Collections.ArrayList
   $value=$null;$toggleState=$null;$expandState=$null;$rangeValue=$null;$rangeMin=$null;$rangeMax=$null
-  $selected=$null;$scrollH=$false;$scrollV=$false;$scrollHPct=$null;$scrollVPct=$null;$defaultAction=$null;$privateField=($c.IsPassword -or ($c.Name -match 'password|passphrase|passcode|secret|token|otp|recovery.*code|\bpin\b') -or ($c.ControlType.ProgrammaticName -eq 'ControlType.Pane' -and $c.ClassName -match '^WindowsForms10\.EDIT'))
+  $selected=$null;$scrollH=$false;$scrollV=$false;$scrollHPct=$null;$scrollVPct=$null;$defaultAction=$null
+  $nativeWinForms=($c.ControlType.ProgrammaticName -eq 'ControlType.Pane' -and $c.ClassName -match '^WindowsForms10\.EDIT')
+  $verifiedPlainEdit=$false
+  if($nativeWinForms){try{$verifiedPlainEdit=[RMWinFormsEdit]::IsOrdinary([IntPtr]::new([int]$e.Current.NativeWindowHandle),$h,[uint32]$rootPid,[string]$e.Current.ClassName,[bool]$e.Current.IsPassword)}catch{}}
+  $privateField=($c.IsPassword -or $e.Current.IsPassword -or ($c.Name -match 'password|passphrase|passcode|secret|token|otp|recovery.*code|\bpin\b') -or ($nativeWinForms -and -not $verifiedPlainEdit))
   try{$p=$e.GetCachedPattern([System.Windows.Automation.InvokePattern]::Pattern);if($p){[void]$patterns.Add('invoke')}}catch{}
   if(-not $privateField){$p=$null;try{$p=[System.Windows.Automation.ValuePattern]$e.GetCachedPattern([System.Windows.Automation.ValuePattern]::Pattern)}catch{};if(-not $p){try{$p=[System.Windows.Automation.ValuePattern]$e.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern)}catch{}};if($p){try{$value=$p.Current.Value;[void]$patterns.Add('value')}catch{}}}
+  if($verifiedPlainEdit -and -not $privateField -and $null -eq $value){
+   try{$value=[RMWinFormsEdit]::Read([IntPtr]::new([int]$e.Current.NativeWindowHandle));if($null -ne $value){[void]$patterns.Add('value')}}catch{}
+  }
   try{$p=[System.Windows.Automation.TogglePattern]$e.GetCachedPattern([System.Windows.Automation.TogglePattern]::Pattern);if($p){[void]$patterns.Add('toggle');$toggleState=$p.Cached.ToggleState.ToString().ToLowerInvariant()}}catch{}
   try{$p=[System.Windows.Automation.SelectionItemPattern]$e.GetCachedPattern([System.Windows.Automation.SelectionItemPattern]::Pattern);if($p){[void]$patterns.Add('selection_item');$selected=$p.Cached.IsSelected}}catch{}
   try{$p=[System.Windows.Automation.ExpandCollapsePattern]$e.GetCachedPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern);if($p){[void]$patterns.Add('expand_collapse');$expandState=$p.Cached.ExpandCollapseState.ToString().ToLowerInvariant()}}catch{}
@@ -113,9 +122,9 @@ while($q.Count -gt 0 -and $seen -lt ${maxNodes}){
   if($legacyPattern){try{$p=$e.GetCachedPattern($legacyPattern);if($p){[void]$patterns.Add('legacy_iaccessible');$defaultAction=$p.Cached.DefaultAction;if(-not $privateField -and ($null -eq $value -or $value -eq '')){$value=$p.Cached.Value}}}catch{}}
   [void]$o.Add([pscustomobject]@{
    id=$id;parent_id=$parent;depth=$d;active=($d -eq 0 -and $windowForeground);pid=$c.ProcessId;app=$rootApp;window=$windowName;window_id=$(if($d -eq 0){'0x{0:X}' -f $h.ToInt64()}else{''});
-   name=$(if($privateField){''}else{$c.Name});role=$c.ControlType.ProgrammaticName.Replace('ControlType.','');localized_role=$c.LocalizedControlType;
+   name=$(if($privateField){''}else{$c.Name});role=$(if($verifiedPlainEdit -and -not $privateField){'Edit'}else{$c.ControlType.ProgrammaticName.Replace('ControlType.','')});localized_role=$c.LocalizedControlType;
    automationId=$c.AutomationId;className=$c.ClassName;frameworkId=$c.FrameworkId;enabled=$c.IsEnabled;offscreen=$c.IsOffscreen;
-   focused=$c.HasKeyboardFocus;focusable=$c.IsKeyboardFocusable;password=$privateField;help_text=$c.HelpText;shortcut=$c.AcceleratorKey;
+   focused=$c.HasKeyboardFocus;focusable=($c.IsKeyboardFocusable -or ($verifiedPlainEdit -and -not $privateField));password=$privateField;help_text=$c.HelpText;shortcut=$c.AcceleratorKey;
    value=$value;patterns=@($patterns);toggle_state=$toggleState;expand_collapse_state=$expandState;selected=$selected;
    range_value=$rangeValue;range_min=$rangeMin;range_max=$rangeMax;scrollable=($scrollH -or $scrollV);
    horizontal_scrollable=$scrollH;vertical_scrollable=$scrollV;horizontal_scroll_percent=$scrollHPct;vertical_scroll_percent=$scrollVPct;
@@ -148,11 +157,23 @@ export async function uiAction(args = {}, { runPowerShellFn = runPowerShell } = 
   const automationId = escapePowerShellSingle(optionalString(args.automation_id || args.automationId) || '');
   const value = escapePowerShellSingle(String(args.value ?? ''));
   const expectedValue = args.strict_target_id===true&&action==='set_value'&&typeof args.expected_value==='string'?escapePowerShellSingle(args.expected_value):null;
+  // Strict native WinForms text editing must never leak into unscoped actions.
+  const nativeWinFormsFallback = args.strict_target_id===true ? [
+    "if(-not $nativePlainEdit){throw 'ValuePattern unavailable'}",
+    expectedValue===null?"throw 'Native WinForms text requires exact old value'":'',
+    '$editHandle=[IntPtr]::new([int]$found.Current.NativeWindowHandle)',
+    '$oldNativeText=[RMWinFormsEdit]::Read($editHandle)',
+    `if($null -eq $oldNativeText -or $oldNativeText -cne '${expectedValue??''}') {throw 'Native text value changed before write'}`,
+    "if($h -ne [RMFG]::GetForegroundWindow()){throw 'Native guided action refused: target window became background'}",
+    `if(-not [RMWinFormsEdit]::IsOrdinary($editHandle,$h,[uint32]$rootPid,[string]$found.Current.ClassName,[bool]$found.Current.IsPassword) -or -not [RMWinFormsEdit]::Write($editHandle,$h,[uint32]$rootPid,[string]$found.Current.ClassName,[bool]$found.Current.IsPassword,'${expectedValue??''}','${value}')){throw 'Native WinForms edit refused or timed out'}`,
+    "$used='Win32WMSetText'",
+  ].filter(Boolean).join('\n') : "throw 'ValuePattern unavailable'";
   // The entire switch must parse even when the selected action has no numeric value.
   const numericValue = action === 'set_range_value' ? Number(args.value) : 0;
   if (action === 'set_range_value' && !Number.isFinite(numericValue)) throw new Error('set_range_value requires a finite numeric value');
   const script = String.raw`
 Add-Type -AssemblyName UIAutomationClient;Add-Type -AssemblyName UIAutomationTypes
+${action==='set_value'?winFormsEditInterop:''}
 ${windowsUiRootScript(args)}
 ${strictWindowsActionGate(args)}
 ${action==='click'&&args.strict_target_id!==true?windowsInteropLoad('ui-mouse'):''}
@@ -162,17 +183,25 @@ while($q.Count -gt 0 -and -not $found -and $visited -lt 10000){
  try{
   $rid='win:'+($e.GetRuntimeId()-join '.')
   $r=$e.Current.ControlType.ProgrammaticName.Replace('ControlType.','')
+  if(${action==='set_value'&&args.strict_target_id===true?'$true':'$false'} -and $r -eq 'Pane' -and $e.Current.ClassName -match '^WindowsForms10\.EDIT'){
+   try{if([RMWinFormsEdit]::IsOrdinary([IntPtr]::new([int]$e.Current.NativeWindowHandle),$h,[uint32]$rootPid,[string]$e.Current.ClassName,[bool]$e.Current.IsPassword)){$r='Edit'}}catch{}
+  }
   if(('${id}' -eq '' -or $rid -eq '${id}') -and ('${name}' -eq '' -or $e.Current.Name -like '*${name}*') -and ('${role}' -eq '' -or $r -like '*${role}*') -and ('${automationId}' -eq '' -or $e.Current.AutomationId -eq '${automationId}')){$found=$e;break}
   $children=$e.FindAll([System.Windows.Automation.TreeScope]::Children,[System.Windows.Automation.Condition]::TrueCondition)
   for($i=0;$i -lt $children.Count;$i++){$q.Enqueue($children.Item($i))}
  }catch{}
 }
 if(-not $found){throw 'UI element not found'}
+$nativePlainEdit=$false
+if(${action==='set_value'&&args.strict_target_id===true?'$true':'$false'} -and $found.Current.ClassName -match '^WindowsForms10\.EDIT'){
+ try{$nativePlainEdit=[RMWinFormsEdit]::IsOrdinary([IntPtr]::new([int]$found.Current.NativeWindowHandle),$h,[uint32]$rootPid,[string]$found.Current.ClassName,[bool]$found.Current.IsPassword)}catch{}
+}
+$resolvedRole=if($nativePlainEdit){'Edit'}else{$found.Current.ControlType.ProgrammaticName.Replace('ControlType.','')}
 if(${args.strict_target_id === true ? '$true' : '$false'}){
  if($h -ne [RMFG]::GetForegroundWindow()){throw 'Native guided action refused: target window is background'}
  if($found.Current.ProcessId -ne $rootPid){throw 'Native guided action refused: control process changed'}
  if($found.Current.Name -ne '${name}' -or
-    $found.Current.ControlType.ProgrammaticName.Replace('ControlType.','') -ne '${role}'){
+    $resolvedRole -ne '${role}'){
   throw 'Exact UI element identity changed before action'
  }
 }
@@ -196,12 +225,18 @@ switch('${action}'){
    [RMMouse]::mouse_event(2,0,0,0,[UIntPtr]::Zero);[RMMouse]::mouse_event(4,0,0,0,[UIntPtr]::Zero);$used='pointer'`}
   }
  }
- 'set_value'{$p=$null;if(-not $found.TryGetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern,[ref]$p)){throw 'ValuePattern unavailable'}
+ 'set_value'{$p=$null
+  if($found.Current.ClassName -match '^WindowsForms10\.EDIT' -and -not $nativePlainEdit){throw 'Native text mutation refused for unverified WinForms edit'}
+  if(-not $found.TryGetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern,[ref]$p)){
+   ${nativeWinFormsFallback}
+  }else{
   if($found.Current.IsPassword){throw 'Native text mutation refused for protected control'}
   if(([System.Windows.Automation.ValuePattern]$p).Current.IsReadOnly){throw 'Native text control is read-only'}
   ${expectedValue===null?'':"if(([System.Windows.Automation.ValuePattern]$p).Current.Value -cne '"+expectedValue+"'){throw 'Native text value changed before write'}"}
   if(${args.strict_target_id===true?'$true':'$false'} -and $h -ne [RMFG]::GetForegroundWindow()){throw 'Native guided action refused: target window became background'}
-  ([System.Windows.Automation.ValuePattern]$p).SetValue('${value}');$used='ValuePattern' }
+  ([System.Windows.Automation.ValuePattern]$p).SetValue('${value}');$used='ValuePattern'
+  }
+ }
  'select'{
   $p=$null;if($found.TryGetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern,[ref]$p)){([System.Windows.Automation.SelectionItemPattern]$p).Select();$used='SelectionItemPattern.Select'}else{throw 'SelectionItemPattern unavailable'}
  }
@@ -236,15 +271,19 @@ if(${args.strict_target_id===true?'$true':'$false'}){
   try{$focusedAfter=[bool]$found.Current.HasKeyboardFocus}catch{$focusedAfter=$false}
  }
  if('${action}' -eq 'set_value'){
+  if($used -eq 'Win32WMSetText'){
+   try{$valueMatchesAfter=([RMWinFormsEdit]::Read([IntPtr]::new([int]$found.Current.NativeWindowHandle)) -ceq '${value}')}catch{$valueMatchesAfter=$false}
+  }else{
   try{
    $fresh=$found.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern)
    if($null -ne $fresh){
     $valueMatchesAfter=([System.Windows.Automation.ValuePattern]$fresh).Current.Value -ceq '${value}'
    }else{$valueMatchesAfter=$false}
   }catch{$valueMatchesAfter=$false}
+  }
  }
 }
-$out=[ordered]@{id=('win:'+($found.GetRuntimeId()-join '.'));name=$found.Current.Name;role=$found.Current.ControlType.ProgrammaticName.Replace('ControlType.','');action='${action}';backend=$used}
+$out=[ordered]@{id=('win:'+($found.GetRuntimeId()-join '.'));name=$(if($used -eq 'Win32WMSetText'){''}else{$found.Current.Name});role=$resolvedRole;action='${action}';backend=$used}
 if(${args.strict_target_id===true?'$true':'$false'}){
  $out.foreground_after=$foregroundAfter
  $out.focused_after=$focusedAfter

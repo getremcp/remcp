@@ -14,6 +14,7 @@ import { findOcrText, ocrImage } from './ocr.mjs';
 
 import { adapter, cachedUiNodes, clipboard, keyboard, invalidateUiSnapshotCache, listWindows, pointer, resultValue, sleep, uiAction, uiSnapshot, windowAction, withResolvedUiLabel } from './desktop-core.mjs';
 import { resolveAppLaunchAlias } from './app-launch-registry.mjs';
+import { eligibleWinFormsTextTarget, strictWinFormsText } from './desktop-windows-winforms-type.mjs';
 
 export function matches(node, args) {
   const id = optionalString(args.id);
@@ -265,6 +266,12 @@ export async function typeText(args = {}) {
   const clear = args.clear === true;
   const pressEnter = args.press_enter === true;
   const caret = requireEnum(args.caret_position || 'idle', 'caret_position', ['start','idle','end']);
+  // A pinned, foreground Windows Edit can use a fresh native CAS only when
+  // every expected HWND/PID/element scope was explicitly supplied.
+  if(process.platform==='win32' && eligibleWinFormsTextTarget({...resolvedArgs,clear,method,press_enter:pressEnter})){
+    const verified=await strictWinFormsText({...resolvedArgs,clear,method,press_enter:pressEnter},{uiSnapshot,uiAction,resultValue});
+    return jsonResult(verified);
+  }
 
   if (
     explicitWindowTarget && !hasElementSelector && clear && !pressEnter

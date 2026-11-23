@@ -355,16 +355,25 @@ class ScreenWorker:
                     store = (PortalTokenStore()
                              if os.environ.get("REMCP_WEBRTC_USE_PORTAL_GRANT") == "1"
                              else None)
-                    restored = store.load() if store else None
-                    grant = ScreenCastGrant(remember=store is not None,
-                                           restore_token=restored)
-                    self.grant = grant
-                    fd, node_id, serial = await grant.start()
                     if store:
-                        if grant.new_restore_token:
-                            store.save(grant.new_restore_token)
-                        elif restored:
-                            store.forget()
+                        async with store.exclusive():
+                            if not self.current(sid):
+                                raise ValueError("session_cancelled")
+                            restored = store.load()
+                            def store_replacement(token):
+                                if token:
+                                    store.save(token)
+                                else:
+                                    store.forget()
+                            grant = ScreenCastGrant(
+                                remember=True, restore_token=restored,
+                                token_received=store_replacement)
+                            self.grant = grant
+                            fd, node_id, serial = await grant.start()
+                    else:
+                        grant = ScreenCastGrant()
+                        self.grant = grant
+                        fd, node_id, serial = await grant.start()
                     if not self.current(sid):
                         raise ValueError("session_cancelled")
                     self.bridge = GstFrameBridge(fd=fd,node_id=node_id,serial=serial,
