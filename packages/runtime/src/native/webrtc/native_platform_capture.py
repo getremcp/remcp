@@ -136,18 +136,21 @@ class NativeDesktopCapture:
     """One trusted screen source and stoppable aiortc MediaPlayer video track."""
 
     def __init__(self, source, *, platform=None, media_player_cls=None,
-                 permission_check=native_permission_granted, profile="balanced"):
-        width, height, fps = video_profile(profile)
+                 permission_check=native_permission_granted, profile="balanced",
+                 cursor_embedded=True):
+        _width, _height, fps = video_profile(profile)
         target = platform or sys.platform
         if not native_source_allowed(source, target):
             raise ValueError("invalid_native_screen_source")
         if not permission_check(target):
             raise PermissionError("native_screen_permission_or_session_unavailable")
+        self.cursor_embedded = cursor_embedded and source != "avfoundation"
         if source == "x11":
             from xorg_capture import X11VideoTrack
             self.player = None
             self.track = PermissionGuardedDesktopTrack(
-                X11VideoTrack(fps=fps), target, permission_check=permission_check, profile=profile)
+                X11VideoTrack(fps=fps, cursor_embedded=self.cursor_embedded), target,
+                permission_check=permission_check, profile=profile)
             return
         real_media_player = media_player_cls is None
         if real_media_player:
@@ -158,7 +161,7 @@ class NativeDesktopCapture:
             options = {"framerate": str(fps), "pixel_format": "nv12"}
         else:
             input_name = "desktop"
-            options = {"framerate": str(fps), "draw_mouse": "1"}
+            options = {"framerate": str(fps), "draw_mouse": "1" if self.cursor_embedded else "0"}
         self.player = media_player_cls(input_name, format=source, options=options)
         raw_track = getattr(self.player, "video", None)
         if raw_track is None:

@@ -303,13 +303,15 @@ export function createDesktopWebRtcBridge({
         const configured=await send('ice-config',sid,{config},offerTimeout);
         if(configured.sessionId!==sid)throw new Error('Invalid private device ICE acknowledgement');
       }
-      const answer=await send('offer',sid,{sdp,...(video_profile===undefined?{}:{video_profile})},offerTimeout);
+      const answer=await send('offer',sid,{sdp,input_control,
+        ...(video_profile===undefined?{}:{video_profile})},offerTimeout);
       if(cancelled||!child||current!==sid||answer.sessionId!==sid||
          answer.type!=='answer'||typeof answer.sdp!=='string'||
          Buffer.byteLength(answer.sdp)>MAX_SDP||expired())
         throw new Error('Invalid WebRTC worker answer');
       active=true;seen=now();
-      return jsonResult({sessionId:sid,type:'answer',sdp:answer.sdp});
+      return jsonResult({sessionId:sid,type:'answer',sdp:answer.sdp,
+        ...(typeof answer.cursorEmbedded==='boolean'?{cursorEmbedded:answer.cursorEmbedded}:{})});
     }catch(error){
       shutdown();
       throw error;

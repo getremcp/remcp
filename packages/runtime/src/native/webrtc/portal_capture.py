@@ -46,13 +46,13 @@ def stream_from_response(results):
     return node_id, serial
 
 
-def screen_source_options(remember=False, restore_token=None):
+def screen_source_options(remember=False, restore_token=None, cursor_embedded=True):
     """Create the portal's monitor-only grant request."""
     if restore_token is not None and (not remember or not valid_token(restore_token)):
         raise ValueError("Invalid ScreenCast restoration request")
     options = {"types": GLib.Variant("u", 1),
                "multiple": GLib.Variant("b", False),
-               "cursor_mode": GLib.Variant("u", 2),
+               "cursor_mode": GLib.Variant("u", 2 if cursor_embedded else 1),
                "persist_mode": GLib.Variant("u", 2 if remember else 0)}
     if restore_token:
         options["restore_token"] = GLib.Variant("s", restore_token)
@@ -60,9 +60,11 @@ def screen_source_options(remember=False, restore_token=None):
 
 
 class ScreenCastGrant:
-    def __init__(self, *, remember=False, restore_token=None, token_received=None):
+    def __init__(self, *, remember=False, restore_token=None, token_received=None,
+                 cursor_embedded=True):
         if restore_token is not None and (not remember or not valid_token(restore_token)):
             raise ValueError("Invalid ScreenCast restoration request")
+        self.cursor_embedded = cursor_embedded
         self.remember = remember
         self.restore_token = restore_token
         self.new_restore_token = None
@@ -179,7 +181,8 @@ class ScreenCastGrant:
                 self.session, None, Gio.DBusSignalFlags.NONE,
                 session_closed, None)
             await self._request("SelectSources", "(oa{sv})", (self.session,),
-                                screen_source_options(self.remember, self.restore_token))
+                                screen_source_options(self.remember, self.restore_token,
+                                                      self.cursor_embedded))
             # The desktop consent dialogue is displayed by the OS, not by
             # this application. Never bypass rejection or try X11 fallback.
             started = await self._request(

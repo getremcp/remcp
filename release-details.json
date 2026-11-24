@@ -1,10 +1,11 @@
 {
-  "version": "0.2.265",
-  "title": "Strengthen owner-scoped encrypted desktop authorization and WebRTC lifecycle safeguards.",
+  "version": "0.2.267",
+  "title": "Improve desktop capture quality and remove overlapping cursors in remote control.",
   "changes": [
-    "Refuse desktop-control and screen-sensitive AI tools under E2EE read-only grants even when a runtime accidentally reports permissive readOnlyHint metadata and the peer allowlist is misconfigured.",
-    "Keep per-peer explicit authorization and device-local consent for control-mode desktop input; retain owner revocation, session fencing, idempotent native Stop and fail-closed reconnection guards.",
-    "Extend encrypted control and WebRTC cancellation/race regression coverage on ASUS, plus source-only Windows and macOS QA evidence; do not activate production remote control.",
-    "Clarify that WebRTC media uses DTLS-SRTP and is not claimed to provide separately audited HPKE application-layer media encryption."
+    "Use one browser cursor in control sessions. Windows, Wayland and X11 omit the remote pointer when the control viewer can draw it. Earlier viewers and view-only sessions preserve their existing behavior.",
+    "Limit the GStreamer capture queue to the newest frame and raise the sharp profile to 1920×1080 at up to 24 fps. Interactive auto mode uses the 720p, 30 fps profile.",
+    "Preserve approved device access, encrypted desktop signaling and input, DTLS-SRTP video, and verified native Stop.",
+    "Coalesce queued adjacent text input while preserving keyboard action order and native Stop.",
+    "Recover failed agent updates without concurrent launchers, preserve blocked-payload markers, drain output before replacement, and verify installed client version before runtime handoff."
   ]
 }

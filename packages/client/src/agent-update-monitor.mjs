@@ -1,7 +1,8 @@
 import { agentUpdateInvocation, installedUpdateEntry } from './agent-recovery-invocation.mjs';
 import { spawn } from 'node:child_process';
 import process from 'node:process';
-import { VERSION } from './version.mjs';
+import { PACKAGE_NAME, VERSION } from './version.mjs';
+import { isRuntimeSpecFor } from './runtime.mjs';
 import { recoveryTargetHeld, holdRecoveryTarget } from './windows-recovery-state.mjs';
 import { fetchUpdateManifest } from './fetch-update-manifest.mjs';
 import { updateRolloutEligibility } from './agent-update-rollout.mjs';
@@ -19,8 +20,9 @@ const UPDATE_CHECK_RECONNECT_GAP_MS = 30000;
 const POST_CONNECT_UPDATE_RECHECK_DELAYS_MS = Object.freeze([]);
 const POST_CONNECT_UPDATE_RECHECK_JITTER_MS = 30_000;
 const UPDATE_RETRY_COOLDOWN_MS = 30 * 60 * 1000;
+const UPDATER_OUTPUT_DRAIN_MS = 5_000;
 
-export function createAgentUpdateMonitor({ options, serverUrl, queueEvent, getRuntimeState, onStopRequested, restartRuntime, isStopping, stop, resolveCli = globalCliEntry }) {
+export function createAgentUpdateMonitor({ options, serverUrl, queueEvent, getRuntimeState, onStopRequested, restartRuntime, isStopping, stop, resolveCli = globalCliEntry, spawnUpdater = spawn, resolveInvocation = agentUpdateInvocation }) {
   const postConnectUpdateRecheckDelaysMs = (Array.isArray(options.updateRecheckDelaysMs)
     ? options.updateRecheckDelaysMs : POST_CONNECT_UPDATE_RECHECK_DELAYS_MS)
     .map(Number).filter(delay => Number.isFinite(delay) && delay >= 0 && delay < UPDATE_CHECK_INTERVAL_MS).slice(0, 3);
@@ -44,6 +46,8 @@ export function createAgentUpdateMonitor({ options, serverUrl, queueEvent, getRu
   let lastDiscoveryAt = 0;
   let lastAnnouncedVersion = '';
   let lastAnnouncedAt = 0;
+  let lastUnavailableKey = '';
+  let lastUnavailableAt = 0;
   let heldTarget = '';
 
   function clearPostConnectUpdateChecks() {
@@ -115,10 +119,17 @@ export function createAgentUpdateMonitor({ options, serverUrl, queueEvent, getRu
         urgent: decision.reason === 'runtime-repair' || Boolean(minimum && isNewer(minimum, VERSION)),
       }, observedAt);
       if (!eligible.ready) return;
+      // Another manifest request may have completed while this request awaited HTTP.
+      if (updateInFlight) return;
       const cli = resolveCli();
-      const invocation = agentUpdateInvocation({cli, decision, cliVersion:VERSION, trustRuntime:options.trustRuntime === true});
+      const invocation = resolveInvocation({cli, decision, cliVersion:VERSION, trustRuntime:options.trustRuntime === true});
       if (!invocation) {
-        if (announce) console.error(`ReMCP ${target} is available; run: remcp update`);
+        if (availabilityKey !== lastUnavailableKey || observedAt - lastUnavailableAt >= UPDATE_RETRY_COOLDOWN_MS) {
+          lastUnavailableKey = availabilityKey;
+          lastUnavailableAt = observedAt;
+          console.error(`ReMCP ${target} is available; run: remcp update`);
+          queueEvent({event:'agent_update',at:observedAt,reason:'updater-unavailable',success:false});
+        }
         return;
       }
       // A version that already failed to install is retried only after a cooldown, so a broken
@@ -131,33 +142,71 @@ export function createAgentUpdateMonitor({ options, serverUrl, queueEvent, getRu
       console.log(`Updating ReMCP to ${target}${decision.runtime ? ` with ${decision.runtime}` : ''} (${decision.reason})…`);
       // Keep the updater pinned to the exact release pair this trusted server advertised. That
       // prevents a newer public npm tag from getting ahead of production during a public-first rollout.
-      const child = spawn(invocation.command, invocation.args, {
-        detached: true,
-        windowsHide: true,
-        // The updater's own output is the only record of why an install failed, so it is piped back
-        // into this agent's log instead of being discarded.
-        stdio: ['ignore', 'pipe', 'pipe'],
-        env: { ...process.env },
-      });
-      let payloadBlocked = false;
-      let diagnosticTail = '';
-      const forward = chunk => {
-        const line = String(chunk).trim();
-        diagnosticTail = (diagnosticTail + String(chunk)).slice(-4096);
-        if (diagnosticTail.includes('REMCP_WINDOWS_PAYLOAD_BLOCKED')) payloadBlocked = true;
-        if (line) console.error(`remcp update: ${line}`);
-      };
-      child.stdout?.on('data', forward);
-      child.stderr?.on('data', forward);
-      child.on('exit', code => {
+      let child;
+      try {
+        child = spawnUpdater(invocation.command, invocation.args, {
+          detached: true,
+          windowsHide: true,
+          // The updater's local output is piped back into the agent's log.
+          // Only fixed stage codes are queued for account telemetry.
+          stdio: ['ignore', 'pipe', 'pipe'],
+          env: { ...process.env },
+        });
+      } catch (error) {
         updateInFlight = false;
-        if (process.platform === 'win32' && payloadBlocked) {
-          heldTarget = availabilityKey;
-          try { holdRecoveryTarget(availabilityKey); } catch {}
-          console.error('ReMCP replacement payload was blocked or incomplete; automatic retries for this exact release are held.');
-          queueEvent({event:'agent_update',at:Date.now(),reason:'payload-blocked',success:false});
-          return;
-        }
+        console.error(`remcp update could not start: ${error.message}`);
+        queueEvent({event:'agent_update',at:Date.now(),reason:'updater-start-failed',success:false});
+        return;
+      }
+      let settled = false;
+      let drainTimer;
+      let payloadBlocked = false;
+      const blockedMarker = 'REMCP_WINDOWS_PAYLOAD_BLOCKED';
+      // Each pipe is an independent stream. Scan the full incoming chunk
+      // before retaining only enough overlap to detect a split marker.
+      const forward = () => {
+        let tail = '';
+        return chunk => {
+          const text = String(chunk);
+          const combined = tail + text;
+          if (combined.includes(blockedMarker)) payloadBlocked = true;
+          tail = combined.slice(-(blockedMarker.length - 1));
+          const line = text.trim();
+          if (line) console.error(`remcp update: ${line}`);
+        };
+      };
+      child.stdout?.on('data', forward());
+      child.stderr?.on('data', forward());
+      function settle() {
+        if (settled) return false;
+        settled = true;
+        clearTimeout(drainTimer);
+        updateInFlight = false;
+        return true;
+      }
+      function holdBlockedPayload() {
+        if (process.platform !== 'win32' || !payloadBlocked) return false;
+        heldTarget = availabilityKey;
+        try { holdRecoveryTarget(availabilityKey); } catch {}
+        console.error('ReMCP replacement payload was blocked or incomplete; automatic retries for this exact release are held.');
+        queueEvent({event:'agent_update',at:Date.now(),reason:'payload-blocked',success:false});
+        return true;
+      }
+      // Node emits exit before stdout/stderr have necessarily drained. In
+      // particular, do not hand off a Windows agent before reading the
+      // installer's final blocked-payload marker. A descendant can inherit a
+      // pipe indefinitely; in that case keep the live agent and retry later.
+      child.on('exit', () => {
+        if (settled) return;
+        drainTimer = setTimeout(() => {
+          if (!settle() || holdBlockedPayload()) return;
+          console.error('ReMCP updater output did not close; keeping the live agent until the next eligible retry.');
+          queueEvent({event:'agent_update',at:Date.now(),reason:'updater-output-incomplete',success:false});
+        }, UPDATER_OUTPUT_DRAIN_MS);
+        drainTimer.unref?.();
+      });
+      child.on('close', code => {
+        if (!settle() || holdBlockedPayload()) return;
         // The updater installs the packages and then restarts the service this agent runs in, so it is
         // routinely killed by that restart and exits with a signal (`code` is null). That is success,
         // not failure: the installed version is the proof. Without this check the agent kept
@@ -165,9 +214,11 @@ export function createAgentUpdateMonitor({ options, serverUrl, queueEvent, getRu
         // call in that window fail in 1-3 ms ("Device is offline").
         const targetVersion = String(target).split('@').pop();
         const installedNow = globalInstalledVersion();
-        const installedTarget = installedNow && targetVersion && !isNewer(targetVersion, installedNow);
+        const installedTarget = isRuntimeSpecFor(PACKAGE_NAME, `${PACKAGE_NAME}@${installedNow}`) &&
+          targetVersion && !isNewer(targetVersion, installedNow);
         if (code !== 0 && !installedTarget) {
           console.error(`remcp update exited with ${code}; keeping ${VERSION} and retrying after the cooldown.`);
+          queueEvent({event:'agent_update',at:Date.now(),reason:'updater-install-failed',success:false});
           return;
         }
         if (code !== 0) {
@@ -176,13 +227,21 @@ export function createAgentUpdateMonitor({ options, serverUrl, queueEvent, getRu
         const installedCli = installedUpdateEntry(resolveCli());
         if (!installedCli) {
           console.error('ReMCP replacement CLI is unavailable after update; protection may have blocked it. Keeping the recovery beacon online.');
+          queueEvent({event:'agent_update',at:Date.now(),reason:'replacement-unavailable',success:false});
+          return;
+        }
+        // A successful exit alone does not prove the advertised client was installed.
+        if (!installedTarget) {
+          console.error('ReMCP updater exited without installing the advertised client version; keeping the live agent.');
+          queueEvent({event:'agent_update',at:Date.now(),reason:'updater-install-failed',success:false});
           return;
         }
         void restartToApplyUpdate(installedCli, stop, onStopRequested, restartRuntime, isStopping);
       });
       child.on('error', error => {
-        updateInFlight = false;
+        if (!settle()) return;
         console.error(`remcp update could not start: ${error.message}`);
+        queueEvent({event:'agent_update',at:Date.now(),reason:'updater-start-failed',success:false});
       });
       child.unref();
     } catch (error) {

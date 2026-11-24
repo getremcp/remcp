@@ -50,7 +50,7 @@ def bounded_primary_monitor(monitor):
 class X11VideoTrack(VideoStreamTrack):
     """Bounded 1–30 fps; one native connection owned by one capture thread."""
 
-    def __init__(self, *, display=None, factory=None, fps=15):
+    def __init__(self, *, display=None, factory=None, fps=15, cursor_embedded=True):
         super().__init__()
         if type(fps) is not int or not 1 <= fps <= 30:
             raise ValueError("invalid_capture_frame_rate")
@@ -65,16 +65,16 @@ class X11VideoTrack(VideoStreamTrack):
         self.pts = 0
         self.closed = False
         try:
-            self.pool.submit(self._open, factory).result(timeout=5)
+            self.pool.submit(self._open, factory, cursor_embedded).result(timeout=5)
         except BaseException:
             self.stop()
             raise
 
-    def _open(self, factory):
+    def _open(self, factory, cursor_embedded):
         if factory is None:
             from mss import MSS
             factory = MSS
-        self.capture = factory(display=self.display, with_cursor=True)
+        self.capture = factory(display=self.display, with_cursor=cursor_embedded)
         self.region = bounded_primary_monitor(self.capture.primary_monitor)
 
     def _grab(self):

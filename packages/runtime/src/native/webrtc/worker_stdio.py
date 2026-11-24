@@ -302,7 +302,9 @@ class ScreenWorker:
                 await self.stop(sid)
                 return
 
-    async def offer(self, sid, sdp, profile=None):
+    async def offer(self, sid, sdp, profile=None, input_control=False):
+        if type(input_control) is not bool:
+            raise ValueError("invalid_input_consent")
         if profile is not None:
             from video_profiles import video_profile
             video_profile(profile)
@@ -338,6 +340,8 @@ class ScreenWorker:
             if pc.connectionState in ("failed", "closed") and self.generation == sid:
                 await self.stop(sid)
 
+        cursor_embedded = False
+        embed_pointer = not (input_control and "a=x-remcp-client-cursor:1" in sdp.splitlines())
         try:
             await pc.setRemoteDescription(RTCSessionDescription(sdp=sdp, type="offer"))
             if not self.current(sid):
@@ -345,13 +349,16 @@ class ScreenWorker:
             if self.source == "synthetic":
                 track = SyntheticVideoTrack()
             elif native_source_allowed(self.source):
-                self.native_capture = NativeDesktopCapture(self.source, profile=self.video_profile)
+                self.native_capture = NativeDesktopCapture(
+                    self.source, profile=self.video_profile, cursor_embedded=embed_pointer)
+                cursor_embedded = self.native_capture.cursor_embedded
                 track = self.native_capture.track
             else:
                 from gst_frames import GstFrameBridge, GstVideoTrack
                 if self.source == "portal":
                     from portal_capture import ScreenCastGrant
                     from portal_token_store import PortalTokenStore
+                    cursor_embedded = embed_pointer
                     store = (PortalTokenStore()
                              if os.environ.get("REMCP_WEBRTC_USE_PORTAL_GRANT") == "1"
                              else None)
@@ -359,19 +366,18 @@ class ScreenWorker:
                         async with store.exclusive():
                             if not self.current(sid):
                                 raise ValueError("session_cancelled")
-                            restored = store.load()
                             def store_replacement(token):
                                 if token:
                                     store.save(token)
                                 else:
                                     store.forget()
                             grant = ScreenCastGrant(
-                                remember=True, restore_token=restored,
-                                token_received=store_replacement)
+                                remember=True, restore_token=store.load(),
+                                token_received=store_replacement, cursor_embedded=cursor_embedded)
                             self.grant = grant
                             fd, node_id, serial = await grant.start()
                     else:
-                        grant = ScreenCastGrant()
+                        grant = ScreenCastGrant(cursor_embedded=cursor_embedded)
                         self.grant = grant
                         fd, node_id, serial = await grant.start()
                     if not self.current(sid):
@@ -393,8 +399,10 @@ class ScreenWorker:
             if self.native_capture is not None:
                 self.native_watch_task = asyncio.create_task(
                     self.monitor_native_permission(sid))
+            answer = pc.localDescription.sdp.rstrip()
+            answer += f"\r\na=x-remcp-cursor-embedded:{int(cursor_embedded)}\r\n"
             return {"ok": True, "type": "answer", "sessionId": sid,
-                    "sdp": pc.localDescription.sdp}
+                    "sdp": answer, "cursorEmbedded": cursor_embedded}
         except BaseException:
             await self.stop(sid)
             raise
@@ -408,7 +416,8 @@ class ScreenWorker:
         result = {"requestId": request_id}
         try:
             if op == "offer":
-                answer = await self.offer(sid,request.get("sdp"),request.get("video_profile"))
+                answer = await self.offer(sid, request.get("sdp"), request.get("video_profile"),
+                                          request.get("input_control", False))
                 result.update(answer)
             elif op == "ice-config":
                 self.set_private_ice(sid,request.get("config"))

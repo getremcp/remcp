@@ -13,9 +13,6 @@ gi.require_version("Gst", "1.0")
 from gi.repository import Gst
 from av import VideoFrame
 
-# The default keeps today's bounded 720p CPU/bandwidth envelope. Sharper
-# 1080p is an explicit experimental local-worker opt-in, capped at 8 fps to
-# avoid an unbounded increase in pixel/encoder work on portable computers.
 from video_profiles import VIDEO_PROFILES
 WIDTH, HEIGHT, FPS = VIDEO_PROFILES["balanced"]
 FRAME_BYTES = WIDTH * HEIGHT * 3
@@ -42,11 +39,11 @@ class GstFrameBridge:
                 raise ValueError("Invalid PipeWire serial")
             head = "pipewiresrc name=consented_capture do-timestamp=true"
         self.pipeline = Gst.parse_launch(
-            f"{head} ! queue max-size-buffers=2 leaky=downstream ! "
+            f"{head} ! queue max-size-buffers=1 leaky=downstream ! "
             "videoconvert ! videoscale name=consent_scale add-borders=true ! videorate ! "
             f"video/x-raw,format=RGB,width={self.width},height={self.height},"
             f"framerate={self.fps}/1 ! "
-            "appsink name=frame_sink max-buffers=2 drop=true sync=false")
+            "appsink name=frame_sink max-buffers=1 drop=true sync=false")
         self.sink = self.pipeline.get_by_name("frame_sink")
         if self.sink is None:
             raise RuntimeError("GStreamer appsink unavailable")
@@ -76,7 +73,7 @@ class GstFrameBridge:
             raise RuntimeError("Capture is not active")
         # Wayland compositors may emit frames only when a monitor changes.
         # Re-send the last OS-approved pixels at normal WebRTC cadence.
-        wait_ns = 10 * Gst.SECOND if self._last_rgb is None else 120 * Gst.MSECOND
+        wait_ns = 10 * Gst.SECOND if self._last_rgb is None else Gst.SECOND // self.fps
         sample = self.sink.emit("try-pull-sample", wait_ns)
         if sample is None:
             message = self.pipeline.get_bus().pop_filtered(

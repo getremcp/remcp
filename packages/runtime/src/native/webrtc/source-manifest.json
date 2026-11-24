@@ -2,17 +2,17 @@
   "version": 1,
   "protocol": "remcp-media-stdio-v1",
   "files": {
-    "gst_frames.py": "e16f92c2ffe68315599fd3090d037aaed89e2ed376530bb3632c1311fdf53af6",
-    "native_platform_capture.py": "f27d522c48ea671051e7ae9477fb5153ac6c0e4eb4c272ab3e148bfa9ca67f2e",
-    "portal_capture.py": "9f4f09c880766d17fe65cf5a4e3d98e8e6db81ebb0274400e051e893067763c0",
+    "gst_frames.py": "359afcd66522b5c38b543abc291726537c47a7ed4c924b2a5d7cd83f6dc1a018",
+    "native_platform_capture.py": "c3b9d1e93ef09cf063263cab2fb447818cb8c2ec117773633686a393f86a8f11",
+    "portal_capture.py": "aa0efe3faf87ef753957f8b308f928f15d8399e45a67c2eda6c9c7c921b45e35",
     "portal_token_store.py": "fab0f37458205acbcf201f8ba7b9d61b89806019064d40f82552d996a939b054",
-    "video_profiles.py": "e4a033420222afd4cf199c3f5756d34eae00979a8e1e6261d7add488da2d6be4",
-    "xorg_capture.py": "c5987e72a2fd3f388122ed591e3dc704dbe588e4d87dba2636930bd9b6481660",
+    "video_profiles.py": "ffd6cc0502ac1dbd89bb98f6cbc0b087b87e76af7fbafc68f137af7dbd530337",
+    "xorg_capture.py": "47dd6edfa95885fdf7176c62a0b202636a8eb12ad3b3741575ec37d4189cf8d0",
     "session_lease.py": "b2fa75fdad3e0770b9e8d70e03607ca9774ece4b1b771c39841cc26cb16ddd42",
     "synthetic_track.py": "7e5025c655c287b220fb70613b59ef50c9f076bea36a46a7690f3ddb719c1363",
     "windows_native_mutex.py": "c5e9fee1c65a6d1b8865a0a87869840994ef38e64083c23c5f66200946e5e7b1",
     "windows_parent_watch.py": "8a27402ca7ff167b9af400cf75f0a3fd5b43450bc3aaca291f0ea8ba3c0275a1",
-    "worker_stdio.py": "8916279acdc8af3b8554b8afda2c1485f8543e694e544e5bec68a724bcff64b8",
+    "worker_stdio.py": "27dc0e6187a1be40ccd85cba9034c4879214492d09eecefffe305760d4c80357",
     "install_probe.py": "bb14bf797a5d5c36c8f75552f2cb91d5cb8fd5e1426601c90ae898152090c905",
     "requirements.lock": "76cfcc52bbf4d9ecbee71fdf04261ad6ade7c70ddcff11d1b0f027410b2dc3d5"
   }

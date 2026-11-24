@@ -18,6 +18,7 @@ test('future fleet slot defers updater startup but still reports availability', 
     options:{deviceId:'fixture-backend',autoUpdate:true,runtime:{packageName:'@remcp/runtime'}},
     serverUrl:'https://relay.example.invalid',
     resolveCli:()=>{cliProbes++; return null;},
+    resolveInvocation:()=>null, // never invoke the Windows recovery installer in a fixture
     queueEvent:event=>events.push(event),
     getRuntimeState:()=>({runtimeVersion:VERSION,runtimeDown:false}),
   });
@@ -40,6 +41,7 @@ test('raised minimum version bypasses normal fleet delay without starting unauth
     options:{deviceId:'fixture-critical',autoUpdate:true,runtime:{packageName:'@remcp/runtime'}},
     serverUrl:'https://relay.example.invalid',
     resolveCli:()=>{probes++;return null;},
+    resolveInvocation:()=>null, // never invoke the Windows recovery installer in a fixture
     queueEvent:()=>{},
     getRuntimeState:()=>({runtimeVersion:VERSION,runtimeDown:false}),
   });
@@ -61,6 +63,7 @@ test('unavailable runtime repair bypasses normal fleet delay', async t=>{
     options:{deviceId:'fixture-repair',autoUpdate:true,runtime:{packageName:'@remcp/runtime'}},
     serverUrl:'https://relay.example.invalid',
     resolveCli:()=>{probes++;return null;},
+    resolveInvocation:()=>null, // never invoke the Windows recovery installer in a fixture
     queueEvent:()=>{},
     getRuntimeState:()=>({runtimeVersion:'unknown',runtimeDown:true}),
   });

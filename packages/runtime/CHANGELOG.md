@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.2.267 — 2026-11-24
+
+**Improve desktop capture quality and remove overlapping cursors in remote control.**
+
+- Use one browser cursor in control sessions. Windows, Wayland and X11 omit the remote pointer when the control viewer can draw it. Earlier viewers and view-only sessions preserve their existing behavior.
+- Limit the GStreamer capture queue to the newest frame and raise the sharp profile to 1920×1080 at up to 24 fps. Interactive auto mode uses the 720p, 30 fps profile.
+- Preserve approved device access, encrypted desktop signaling and input, DTLS-SRTP video, and verified native Stop.
+- Coalesce queued adjacent text input while preserving keyboard action order and native Stop.
+- Recover failed agent updates without concurrent launchers, preserve blocked-payload markers, drain output before replacement, and verify installed client version before runtime handoff.
+
 ## 0.2.265 — 2026-11-22
 
 - Preserve explicit owner authorization, native Stop proof and safe WebRTC session fencing while preparing the desktop control release candidate.
