@@ -132,3 +132,36 @@ test('pending native clipboard read never releases clipboard bytes after Stop',a
     assert.equal(f.control.pending,0);
   }finally{unblock();}
 });
+
+test('queued input is bound to the capture epoch at submission, even if session id is reused',async()=>{
+  let unblock,entered;
+  const hold=new Promise(resolve=>{unblock=resolve;});
+  const started=new Promise(resolve=>{entered=resolve;});
+  const dispatched=[];
+  const f=fixture({type_text:async args=>{
+    dispatched.push(args.text);
+    if(args.text==='first'){entered();await hold;}
+    return result({ok:true});
+  }});
+  const first=f.control({session_id:sid,input:{seq:1,kind:'text',text:'first'}});
+  const firstRejected=assert.rejects(first,/session ended/);
+  await started;
+  const queued=f.control({session_id:sid,input:{seq:2,kind:'text',text:'old queued'}});
+  const queuedRejected=assert.rejects(queued,/session unavailable|session ended/);
+  f.set({epoch:'replacement'});
+  unblock();
+  await firstRejected;
+  await queuedRejected;
+  await f.control({session_id:sid,input:{seq:1,kind:'text',text:'new session'}});
+  assert.deepEqual(dispatched,['first','new session']);
+  assert.equal(f.control.pending,0);
+});
+
+test('input submitted without consent cannot become valid while waiting in the queue',async()=>{
+  const f=fixture();
+  f.set({inputEnabled:false});
+  const call=f.control({session_id:sid,input:{seq:1,kind:'text',text:'not consented'}});
+  f.set({inputEnabled:true});
+  await assert.rejects(call,/session unavailable|session ended/);
+  assert.equal(f.calls.length,0);
+});

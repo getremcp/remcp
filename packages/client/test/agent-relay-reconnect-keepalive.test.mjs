@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
-import { setTimeout as delay } from 'node:timers/promises';
 import test from 'node:test';
 
 const relayModule = new URL('../src/agent-relay-connection.mjs', import.meta.url).href;
@@ -27,16 +26,36 @@ client.connect();
 `;
   const child = spawn(process.execPath, ['--input-type=module', '-e', script],
     { stdio:['ignore','pipe','pipe'], windowsHide:true });
-  let stderr = '';
+  const closed = once(child, 'close');
+  t.after(async () => {
+    if (child.exitCode === null && !child.killed) child.kill();
+    await closed;
+  });
+  // Wait for evidence of an actual retry, not a fixed child startup delay.
+  // A regression that unrefs the reconnect timer exits before the second error.
   child.stderr.setEncoding('utf8');
-  child.stderr.on('data', chunk => { stderr += chunk; });
-  t.after(() => { if (child.exitCode === null && !child.killed) child.kill(); });
-  await delay(1200);
-  assert.match(stderr, /ReMCP relay:/, 'the harness must induce a real WebSocket failure');
-  assert.equal(child.exitCode, null,
-    'an unrefed reconnect timer lets the agent exit 0 immediately after a failed handshake');
+  let stderr = '';
+  const signal = AbortSignal.timeout(15_000);
+  await new Promise((resolve, reject) => {
+    const cleanup = () => {
+      child.stderr.off('data', onData);
+      child.off('close', onClose);
+      signal.removeEventListener('abort', onTimeout);
+    };
+    const finish = error => { cleanup(); error ? reject(error) : resolve(); };
+    const onData = chunk => {
+      stderr += chunk;
+      if ((stderr.match(/ReMCP relay:/g) || []).length >= 2) finish();
+    };
+    const onClose = () => finish(new Error('agent exited before the scheduled reconnect'));
+    const onTimeout = () => finish(new Error('no second WebSocket failure within the bounded deadline'));
+    child.stderr.on('data', onData);
+    child.once('close', onClose);
+    signal.addEventListener('abort', onTimeout, { once:true });
+  });
+  assert.equal(child.exitCode, null, 'agent must remain active after reconnect');
   child.kill();
-  await once(child, 'close');
+  await closed;
 });
 
 test('explicit agent shutdown releases the reconnect timer and permits process exit', async t => {
@@ -47,7 +66,7 @@ const client = createAgentRelayConnection({
   agentUrl:'ws://127.0.0.1:1', serverUrl:'http://127.0.0.1:1',
   deviceToken:'local-fixture-only', deviceId:'fixture', deviceName:'fixture',
   isStopping:() => false, markStopping:() => {},
-  getReconnects:() => retries, setReconnects:n => { retries=n; },
+  getReconnects:() => retries, setReconnects:n => { retries=n; setImmediate(() => client.clearReconnect()); },
   setSocket:() => {}, getHelloState:() => ({}), respond:async () => {},
   inFlight:new Map(), sendMetricsSample:() => {}, reportInstallOnce:() => {},
   flushTelemetry:() => {}, checkForUpdate:async () => {},
@@ -55,12 +74,16 @@ const client = createAgentRelayConnection({
   stop:async () => {},
 });
 client.connect();
-setTimeout(() => client.clearReconnect(), 200);
+
 `;
   const child = spawn(process.execPath, ['--input-type=module', '-e', script],
     { stdio:['ignore','pipe','pipe'], windowsHide:true });
   t.after(() => { if (child.exitCode === null && !child.killed) child.kill(); });
-  const [code, signal] = await once(child, 'close', { signal:AbortSignal.timeout(1800) });
+  let stderr = '';
+  child.stderr.setEncoding('utf8');
+  child.stderr.on('data', chunk => { stderr += chunk; });
+  const [code, signal] = await once(child, 'close', { signal:AbortSignal.timeout(15_000) });
+  assert.match(stderr, /ReMCP relay:/, 'shutdown fixture must observe a real failed handshake');
   assert.equal(signal, null);
   assert.equal(code, 0, 'clearing reconnect must not keep the agent alive');
 });

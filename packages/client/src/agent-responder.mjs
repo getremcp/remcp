@@ -11,6 +11,8 @@ export const E2EE_REQUEST_REFUSED = 'This computer requires end-to-end encrypted
 export function createAgentResponder({ inFlight, onPendingChange, getRuntimeState, serverUrl, deviceToken,
   assertResponseAllowed = () => {}, assertRequestAllowed = () => {}, e2eeEndpoint = null,
 }) {
+  const progress = new Map();
+  const validProgressId = id => typeof id === 'string' && /^[a-f0-9]{64}$/.test(id);
   async function respond(ws, message) {
     // Admit or refuse the *new* request before it can touch the runtime. Refusal must not go through
     // reply(): reply() re-applies the response policy and terminates the TLS-only socket, so one
@@ -55,8 +57,23 @@ export function createAgentResponder({ inFlight, onPendingChange, getRuntimeStat
         catch { throw new Error('e2ee_enrollment_cancel_rejected'); }
       } else if (message.method === 'ping') {
         result = { ok: true, hostname: os.hostname(), platform: process.platform, arch: process.arch, uptimeSeconds: Math.floor(os.uptime()), agentVersion: VERSION, runtimeVersion, runtimeRestarts };
+      } else if (message.method === 'network_probe_status') {
+        const id = message.params?.progressId;
+        const entry = validProgressId(id) ? progress.get(id) : null;
+        result = { progress: entry && !entry.signal.aborted ? entry.reading : null };
       } else if (message.method === 'network_probe') {
-        result = await runAgentNetworkProbe({serverUrl,deviceToken,signal:controller.signal});
+        const id = message.params?.progressId;
+        // A bounded active-only map. Session IDs are scoped by the authenticated
+        // server; do not retain progress after cancellation or completion.
+        const entry = validProgressId(id) && !progress.has(id) && progress.size < 4
+          ? { reading:null, signal:controller.signal } : null;
+        if (entry) progress.set(id,entry);
+        try {
+          result = await runAgentNetworkProbe({serverUrl,deviceToken,signal:controller.signal,
+            onProgress:reading => { if (entry) entry.reading=reading; }});
+        } finally {
+          if (entry) progress.delete(id);
+        }
       } else if (!runtimeDown && mcp) {
         const options = { timeout: callTimeoutMs, signal: controller.signal };
         if (message.method === 'tools/list') result = await mcp.listTools(undefined, options);

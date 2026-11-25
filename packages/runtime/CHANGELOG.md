@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.268 — 2026-11-25
+
+- Fence queued WebRTC input to the capture epoch admitted at submission; reject revoked or replacement sessions.
+- Add bounded device network measurement rounds and session-scoped progress for compatible agents, retaining cancellation and transfer admission.
+- Strengthen reconnect and network diagnostics regression tests.
+
 ## 0.2.267 — 2026-11-24
 
 **Improve desktop capture quality and remove overlapping cursors in remote control.**

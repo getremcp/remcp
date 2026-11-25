@@ -8,11 +8,15 @@ export function createWebRtcSessionControl({state,handlers=desktopHandlers,now=D
   const admitted=(sid,epoch)=>{const s=state();return s.sessionId===sid&&s.epoch===epoch&&s.active&&s.inputEnabled&&!s.stopping;};
   const control=({session_id:sid,input},extra={})=>{
     if(pendingCount>=64)return Promise.reject(new Error('WebRTC input queue full'));
+    const epoch=state().epoch,parsed=parseWebRtcControlInput(input);
+    // Admission is required both at submission and execution. A queued
+    // command must not inherit consent or a replacement capture epoch.
+    if(!parsed||!admitted(sid,epoch)||extra.signal?.aborted)
+      return Promise.reject(new Error('WebRTC input session unavailable'));
     pendingCount++;
     const execute=async()=>{
-      const s=state(),parsed=parseWebRtcControlInput(input);
-      if(!parsed||!admitted(sid,s.epoch)||extra.signal?.aborted)throw new Error('WebRTC input session unavailable');
-      if(lastEpoch!==s.epoch){lastEpoch=s.epoch;lastSequence=0;display=null;checkedAt=0;}
+      if(!admitted(sid,epoch)||extra.signal?.aborted)throw new Error('WebRTC input session unavailable');
+      if(lastEpoch!==epoch){lastEpoch=epoch;lastSequence=0;display=null;checkedAt=0;}
       if(parsed.seq<=lastSequence)throw new Error('WebRTC input sequence replay');
       lastSequence=parsed.seq;
       if(['pointer','drag','scroll'].includes(parsed.kind)&&(!display||now()-checkedAt>=3000)){
@@ -22,14 +26,14 @@ export function createWebRtcSessionControl({state,handlers=desktopHandlers,now=D
         if(!display)throw new Error('Remote display unavailable');
         checkedAt=now();
       }
-      if(!admitted(sid,s.epoch)||extra.signal?.aborted)throw new Error('WebRTC input session ended');
+      if(!admitted(sid,epoch)||extra.signal?.aborted)throw new Error('WebRTC input session ended');
       const tool=toDeviceTool(parsed,display),handler=tool&&handlers[tool.name];
       if(typeof handler!=='function')throw new Error('Remote input unavailable');
       const reply=await handler(tool.arguments,extra);
       // Native Stop/revocation may start while the OS input handler is
       // pending. The side effect cannot be undone, but stale success must
       // never cross the ended session or be replayed into its replacement.
-      if(!admitted(sid,s.epoch)||extra.signal?.aborted)
+      if(!admitted(sid,epoch)||extra.signal?.aborted)
         throw new Error('WebRTC input session ended');
       if(reply?.isError)throw new Error('Remote input failed');
       const result={ok:true,seq:parsed.seq};
