@@ -10,7 +10,7 @@ For bugs and feature requests, open a GitHub issue. For security vulnerabilities
 
 ## Local checks
 
-ReMCP requires Node.js 22.5 or newer.
+ReMCP package and web build compatibility starts at Node.js 22.13.0. Use a current patched LTS release; the official installer applies a separate, stricter security baseline.
 
 ```bash
 npm ci

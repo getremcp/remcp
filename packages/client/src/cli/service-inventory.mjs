@@ -4,8 +4,8 @@ import process from 'node:process';
 import { spawnSync } from 'node:child_process';
 import { PACKAGE_NAME, VERSION } from '../version.mjs';
 import { saveConfig } from './config.mjs';
-import { linuxServiceFile, linuxServiceLauncherFile, macServiceFile, macServiceLabel, windowsStartupScriptFile, windowsTaskName } from './env.mjs';
-import { linuxSystemAgentOwned } from './service-linux.mjs';
+import { linuxServiceLauncherFile, macServiceFile, macServiceLabel, windowsStartupScriptFile, windowsTaskName } from './env.mjs';
+import { linuxSystemAgentOwned, linuxUserAgentOwned } from './service-linux.mjs';
 import { servicePlatform, globalCliPath, npmGlobalUpdateAtPrefix, npmGlobalUpdateForNode } from './npm-global.mjs';
 import { windowsStartupScriptInstalled } from './windows-supervisor.mjs';
 import { windowsSupervisorRequest } from './windows-user-supervisor.mjs';
@@ -15,7 +15,7 @@ export function persistentServiceExpected(config) {
   if (config?.serviceInstalled === false) return false;
   if (config?.serviceInstalled === true) return true;
   const platform = servicePlatform();
-  if (platform === 'linux') return linuxSystemAgentOwned() || fs.existsSync(linuxServiceFile);
+  if (platform === 'linux') return linuxSystemAgentOwned() || linuxUserAgentOwned();
   if (platform === 'darwin') return fs.existsSync(macServiceFile);
   if (platform === 'win32') {
     return windowsStartupScriptInstalled(windowsStartupScriptFile) ||
@@ -29,7 +29,7 @@ export function persistentServiceState(config) {
   const expected = persistentServiceExpected(config);
   if (platform === 'linux') {
     const system = linuxSystemAgentOwned();
-    const installed = system || fs.existsSync(linuxServiceFile);
+    const installed = system || linuxUserAgentOwned();
     const active = installed && spawnSync('systemctl', [...(system ? [] : ['--user']), 'is-active', '--quiet', 'remcp-agent.service'], { stdio: 'ignore' }).status === 0;
     return { expected, installed, active, manager:installed ? (system ? 'systemd-system' : 'systemd-user') : 'none', name:'remcp-agent.service' };
   }

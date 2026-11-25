@@ -17,8 +17,8 @@ import { globalPrefix } from './npm-global.mjs';
 import { clearRecoveryHold } from '../windows-recovery-state.mjs';
 import { recoverWindowsUpdateLock } from './windows-update-lock.mjs';
 import { serviceNpmPrefixFromCliPath } from './service-inventory.mjs';
-import { linuxServiceFile, macServiceFile, officialOrigin } from './env.mjs';
-import { linuxSystemAgentOwned } from './service-linux.mjs';
+import { macServiceFile, officialOrigin } from './env.mjs';
+import { linuxSystemAgentOwned, linuxUserAgentOwned } from './service-linux.mjs';
 import { withWindowsInteropRepair } from './windows-interop-payload.mjs';
 import { assertWindowsUpdateLifecycleSafe, currentInstallationInfo, ensureMacCliCommand, ensureServiceIfRecorded, npmGlobalUpdate, persistentServiceExpected, rememberCurrentInstallation, restartPersistentServiceIfInstalled, servicePlatform, serviceInstallationInfo, syncKnownInstallations } from './service.mjs';
 
@@ -257,7 +257,7 @@ export async function updateCommand(flags) {
       ...(servicePlatform() === 'win32' ? { payloadReady:currentInstall.payloadReady,
         managedPayloadReady:serviceInstall.payloadReady,
         repairRequired:currentInstall.payloadReady === false || serviceInstall.payloadReady === false } : {}),
-      managedService: linuxSystemAgentOwned() || fs.existsSync(linuxServiceFile) || fs.existsSync(macServiceFile),
+      managedService: linuxSystemAgentOwned() || linuxUserAgentOwned() || fs.existsSync(macServiceFile),
       supervisor: supervisorRestart() ?? 'none',
     }, null, 2));
     return;

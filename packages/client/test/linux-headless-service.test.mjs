@@ -4,7 +4,7 @@ import { spawnSync } from 'node:child_process';
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { isManagedLinuxSystemUnit, linuxCliShimText, discoverOwnedLinuxUnits, uninstallOwnedLinuxUnits } from '../src/cli/service-linux.mjs';
+import { isManagedLinuxSystemUnit, linuxCliShimText, discoverOwnedLinuxUnits, uninstallOwnedLinuxUnits, assertNoLinuxExecDropIns } from '../src/cli/service-linux.mjs';
 import { deferredLinuxAgentRestartArgs } from '../src/cli/service.mjs';
 
 const launcher = '/root/.config/remcp/remcp-agent-launcher';
@@ -15,6 +15,11 @@ test('system unit is recognized only when it executes the ReMCP-owned launcher',
   assert.equal(isManagedLinuxSystemUnit('[Service]\nExecStart=/usr/bin/node /tmp/other.mjs\n', launcher), false);
   assert.equal(isManagedLinuxSystemUnit('[Service]\nExecStart="' + launcher + '" update\n', launcher), false);
   assert.equal(isManagedLinuxSystemUnit('', launcher), false);
+  for (const key of ['ExecCondition','ExecStartPre','ExecStartPost','ExecReload','ExecStop','ExecStopPost','ExecSearchPath']) {
+    assert.equal(isManagedLinuxSystemUnit(managed + key + ' = /usr/bin/true\n', launcher), false, key);
+  }
+  assert.equal(isManagedLinuxSystemUnit(managed + '# ExecStop=/bin/true\nEnvironment=REMCP_TEST=1\nUMask=0077\n', launcher), true);
+
 });
 
 test('deferred restart targets the active supervisor and not the wrong user manager', () => {
@@ -101,6 +106,50 @@ test('uninstall does not erase units when stopping the service fails', () => {
     runner:() => ({status:1})}), /Failed to stop/);
   assert.equal(existsSync(fixture.systemFile),true);
   assert.equal(existsSync(fixture.userFile),true);
+});
+
+test('systemd drop-in guard preserves ordinary overrides and rejects hooks in every applicable scope', t => {
+  const fixture=linuxUninstallFixture(), root=path.dirname(path.dirname(fixture.userFile));
+  t.after(()=>rmSync(root,{recursive:true,force:true}));
+  const unitPath=path.join(root,'other-priority');
+  for (const suffix of ['service.d','remcp-.service.d','remcp-agent.service.d']) {
+    const dir=path.join(unitPath,suffix); mkdirSync(dir,{recursive:true});
+    const file=path.join(dir,'10-qa.conf');
+    writeFileSync(file,'[Service]\nEnvironment=REMCP_QA=1\nUMask=0077\n');
+    assert.doesNotThrow(()=>assertNoLinuxExecDropIns(fixture.userFile,'user',{unitPaths:[unitPath]}));
+    for(const hook of ['ExecCondition','ExecStart','ExecStartPre','ExecStartPost','ExecReload','ExecStop','ExecStopPost','ExecSearchPath']){
+      writeFileSync(file,'[Service]\n'+hook+' = /usr/bin/true\n');
+      assert.throws(()=>assertNoLinuxExecDropIns(fixture.userFile,'user',{unitPaths:[unitPath]}),/executable or ambiguous/);
+    }
+    rmSync(file);
+  }
+  const dir=fixture.userFile+'.d'; mkdirSync(dir);
+  writeFileSync(path.join(dir,'20-local.conf'),'[Service]\nExecStop=/usr/bin/true\n');
+  let calls=0;
+  assert.throws(()=>uninstallOwnedLinuxUnits({...fixture,includeSystem:true,runner:()=>{calls++;return {status:0};}}),/executable or ambiguous/);
+  assert.equal(calls,0);
+  assert.ok(existsSync(fixture.userFile)&&existsSync(fixture.systemFile));
+});
+
+test('uninstall preserves the unit when systemd inactivity is not confirmed', t => {
+  const outcomes = [
+    {status:1}, {status:4}, {status:null,signal:'SIGTERM'},
+    {status:null,error:new Error('ETIMEDOUT')},
+    {status:3,error:new Error('ambiguous supervisor result')},
+  ];
+  for (const outcome of outcomes) {
+    const fixture = linuxUninstallFixture();
+    const root = path.dirname(path.dirname(fixture.userFile));
+    t.after(() => rmSync(root,{recursive:true,force:true}));
+    const calls = [];
+    assert.throws(() => uninstallOwnedLinuxUnits({...fixture,includeSystem:false,
+      runner:(_bin,args) => {
+        calls.push(args.join(' '));
+        return args.includes('is-active') ? outcome : {status:0};
+      }}), /Could not confirm.*inactive/);
+    assert.equal(existsSync(fixture.userFile),true);
+    assert.equal(calls.length,2,'no removal or daemon reload after ambiguous observation');
+  }
 });
 
 test('uninstall fails closed when the user unit is a symlink', () => {
@@ -229,4 +278,39 @@ test('uninstall refuses a symlinked parent even when the original unit inode is 
   assert.equal(redirected,true);
   assert.equal(readFileSync(path.join(moved,'remcp-agent.service'),'utf8'),original,
     'a parent-directory substitution must never permit deleting the original unit');
+});
+
+test('foreign per-user unit is refused for install, repair and both restart modes', t => {
+  if (process.platform !== 'linux') return;
+  const root = mkdtempSync(path.join(os.tmpdir(), 'remcp-foreign-unit-'));
+  t.after(() => rmSync(root,{recursive:true,force:true}));
+  const home = path.join(root,'home'), configDir=path.join(root,'config'), fakeBin=path.join(root,'bin');
+  const file=path.join(home,'.config/systemd/user/remcp-agent.service'), log=path.join(root,'calls.log');
+  for(const dir of [path.dirname(file), configDir, fakeBin]) mkdirSync(dir,{recursive:true});
+  const foreign='[Service]\nExecStart=/bin/false\n';
+  writeFileSync(file,foreign);
+  for(const name of ['systemctl','systemd-run','loginctl']) {
+    const target=path.join(fakeBin,name);
+    writeFileSync(target,'#!/bin/sh\necho "$*" >> "$REMCP_TEST_LOG"\n');
+    chmodSync(target,0o755);
+  }
+  const mod=new URL('../src/cli/service.mjs',import.meta.url).href;
+  const env={...process.env,HOME:home,REMCP_CONFIG_DIR:configDir,NODE_ENV:'test',
+    REMCP_TEST_PLATFORM:'linux',PATH:fakeBin+path.delimiter+process.env.PATH,REMCP_TEST_LOG:log};
+  const invoke=code=>spawnSync(process.execPath,['--input-type=module','-e','import * as s from '+JSON.stringify(mod)+'; '+code],{env,encoding:'utf8',timeout:10000});
+  for(const code of [
+    's.installLinuxService("/usr/local/bin/remcp",process.execPath)',
+    's.restartPersistentServiceIfInstalled({serviceInstalled:true})',
+    's.restartPersistentServiceIfInstalled({serviceInstalled:true},{deferLinux:true})',
+  ]) {
+    const result=invoke(code);
+    assert.notEqual(result.status,0,result.stdout);
+    assert.match(result.stderr,/Unrecognized or changed ReMCP systemd unit/);
+    assert.equal(readFileSync(file,'utf8'),foreign);
+  }
+  const repair=invoke('s.ensureServiceIfRecorded({serviceInstalled:true})');
+  assert.match(repair.stderr,/Unrecognized or changed ReMCP systemd unit/);
+  assert.equal(readFileSync(file,'utf8'),foreign);
+  assert.equal(existsSync(log),false);
+  assert.equal(existsSync(path.join(configDir,'remcp-agent-launcher')),false);
 });

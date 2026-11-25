@@ -2,7 +2,7 @@
   "name": "@remcp/runtime",
   "remcpWindowsInterop": 2,
   "remcpBuildProfile": "dllfree-source-release",
-  "version": "0.2.269",
+  "version": "0.2.270",
   "description": "First-party ReMCP local device runtime: filesystem, terminal, computer-use, browser, diagnostics and document tools over MCP.",
   "type": "module",
   "license": "MIT",
@@ -18,7 +18,7 @@
     "CHANGELOG.md"
   ],
   "engines": {
-    "node": ">=22.5.0"
+    "node": ">=22.13.0"
   },
   "scripts": {
     "start": "node src/index.mjs",

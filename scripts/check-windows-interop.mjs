@@ -10,7 +10,7 @@ if(requiredSigned&&requiredSourceRelease)
  throw Error('Windows source release and Authenticode DLL gates are mutually exclusive');
 const roots=isPublic?[['packages/client','@remcp/remcp','packages/client/src/cli/native/windows'],['packages/runtime','@remcp/runtime','packages/runtime/src/native/windows']]:[['.','@remcp/remcp','src/cli/native/windows'],['runtime','@remcp/runtime','runtime/src/native/windows']];
 function rejectBundledExecutables(root){
- const stack=[path.join(root,'src')];
+ const stack=[isPublic?root:path.join(root,'src')];
  while(stack.length){
   const directory=stack.pop();
   for(const item of fs.readdirSync(directory,{withFileTypes:true})){
@@ -27,10 +27,11 @@ for(const [root,name,dir] of roots){
  const packageMode=pkg.remcpWindowsInterop;
  if(requiredSigned&&packageMode===2) throw Error('Source-only Windows package has no bundled DLL to sign');
  if(requiredSourceRelease){
-  if(packageMode!==2||pkg.private===true||pkg.remcpBuildProfile!=='dllfree-source-release')
+  const privateSourceRoot=!isPublic&&root==='.'&&pkg.name==='remcp-full'&&pkg.private===true&&pkg.remcpReleaseWindowsMode==='source';
+  if(packageMode!==2||(!privateSourceRoot&&(pkg.private===true||pkg.remcpBuildProfile!=='dllfree-source-release')))
    throw Error('Windows source-only public release package identity is invalid: '+name);
-  rejectBundledExecutables(root);
  }
+ if(requiredSourceRelease||packageMode===2) rejectBundledExecutables(root);
  assertWindowsInteropPayload(path.resolve(root),name);
  const text=fs.readFileSync(path.join(dir,'manifest.mjs'),'utf8');
  const manifest=JSON.parse(text.slice(text.indexOf('{'),text.lastIndexOf('}')+1));
@@ -41,5 +42,5 @@ for(const [root,name,dir] of roots){
  }
 }
 console.log('Windows interop asset integrity verified'+
- (requiredSourceRelease?' as reviewed source-only public release (no bundled DLLs)':
+ (requiredSourceRelease?' as reviewed source-only release (no bundled compiled binaries)':
  requiredSigned?' with publisher signatures':'; Authenticode status is recorded in each manifest'));

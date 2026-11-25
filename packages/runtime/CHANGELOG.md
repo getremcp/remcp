@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.2.270 — 2026-11-25
+
+**Protect release inputs, Linux service ownership and workspace recovery.**
+
+- Exclude local runtime data and compiled addons from source-only exports; verify exported tracked bytes against Git objects.
+- Refuse changes or restarts to unrecognized Linux systemd units; preserve explicitly recorded legacy service paths.
+- Preserve authenticated workspace navigation, coordinate account refresh, and reconcile ambiguous Docker actions without automatic retries.
+- Bound anonymous OAuth registration frequency and keep keyboard focus inside Docker confirmation dialogs.
+- Recheck encrypted peer authorization before tool dispatch, retain active call fences and bound concurrent E2EE work.
+- Keep pending WebRTC admission fenced and require fresh Stop proof after an unresolved Open settles.
+- Require existing OAuth client registrations during access checks, preserve active grants during cleanup, and validate cache limits.
+
 ## 0.2.269 — 2026-11-25
 
 - Preserve exact 64-bit NTFS file identity during frozen WebRTC QA executable verification and private TURN configuration reads, avoiding false rejection of valid files with large file IDs.

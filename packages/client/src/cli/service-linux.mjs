@@ -16,7 +16,92 @@ export function isManagedLinuxSystemUnit(text, launcher = linuxServiceLauncherFi
     'ExecStart="' + launcher.replaceAll('\\', '\\\\').replaceAll('"', '\\"') + '" start --service',
     'ExecStart=' + launcher + ' start --service',
   ]);
-  return text.split(/\r?\n/).some(line => expected.has(line.trim()));
+  let section = '';
+  const commands = [];
+  for (const raw of text.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (line.endsWith('\\')) return false;
+    if (/^\[.*\]$/.test(line)) section = line;
+    if (/^ExecStart\s*=/.test(line)) commands.push({section, line});
+    else if (/^Exec[A-Za-z]*\s*=/.test(line)) return false; // Do not assume ownership of additional executable hooks.
+  }
+  return commands.length === 1 && commands[0].section === '[Service]' && expected.has(commands[0].line);
+}
+
+// Inspect disk candidates even when the systemd manager has not reloaded yet.
+// Cover type-wide, dash-prefix and exact service drop-ins. Preserve benign
+// local Environment/UMask overrides; reject additional executable directives.
+export function assertNoLinuxExecDropIns(file, scope, {runner = spawnSync, unitPaths = null, legacyLauncher = null} = {}) {
+  const synthetic = process.env.NODE_ENV === 'test' && process.env.REMCP_TEST_PLATFORM === 'linux';
+  const options = scope === 'user' ? ['--user'] : [];
+  const query = args => {
+    const result = runner('systemctl', [...options, ...args], {
+      encoding:'utf8', timeout:5000, maxBuffer:256*1024,
+    });
+    if (result.status !== 0 || result.error || result.signal)
+      throw new Error('Could not inspect ReMCP systemd overrides');
+    return String(result.stdout || '');
+  };
+  const live = unitPaths === null && !synthetic && runner === spawnSync;
+  let paths = unitPaths;
+  if (live) {
+    paths = query(['show','--property=UnitPath','--value']).trim().split(/\s+/);
+    if (!paths.length || paths.some(dir => !path.isAbsolute(dir)))
+      throw new Error('Could not establish systemd unit search paths');
+    const effective = query(['show','--all','--no-pager','remcp-agent.service',
+      ...['LoadState','FragmentPath','ExecStart','ExecCondition','ExecStartPre','ExecStartPost','ExecReload','ExecStop','ExecStopPost','ExecSearchPath']
+        .map(key => '--property='+key)]);
+    const properties = new Map(effective.split(/\r?\n/).filter(line=>line.includes('='))
+      .map(line=>[line.slice(0,line.indexOf('=')),line.slice(line.indexOf('=')+1)]));
+    const state = properties.get('LoadState'), fragment = properties.get('FragmentPath');
+    if (!['loaded','not-found'].includes(state) || (state === 'loaded' && fragment !== file))
+      throw new Error('Refusing an unexpected loaded ReMCP systemd unit');
+    if ([...properties].some(([key,value])=>key.startsWith('Exec') && key !== 'ExecStart' && value.trim()))
+      throw new Error('Refusing executable ReMCP systemd overrides in loaded unit');
+    if (state === 'loaded') {
+      const start = properties.get('ExecStart') || '';
+      const owned = [linuxServiceLauncherFile,legacyLauncher].filter(Boolean).some(launcher => {
+        const prefix = '{ path='+launcher+' ; argv[]='+launcher+' start --service ; ignore_errors=no ;';
+        return start.startsWith(prefix) && !start.slice(prefix.length).includes('{ path=');
+      });
+      if (!owned) throw new Error('Refusing unexpected effective ReMCP systemd ExecStart');
+    }
+  }
+  for (const root of new Set([path.dirname(file),...(paths || [])])) {
+    for (const suffix of ['service.d','remcp-.service.d','remcp-agent.service.d']) {
+      const dir = path.join(root,suffix);
+      let entries;
+      try { entries = fs.readdirSync(dir); }
+      catch (error) { if (error?.code === 'ENOENT') continue; throw error; }
+      for (const name of entries.filter(name=>name.endsWith('.conf'))) {
+        const override = path.join(dir,name);
+        const stat = fs.lstatSync(override);
+        // systemd supports masking an inherited drop-in with /dev/null.
+        if (stat.isSymbolicLink() && fs.readlinkSync(override) === '/dev/null') continue;
+        if (!stat.isFile() || stat.nlink !== 1 || stat.size > 65536)
+          throw new Error('Refusing an unrecognized ReMCP systemd override');
+        const fd = fs.openSync(override,fs.constants.O_RDONLY|fs.constants.O_NOFOLLOW|fs.constants.O_NONBLOCK);
+        try {
+          const opened = fs.fstatSync(fd);
+          if (!opened.isFile() || opened.dev !== stat.dev || opened.ino !== stat.ino ||
+              opened.nlink !== 1 || opened.size > 65536)
+            throw new Error('Refusing a changed ReMCP systemd override');
+          const body=Buffer.alloc(opened.size);
+          const bytes=fs.readSync(fd,body,0,body.length,0);
+          const after=fs.fstatSync(fd),named=fs.lstatSync(override);
+          if (bytes !== opened.size || after.size !== opened.size || after.mtimeMs !== opened.mtimeMs ||
+              named.dev !== opened.dev || named.ino !== opened.ino)
+            throw new Error('Refusing a changed ReMCP systemd override');
+          for (const raw of body.toString('utf8').split(/\r?\n/)) {
+            const line=raw.trim();
+            if (!line || line.startsWith('#') || line.startsWith(';')) continue;
+            if (/^Exec[A-Za-z]*\s*=/.test(line) || /^\.include(?:\s|$)/.test(line) || line.endsWith('\\'))
+              throw new Error('Refusing executable or ambiguous ReMCP systemd override');
+          }
+        } finally { fs.closeSync(fd); }
+      }
+    }
+  }
 }
 
 // Discover BOTH supervisors before uninstalling either. A PID-1 migration may
@@ -24,7 +109,7 @@ export function isManagedLinuxSystemUnit(text, launcher = linuxServiceLauncherFi
 // makes status incorrectly report an installed service after uninstall.
 // Pin every Linux path component, then validate the opened unit descriptor.
 // A check-before-open lstat or a symlinked parent could redirect a later read.
-function readOwnedLinuxUnit(file, launcher, expected = null) {
+function readOwnedLinuxUnit(file, launcher, expected = null, transform = null, legacyLauncher = null) {
   const pinnedDirs = [];
   let fd;
   try {
@@ -41,12 +126,12 @@ function readOwnedLinuxUnit(file, launcher, expected = null) {
       }
       source = `/proc/self/fd/${parent}/${parts.at(-1)}`;
     }
-    fd = fs.openSync(source, fs.constants.O_RDONLY |
+    fd = fs.openSync(source, (transform ? fs.constants.O_RDWR : fs.constants.O_RDONLY) |
       (fs.constants.O_NOFOLLOW || 0) | (fs.constants.O_NONBLOCK || 0));
     const opened = fs.fstatSync(fd);
     const same = (a, b) => a.dev === b.dev && a.ino === b.ino;
     const limit = 64 * 1024;
-    if (!opened.isFile() || opened.size > limit ||
+    if (!opened.isFile() || opened.nlink !== 1 || (process.getuid && opened.uid !== process.getuid()) || opened.size > limit ||
         (expected && !same(expected, opened))) {
       throw new Error('Unrecognized or replaced ReMCP systemd unit: ' + file);
     }
@@ -64,14 +149,87 @@ function readOwnedLinuxUnit(file, launcher, expected = null) {
     const readStat = fs.fstatSync(fd);
     if (!after.isFile() || after.isSymbolicLink() || !same(after, opened) ||
         readStat.size !== opened.size || readStat.mtimeMs !== opened.mtimeMs ||
-        !isManagedLinuxSystemUnit(body, launcher)) {
+        !(isManagedLinuxSystemUnit(body, launcher) || (legacyLauncher && isManagedLinuxSystemUnit(body, legacyLauncher)))) {
       throw new Error('Unrecognized or changed ReMCP systemd unit: ' + file);
     }
-    return { dev: opened.dev, ino: opened.ino };
+    const replacement = transform ? transform(body) : body;
+    if (replacement !== body) {
+      const data = Buffer.from(replacement, 'utf8');
+      if (data.length > limit || !isManagedLinuxSystemUnit(replacement, launcher))
+        throw new Error('Refusing invalid replacement ReMCP systemd unit');
+      let offset = 0;
+      while (offset < data.length) {
+        const written = fs.writeSync(fd, data, offset, data.length - offset, offset);
+        if (!written) throw new Error('Could not finish rewriting the systemd unit');
+        offset += written;
+      }
+      fs.ftruncateSync(fd, data.length);
+      fs.fsyncSync(fd);
+    }
+    return { dev: opened.dev, ino: opened.ino, changed:replacement !== body };
   } finally {
     if (fd !== undefined) fs.closeSync(fd);
     for (const parent of pinnedDirs.reverse()) fs.closeSync(parent);
   }
+}
+
+
+// A missing unit is distinct from an unknown, symlinked or foreign unit.
+export function assertOwnedLinuxUnit(file, launcher = linuxServiceLauncherFile, legacyLauncher = null) {
+  try { fs.lstatSync(file); }
+  catch (error) { if (error?.code === 'ENOENT') return null; throw error; }
+  return readOwnedLinuxUnit(file, launcher, null, null, legacyLauncher);
+}
+
+export function linuxUserAgentOwned() {
+  try { return Boolean(assertOwnedLinuxUnit(linuxServiceFile)); }
+  catch { return false; }
+}
+
+// Existing files are checked and rewritten through the same pinned descriptor.
+// Fresh creation is exclusive, never through a symlink or a redirected parent.
+export function writeOwnedLinuxUnit(file, text, launcher = linuxServiceLauncherFile) {
+  if (!isManagedLinuxSystemUnit(text, launcher)) throw new Error('Invalid ReMCP systemd unit');
+  const existing = assertOwnedLinuxUnit(file, launcher);
+  if (existing) return readOwnedLinuxUnit(file, launcher, existing, () => text);
+  const dirs = [];
+  try {
+    let source = file;
+    if (process.platform === 'linux') {
+      const parts = path.resolve(file).split(path.sep).filter(Boolean);
+      const flags = fs.constants.O_RDONLY | fs.constants.O_DIRECTORY | fs.constants.O_NOFOLLOW;
+      let parent = fs.openSync(path.parse(file).root, flags);
+      dirs.push(parent);
+      for (const part of parts.slice(0,-1)) {
+        const next = '/proc/self/fd/' + parent + '/' + part;
+        try { parent = fs.openSync(next, flags); }
+        catch (error) {
+          if (error?.code !== 'ENOENT') throw error;
+          try { fs.mkdirSync(next, {mode:0o755}); }
+          catch (mkdirError) { if (mkdirError?.code !== 'EEXIST') throw mkdirError; }
+          parent = fs.openSync(next, flags);
+        }
+        dirs.push(parent);
+      }
+      source = '/proc/self/fd/' + parent + '/' + parts.at(-1);
+    } else fs.mkdirSync(path.dirname(file), {recursive:true});
+    const fd = fs.openSync(source, fs.constants.O_WRONLY | fs.constants.O_CREAT |
+      fs.constants.O_EXCL | (fs.constants.O_NOFOLLOW || 0), 0o644);
+    try { fs.writeFileSync(fd,text); fs.fsyncSync(fd); }
+    finally { fs.closeSync(fd); }
+  } finally { for (const dir of dirs.reverse()) fs.closeSync(dir); }
+}
+
+export function recordedLegacyLinuxLauncher(config) {
+  const cli = config?.serviceCliPath;
+  return config?.serviceInstalled === true && typeof cli === 'string' && path.isAbsolute(cli) &&
+    path.normalize(cli) === cli && /\/bin\/remcp(?:\.mjs)?$/.test(cli) ? cli : null;
+}
+
+export function repairOwnedLinuxUnit(file, transform, legacyLauncher = null) {
+  const existing = assertOwnedLinuxUnit(file, linuxServiceLauncherFile, legacyLauncher);
+  if (!existing) return null;
+  return readOwnedLinuxUnit(file, linuxServiceLauncherFile, existing, transform, legacyLauncher);
 }
 
 export function discoverOwnedLinuxUnits({
@@ -114,6 +272,7 @@ export function uninstallOwnedLinuxUnits({
   runner = spawnSync,
 } = {}) {
   const units = discoverOwnedLinuxUnits({ systemFile, userFile, launcher, includeSystem });
+  for (const {scope,file} of units) assertNoLinuxExecDropIns(file,scope,{runner});
   for (const { scope, file, dev, ino } of units) {
     const option = scope === 'user' ? ['--user'] : [];
     const stop = runner('systemctl', [...option, 'disable', '--now', 'remcp-agent.service'],
@@ -126,6 +285,12 @@ export function uninstallOwnedLinuxUnits({
       { stdio:'ignore', timeout:10000 });
     if (active.status === 0) {
       throw new Error('ReMCP ' + scope + ' systemd service remains active after stop');
+    }
+    // systemctl uses LSB status 3 for a unit that is not active.
+    // Unknown unit, transport failure, timeout and signal termination
+    // are not positive evidence that the managed service stopped.
+    if (active.status !== 3 || active.error || active.signal) {
+      throw new Error('Could not confirm ReMCP ' + scope + ' systemd service is inactive; refusing uninstall');
     }
     // Another actor must not replace an owned unit with a symlink or foreign
     // content between discovery and removal.

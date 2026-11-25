@@ -1,6 +1,6 @@
 {
   "name": "@remcp/remcp",
-  "version": "0.2.269",
+  "version": "0.2.270",
   "remcpWindowsInterop": 2,
   "remcpBuildProfile": "dllfree-source-release",
   "description": "ReMCP device client: pair a computer with ReMCP and run the outbound-only agent that hosts the local MCP runtime.",
@@ -11,7 +11,7 @@
     "remcp": "bin/remcp.mjs"
   },
   "engines": {
-    "node": ">=22.5.0"
+    "node": ">=22.13.0"
   },
   "files": [
     "bin",

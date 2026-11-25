@@ -6,7 +6,7 @@ import {checkEnrollmentIntent,validEnrollmentCode,ENROLL_TTL_MS} from './e2ee-en
 
 const encode=new TextEncoder(), decode=new TextDecoder('utf-8',{fatal:true});
 const deny=()=>{throw new Error('e2ee_request_rejected');};
-const TTL=120000, BUFFER_LIMIT=32*1024*1024, CALL_LIMIT=2048;
+const TTL=120000, BUFFER_LIMIT=32*1024*1024, CALL_LIMIT=2048, ACTIVE_LIMIT=16, PACKET_LIMIT=32;
 // readOnlyHint comes from the mutable runtime catalog, not an authority.
 // A read grant allows only specifically reviewed basic-status capabilities.
 // Never infer new read powers from a forged annotation or overbroad OS grant.
@@ -14,32 +14,34 @@ const READ_SAFE_E2EE_TOOLS=new Set(['get_system_info','desktop_webrtc_status']);
 export function createAgentE2eeEndpoint({identity,deviceId,getPeer,getRuntimeState,invokeRuntimeTool,now=Date.now}) {
   if(!identity?.keys||typeof getPeer!=='function'||typeof getRuntimeState!=='function')deny();
   const epoch=randomUUID(), replay=createE2eeReplayGuard();
-  const uploads=new Map(), results=new Map(), executed=new Map();
+  const uploads=new Map(), results=new Map(), executed=new Map(), active=new Map();
+  const lifetime=new AbortController();
   // Pending offers are not authority. Only an explicit owner-local socket
   // confirmation may persist the limited read grant to the OS vault.
   const pendingEnrollments=new Map(),seenEnrollments=new Map(),approvals=new Map(),
     commitReceipts=new Map();
   let enrollmentListening=false,enrollmentHandler=null,enrollmentCancelHandler=null;
-  let buffered=0,closed=false;
+  let buffered=0,closed=false,inFlight=0;
   const key=p=>JSON.stringify([p.from,p.session,p.call]);
   function sweep() {
     const time=now();
     for(const map of [uploads,results])for(const [id,item] of map)if(item.expires<=time){
       buffered-=item.bytes;map.delete(id);
     }
-    for(const [id,expiry] of executed)if(expiry<=time)executed.delete(id);
+    for(const [id,expiry] of executed)if(expiry<=time&&!active.has(id))executed.delete(id);
     for(const [id,item] of pendingEnrollments)if(item.expires<=time)pendingEnrollments.delete(id);
     for(const [id,expiry] of seenEnrollments)if(expiry<=time)seenEnrollments.delete(id);
     for(const [id,item] of commitReceipts)if(item.expires<=time)commitReceipts.delete(id);
   }
+  const sweepTimer=setInterval(sweep,15_000);sweepTimer.unref?.();
   async function peerFor(p) {
     if(closed)deny();
     const peer=await getPeer(p?.from);
-    if(!peer||peer.fingerprint!==p.from||!['read','control'].includes(peer.mode)||
+    if(closed||!peer||peer.fingerprint!==p.from||!['read','control'].includes(peer.mode)||
         typeof peer.publicKey!=='string'||
         (peer.tools!==undefined&&(!Array.isArray(peer.tools)||peer.tools.length>64||
           peer.tools.some(name=>typeof name!=='string'||!/^[_a-z0-9]{1,80}$/.test(name)))))deny();
-    return peer;
+    return {...peer,...(peer.tools===undefined?{}:{tools:[...peer.tools]})};
   }
   // A tool's readOnlyHint is advisory metadata, not a permission grant. A
   // read-only peer needs a separately approved, local per-tool allowlist too.
@@ -49,12 +51,14 @@ export function createAgentE2eeEndpoint({identity,deviceId,getPeer,getRuntimeSta
       :(Array.isArray(peer.tools)&&peer.tools.includes(tool.name)&&
         READ_SAFE_E2EE_TOOLS.has(tool.name)&&
         tool.annotations?.readOnlyHint===true)));
-  async function dispatch(request,peer,signal) {
+  async function dispatch(request,peer,signal,assertPeer) {
     const {mcp,runtimeDown,callTimeoutMs=110000}=getRuntimeState();
     if(!mcp||runtimeDown)throw new Error('runtime_unavailable');
     if(signal?.aborted)throw new Error('cancelled');
     const options={timeout:callTimeoutMs,signal};
     const catalog=await mcp.listTools(undefined,options);
+    await assertPeer();
+    signal.throwIfAborted();
     const tools=(catalog?.tools||[]).filter(tool=>allowed(tool,peer));
     if(request.method==='tools/list')return {...catalog,tools};
     if(request.method!=='tools/call'||typeof request.params?.name!=='string'||
@@ -62,12 +66,31 @@ export function createAgentE2eeEndpoint({identity,deviceId,getPeer,getRuntimeSta
     const params={name:request.params.name,arguments:request.params.arguments};
     return invokeRuntimeTool?invokeRuntimeTool(mcp,params,options):mcp.callTool(params,options);
   }
-  async function handle(packet,{signal}={}) {
+  async function handle(packet,options={}) {
+    // Bound all asynchronous work, including the OS vault and cryptography,
+    // before a packet can allocate a native security subprocess or buffer.
+    if(closed||inFlight>=PACKET_LIMIT)deny();
+    inFlight++;
+    try{return await handlePacket(packet,options);}
+    finally{inFlight--;}
+  }
+  async function handlePacket(packet,{signal}={}) {
     sweep();
+    signal=signal?AbortSignal.any([signal,lifetime.signal]):lifetime.signal;
+    signal.throwIfAborted();
     const peer=await peerFor(packet);
+    const policy=JSON.stringify(peer);
+    const assertPeer=async({allowCancelled=false}={})=>{
+      lifetime.signal.throwIfAborted();
+      if(!allowCancelled)signal.throwIfAborted();
+      if(JSON.stringify(await peerFor(packet))!==policy)deny();
+      lifetime.signal.throwIfAborted();
+      if(!allowCancelled)signal.throwIfAborted();
+    };
     const clear=await openE2eePacket({receiver:identity,sender:peer.publicKey,
       pinnedSender:peer.fingerprint,packet,device:deviceId,session:packet.session,
       call:packet.call,direction:'request',epoch,replay,now:now()});
+    await assertPeer();
     const id=key(packet);
     // Pulls are authenticated too. They retrieve only this peer/session/call.
     // A relay cannot execute a tool by manufacturing or replaying a pull.
@@ -78,49 +101,59 @@ export function createAgentE2eeEndpoint({identity,deviceId,getPeer,getRuntimeSta
             !Number.isSafeInteger(pull.params?.index))deny();
         const saved=results.get(id), selected=saved?.packets[pull.params.index];
         if(!selected||pull.params.index<0)deny();
-        if(JSON.stringify(await peerFor(packet))!==saved.policy)deny();
+        if(saved.policy!==policy||results.get(id)!==saved||saved.expires<=now())deny();
         return {packet:selected};
       }
     }
-    if(executed.has(id))deny();
+    if(executed.has(id)||active.has(id))deny();
     let upload=uploads.get(id);
     if(!upload){
       if(packet.chunk!==0||uploads.size>=32||buffered+clear.length>BUFFER_LIMIT)deny();
-      upload={parts:[],bytes:0,chunks:packet.chunks,expires:packet.expires};
+      upload={parts:[],bytes:0,chunks:packet.chunks,expires:packet.expires,policy};
       uploads.set(id,upload);
     }
-    if(packet.chunk!==upload.parts.length||packet.chunks!==upload.chunks||
+    if(upload.policy!==policy||upload.expires<=now()||packet.expires<=now()||
+        packet.chunk!==upload.parts.length||packet.chunks!==upload.chunks||
         upload.bytes+clear.length>E2EE_MESSAGE_LIMIT||buffered+clear.length>BUFFER_LIMIT)deny();
     upload.parts.push(clear);upload.bytes+=clear.length;buffered+=clear.length;
     upload.expires=Math.min(upload.expires,packet.expires);
     if(upload.parts.length<upload.chunks)return {accepted:true};
-    uploads.delete(id);buffered-=upload.bytes;
-    if(executed.size>=CALL_LIMIT)deny();
+    uploads.delete(id);
+    if(executed.size>=CALL_LIMIT||active.size>=ACTIVE_LIMIT){buffered-=upload.bytes;deny();}
+    active.set(id,upload.bytes);
     // Reserve synchronously before awaiting the runtime: concurrent fresh
     // ciphertext for the same call ID must never repeat a side effect.
     executed.set(id,now()+TTL+15000);
-    let result;
     try {
-      const body=new Uint8Array(upload.bytes);let offset=0;
-      for(const part of upload.parts){body.set(part,offset);offset+=part.length;}
-      const request=JSON.parse(decode.decode(body));
-      if(!request||Object.keys(request).some(name=>!['method','params'].includes(name)))deny();
-      result={result:await dispatch(request,await peerFor(packet),signal)};
-    } catch(error) {
-      result={error:{message:signal?.aborted?'cancelled':String(error?.message||'tool_failed').slice(0,512)}};
+      let result;
+      try {
+        const body=new Uint8Array(upload.bytes);let offset=0;
+        for(const part of upload.parts){body.set(part,offset);offset+=part.length;}
+        const request=JSON.parse(decode.decode(body));
+        if(!request||Object.keys(request).some(name=>!['method','params'].includes(name)))deny();
+        result={result:await dispatch(request,peer,signal,assertPeer)};
+      } catch(error) {
+        result={error:{message:signal?.aborted?'cancelled':String(error?.message||'tool_failed').slice(0,512)}};
+      }
+      if(signal.aborted)result={error:{message:'cancelled'}};
+      const allowCancelled=result.error?.message==='cancelled';
+      // No authority leaves the endpoint until the fresh post-seal check.
+      // Avoid an extra OS-vault process before a purely local encryption step.
+      lifetime.signal.throwIfAborted();
+      let plaintext=encode.encode(JSON.stringify(result));
+      if(plaintext.length>E2EE_MESSAGE_LIMIT)
+        plaintext=encode.encode(JSON.stringify({error:{message:'e2ee_result_too_large'}}));
+      const packets=await sealE2eeMessage({sender:identity,recipient:peer.publicKey,
+        pinnedRecipient:peer.fingerprint,device:deviceId,session:packet.session,call:packet.call,
+        direction:'response',epoch,plaintext,now:now()});
+      await assertPeer({allowCancelled});
+      const bytes=encode.encode(JSON.stringify(packets)).length;
+      if(buffered-upload.bytes+bytes>BUFFER_LIMIT)deny();
+      results.set(id,{packets,bytes,policy,expires:now()+TTL});buffered+=bytes;
+      return {packet:packets[0]};
+    } finally {
+      if(active.delete(id)){buffered-=upload.bytes;if(!closed)executed.set(id,now()+TTL+15000);}
     }
-    const currentPeer=await peerFor(packet);
-    if(JSON.stringify(currentPeer)!==JSON.stringify(peer))deny();
-    let plaintext=encode.encode(JSON.stringify(result));
-    if(plaintext.length>E2EE_MESSAGE_LIMIT)
-      plaintext=encode.encode(JSON.stringify({error:{message:'e2ee_result_too_large'}}));
-    const packets=await sealE2eeMessage({sender:identity,recipient:peer.publicKey,
-      pinnedRecipient:peer.fingerprint,device:deviceId,session:packet.session,call:packet.call,
-      direction:'response',epoch,plaintext,now:now()});
-    const bytes=encode.encode(JSON.stringify(packets)).length;
-    if(buffered+bytes>BUFFER_LIMIT)deny();
-    results.set(id,{packets,bytes,policy:JSON.stringify(peer),expires:now()+TTL});buffered+=bytes;
-    return {packet:packets[0]};
   }
   return Object.freeze({
     identity:()=>({version:E2EE_PROTOCOL,device:deviceId,publicKey:identity.publicKey,
@@ -137,7 +170,7 @@ export function createAgentE2eeEndpoint({identity,deviceId,getPeer,getRuntimeSta
       sweep();
       const code=await checkEnrollmentIntent(intent,{device:deviceId,
         publicKey:identity.publicKey,fingerprint:identity.fingerprint,epoch,now:now()});
-      if(pendingEnrollments.size+approvals.size>=8||seenEnrollments.size>=128||
+      if(closed||!enrollmentListening||pendingEnrollments.size+approvals.size>=8||seenEnrollments.size>=128||
           pendingEnrollments.has(code)||approvals.has(code)||seenEnrollments.has(intent.nonce))deny();
       const expires=Math.min(intent.createdAt+ENROLL_TTL_MS,now()+ENROLL_TTL_MS);
       seenEnrollments.set(intent.nonce,expires);
@@ -214,11 +247,11 @@ export function createAgentE2eeEndpoint({identity,deviceId,getPeer,getRuntimeSta
         return {approved:true};
       }finally{approvals.delete(code);}
     },
-    close(){closed=true;enrollmentListening=false;enrollmentHandler=null;enrollmentCancelHandler=null;
+    close(){closed=true;clearInterval(sweepTimer);lifetime.abort(new Error("e2ee_endpoint_closed"));enrollmentListening=false;enrollmentHandler=null;enrollmentCancelHandler=null;
       for(const approval of approvals.values())if(!approval.committing)
         approval.controller.abort(new Error('enrollment_closed'));
       approvals.clear();pendingEnrollments.clear();seenEnrollments.clear();
       commitReceipts.clear();
-      uploads.clear();results.clear();executed.clear();buffered=0;},
+      uploads.clear();results.clear();executed.clear();active.clear();buffered=0;},
   });
 }

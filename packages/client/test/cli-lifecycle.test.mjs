@@ -80,6 +80,9 @@ test('install uses a stable global CLI path and update refreshes/restarts it', (
     .replace('RestartSec=3\n', 'RestartSec=3\nNoNewPrivileges=true\n'));
   writeFileSync(launcherFile, '#!/bin/sh\nexec "/old/node" "/old/nvm/bin/remcp" "$@"\n');
 
+  // Only the exact previously recorded direct CLI path is eligible for migration.
+  const savedConfig = JSON.parse(readFileSync(path.join(configDir, 'config.json'), 'utf8'));
+  writeFileSync(path.join(configDir, 'config.json'), JSON.stringify({...savedConfig, serviceCliPath:'/old/nvm/bin/remcp'}));
   const update = spawnSync(process.execPath, [bin, 'update'], { env, encoding: 'utf8' });
   assert.equal(update.status, 0, update.stderr || update.stdout);
   const repairedUnit = readFileSync(serviceFile, 'utf8');
@@ -95,9 +98,8 @@ test('install uses a stable global CLI path and update refreshes/restarts it', (
   assert.match(calls, /systemctl --user restart remcp-agent\.service/);
 });
 
-// A unit that lost its ExecStart line cannot be patched by substitution; the launcher has to be
-// rewritten, or the machine keeps starting the CLI from a prefix npm no longer installs into.
-test('a systemd unit without ExecStart is rewritten instead of leaving the old CLI running', () => {
+// A unit without its ownership-bearing ExecStart cannot be safely adopted.
+test('a systemd unit without ExecStart is preserved rather than adopted', () => {
   const root = mkdtempSync(path.join(os.tmpdir(), 'remcp-cli-'));
   const home = path.join(root, 'home');
   const fakeBin = path.join(root, 'bin');
@@ -116,13 +118,12 @@ test('a systemd unit without ExecStart is rewritten instead of leaving the old C
   mkdirSync(path.dirname(unitFile), { recursive: true });
   writeFileSync(unitFile, '[Unit]\nDescription=ReMCP device agent\n\n[Service]\n# hand-edited, the launcher line is gone\nRestart=always\n');
 
+  const original = readFileSync(unitFile, 'utf8');
   const update = spawnSync(process.execPath, [bin, 'update'], { env, encoding: 'utf8' });
-  assert.equal(update.status, 0, update.stderr || update.stdout);
-  const unit = readFileSync(unitFile, 'utf8');
-  const launcherFile = path.join(configDir, 'remcp-agent-launcher');
-  assert.match(unit, new RegExp(`ExecStart="${launcherFile.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}" start --service`), 'the unit is rewritten to the stable supervisor-owned launcher');
-  assert.match(readFileSync(launcherFile, 'utf8'), new RegExp(`${prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/bin/remcp`), 'the launcher targets the prefix npm installed into');
-  assert.doesNotMatch(unit, /hand-edited/);
+  assert.notEqual(update.status, 0, update.stdout);
+  assert.match(update.stderr, /Unrecognized or changed ReMCP systemd unit/);
+  assert.equal(readFileSync(unitFile, 'utf8'), original);
+  assert.doesNotMatch(readFileSync(log, 'utf8'), /systemctl/);
 });
 
 test('macOS CLI repair never overwrites or deletes an unrelated user-local command', () => {
