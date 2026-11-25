@@ -7,19 +7,21 @@ import path from 'node:path';
 import {windowsNativeWorkerTrusted} from './webrtc-windows-trust.mjs';
 
 const SHA256=/^[a-f0-9]{64}$/i;
-const MAX_FROZEN_BYTES=160*1024*1024;
+const MAX_FROZEN_BYTES=160n*1024n*1024n;
 const HASH_CHUNK_BYTES=64*1024;
 
 function trustedFileStat(info){
   return info?.isFile?.()===true&&info?.isSymbolicLink?.()!==true&&
-    info.nlink===1&&Number.isSafeInteger(info.size)&&
-    info.size>0&&info.size<=MAX_FROZEN_BYTES&&
-    Number.isSafeInteger(info.dev)&&Number.isSafeInteger(info.ino)&&info.ino>0;
+    info.nlink===1n&&typeof info.size==='bigint'&&
+    info.size>0n&&info.size<=MAX_FROZEN_BYTES&&
+    typeof info.dev==='bigint'&&info.dev>=0n&&
+    typeof info.ino==='bigint'&&info.ino>0n&&
+    typeof info.mtimeNs==='bigint'&&typeof info.ctimeNs==='bigint';
 }
 
 function sameFileIdentity(a,b){
   return a.dev===b.dev&&a.ino===b.ino&&a.size===b.size&&
-    a.mtimeMs===b.mtimeMs;
+    a.mtimeNs===b.mtimeNs&&a.ctimeNs===b.ctimeNs;
 }
 
 export function windowsFrozenQaTrusted(filename,{
@@ -39,18 +41,21 @@ export function windowsFrozenQaTrusted(filename,{
     // bounded 10s ARM64 PowerShell owner check used by this opt-in QA pilot.
     const policy={env,extension:'.exe',timeoutMs:10_000};
     if(!checkAcl(filename,policy))return false;
-    const before=lstat(filename);
+    // NTFS file IDs may exceed Number.MAX_SAFE_INTEGER. Never round identity.
+    const before=lstat(filename,{bigint:true});
     if(!trustedFileStat(before))return false;
     // Pin the file once. Do not hash by reopening filename after stat/ACL.
     fd=open(filename,constants.O_RDONLY|(constants.O_NOFOLLOW||0));
-    const initial=stat(fd);
+    const initial=stat(fd,{bigint:true});
     if(!trustedFileStat(initial)||!sameFileIdentity(before,initial))return false;
 
     const hash=createHash('sha256');
     const chunk=Buffer.allocUnsafe(HASH_CHUNK_BYTES);
+    // Only the already-bounded byte count is converted, never the file ID.
+    const size=Number(initial.size);
     let position=0;
-    while(position<initial.size){
-      const wanted=Math.min(chunk.length,initial.size-position);
+    while(position<size){
+      const wanted=Math.min(chunk.length,size-position);
       const count=read(fd,chunk,0,wanted,position);
       if(!Number.isInteger(count)||count<=0||count>wanted)return false;
       hash.update(chunk.subarray(0,count));
@@ -58,8 +63,8 @@ export function windowsFrozenQaTrusted(filename,{
     }
     // Reject append/truncation or replacement before accepting a pinned hash.
     if(read(fd,chunk,0,1,position)!==0)return false;
-    const final=stat(fd);
-    const atPath=lstat(filename);
+    const final=stat(fd,{bigint:true});
+    const atPath=lstat(filename,{bigint:true});
     if(!trustedFileStat(final)||!trustedFileStat(atPath)||
        !sameFileIdentity(initial,final)||
        !sameFileIdentity(initial,atPath))return false;

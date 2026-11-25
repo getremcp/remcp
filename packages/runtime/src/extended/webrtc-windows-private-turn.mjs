@@ -12,16 +12,16 @@ export const WINDOWS_PRIVATE_TURN_MAX_BYTES=4096;
 
 function trustedTurnFile(info){
   return info?.isFile?.()===true&&info?.isSymbolicLink?.()!==true&&
-    info.nlink===1&&Number.isSafeInteger(info.size)&&
-    info.size>=2&&info.size<=WINDOWS_PRIVATE_TURN_MAX_BYTES&&
-    Number.isSafeInteger(info.dev)&&info.dev>=0&&
-    Number.isSafeInteger(info.ino)&&info.ino>0&&
-    Number.isFinite(info.mtimeMs)&&Number.isFinite(info.ctimeMs);
+    info.nlink===1n&&typeof info.size==='bigint'&&
+    info.size>=2n&&info.size<=BigInt(WINDOWS_PRIVATE_TURN_MAX_BYTES)&&
+    typeof info.dev==='bigint'&&info.dev>=0n&&
+    typeof info.ino==='bigint'&&info.ino>0n&&
+    typeof info.mtimeNs==='bigint'&&typeof info.ctimeNs==='bigint';
 }
 
 function sameTurnFile(a,b){
   return a.dev===b.dev&&a.ino===b.ino&&a.size===b.size&&
-    a.nlink===b.nlink&&a.mtimeMs===b.mtimeMs&&a.ctimeMs===b.ctimeMs;
+    a.nlink===b.nlink&&a.mtimeNs===b.mtimeNs&&a.ctimeNs===b.ctimeNs;
 }
 
 export function readWindowsPrivateTurn({
@@ -44,31 +44,34 @@ export function readWindowsPrivateTurn({
     const policy={env,extension:'.json',timeoutMs:10_000};
     if(!verify(filename,policy))
       throw new Error('Untrusted Windows private TURN file');
-    const before=lstat(filename);
+    // Preserve exact NTFS file identity, including IDs above 2^53.
+    const before=lstat(filename,{bigint:true});
     if(!trustedTurnFile(before))throw new Error('Unsafe Windows private TURN file');
 
     // Pin a single descriptor and never reopen the filename to read secrets.
     // O_NOFOLLOW is platform-dependent; identity and ACL rechecks below are
     // mandatory even when it is unsupported on Windows.
     fd=open(filename,constants.O_RDONLY|(constants.O_NOFOLLOW||0));
-    const info=stat(fd);
+    const info=stat(fd,{bigint:true});
     if(!trustedTurnFile(info)||!sameTurnFile(before,info))
       throw new Error('Windows private TURN file changed');
 
-    const data=Buffer.allocUnsafe(info.size);
+    // The size has already passed the strict 4096-byte bound.
+    const size=Number(info.size);
+    const data=Buffer.allocUnsafe(size);
     let n=0;
     try{
-      while(n<info.size){
-        const k=read(fd,data,n,info.size-n,n);
-        if(!Number.isInteger(k)||k<=0||k>info.size-n)
+      while(n<size){
+        const k=read(fd,data,n,size-n,n);
+        if(!Number.isInteger(k)||k<=0||k>size-n)
           throw new Error('Truncated private TURN file');
         n+=k;
       }
       // A growing or replaced source must not be accepted by this reader.
       if(read(fd,Buffer.allocUnsafe(1),0,1,n)!==0)
         throw new Error('Windows private TURN file grew');
-      const after=stat(fd);
-      const atPath=lstat(filename);
+      const after=stat(fd,{bigint:true});
+      const atPath=lstat(filename,{bigint:true});
       if(!trustedTurnFile(after)||!trustedTurnFile(atPath)||
          !sameTurnFile(info,after)||!sameTurnFile(info,atPath)||
          !verify(filename,policy))

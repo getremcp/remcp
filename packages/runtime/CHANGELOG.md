@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.269 — 2026-11-25
+
+- Preserve exact 64-bit NTFS file identity during frozen WebRTC QA executable verification and private TURN configuration reads, avoiding false rejection of valid files with large file IDs.
+- Retain pinned descriptor, ACL, size, digest and metadata checks; reject rounded identities, file replacement and unexpected content changes.
+
 ## 0.2.268 — 2026-11-25
 
 - Fence queued WebRTC input to the capture epoch admitted at submission; reject revoked or replacement sessions.

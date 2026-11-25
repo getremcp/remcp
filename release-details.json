@@ -1,9 +1,8 @@
 {
-  "version": "0.2.268",
-  "title": "Fence queued WebRTC input to the capture epoch admitted at submission; reject revoked or replacement sessions.",
+  "version": "0.2.269",
+  "title": "Preserve exact 64-bit NTFS file identity during frozen WebRTC QA executable verification and private TURN configuration reads, avoiding false rejection of valid files with large file IDs.",
   "changes": [
-    "Fence queued WebRTC input to the capture epoch admitted at submission; reject revoked or replacement sessions.",
-    "Add bounded device network measurement rounds and session-scoped progress for compatible agents, retaining cancellation and transfer admission.",
-    "Strengthen reconnect and network diagnostics regression tests."
+    "Preserve exact 64-bit NTFS file identity during frozen WebRTC QA executable verification and private TURN configuration reads, avoiding false rejection of valid files with large file IDs.",
+    "Retain pinned descriptor, ACL, size, digest and metadata checks; reject rounded identities, file replacement and unexpected content changes."
   ]
 }

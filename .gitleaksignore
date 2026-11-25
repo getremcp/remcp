@@ -82,3 +82,5 @@ bfce8965a8c6a9204ddc857b19748297e2e7a612:test/helpers/stripe-billing-fixture.mjs
 bfce8965a8c6a9204ddc857b19748297e2e7a612:test/stripe-billing-currency-variants.test.mjs:generic-api-key:10
 bfce8965a8c6a9204ddc857b19748297e2e7a612:test/webrtc-dedicated-server.test.mjs:generic-api-key:167
 # END REVIEWED HISTORICAL FIXTURE REPEATS 2026-11-18
+# RFC 6455 public sample nonce in loopback-only gateway QA; verified non-credential.
+cb56569001c94bc607a42117126c9d93f44be7e5:test/gateway-agent-failover-native.test.mjs:generic-api-key:31
