@@ -104,3 +104,19 @@ test('unsupported OS, invalid code, subprocess failure and aborted requests neve
   const abort=new AbortController();abort.abort();
   assert.equal(await run('darwin',fakeSpawn(),{signal:abort.signal}),false);
 });
+
+
+test('client comparison explicitly identifies paired-device code and defaults to decline',async()=>{
+  const linux=fakeSpawn();
+  assert.equal(await run('linux',linux,{comparison:true,canExecute:async()=>true}),true);
+  assert.ok(linux.calls[0].args.includes('--ok-label=Codes match'));
+  assert.ok(linux.calls[0].args.includes('--default-cancel'));
+  assert.ok(linux.calls[0].args.some(a=>a.includes('paired device')&&a.includes(code)));
+  const mac=fakeSpawn({stdout:'approved'});
+  assert.equal(await run('darwin',mac,{comparison:true}),true);
+  assert.equal(mac.calls[0].args[3],'Codes match');
+  const win=fakeSpawn({stdout:'approved'});
+  assert.equal(await run('win32',win,{comparison:true}),true);
+  assert.match(Buffer.from(win.calls[0].input,'base64').toString(),/paired device/);
+  assert.equal(await run('linux',fakeSpawn({exit:1}),{comparison:true,canExecute:async()=>true}),false);
+});

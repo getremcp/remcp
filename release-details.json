@@ -1,18 +1,9 @@
 {
-  "version": "0.2.271",
-  "title": "Strengthen remote session lifecycle, native recording cleanup and encrypted authorization.",
+  "version": "0.2.272",
+  "title": "Harden Linux service updates, encrypted client enrollment and release verification.",
   "changes": [
-    "Keep abandoned WebRTC view, control and preview starts fenced until their native Stop is confirmed; clear stale previews and serialize clipboard write-and-paste.",
-    "Bound Redis quota operations, pending leases and drain accounting; count active leases without counting persistent fencing metadata.",
-    "Persist native Open admission across signaling restarts and liveness expiry; retain quarantine when Redis release is uncertain.",
-    "Reserve encrypted response capacity before side effects, retain lifecycle headroom, and distinguish authorization changes from cosmetic peer labels; expose owner-local aggregate pressure only.",
-    "Finalize GNOME recordings on the originating D-Bus sender, allow bounded recording finalization time, preserve X11 authorization, and stop native media source tracks on setup or proxy failures.",
-    "Remove failed uncommitted media install candidates and reuse verified environments with unchanged locked dependencies; retain potentially active older environments.",
-    "Cancel recording helpers on MCP abort, wait for exit before staging cleanup, and reject recordings that exceed the current remote call budget before capture. Preserve local recording support up to 120 seconds.",
-    "Isolate POSIX recording process groups, bound inherited-output cleanup, and forward scheduled wf-recorder finalization signals without nesting process-group ownership.",
-    "Reject media installation if pairing, runtime or media configuration changes before commit; remove only a definitely uncommitted new environment.",
-    "Stage complete macOS client/runtime releases before atomically switching the stable CLI entry; preserve prior releases and owner configuration.",
-    "Preserve pairing and future-schema preferences with atomic file replacement; serialize runtime starts and fence relay access invalidation.",
-    "Verify effective Linux service identity, escape literal systemd paths, and purge only recognized installer-created CLI launchers and PATH blocks."
+    "Stage Linux systemd unit updates before promotion, retain verified original identity and restrictive permissions, and refuse concurrent creation or detected replacement.",
+    "Require explicit local AI client code comparison and authenticated encrypted read-only proof before persisting a new device pin; retain recovery evidence on uncertain cancellation.",
+    "Use the production Redis TLS and mounted password policy for read-only WebRTC lease census; preserve native Stop and rollout admission requirements."
   ]
 }

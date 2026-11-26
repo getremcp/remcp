@@ -89,3 +89,24 @@ On a running Linux or macOS agent with the private owner-local approval socket a
 ## Verification
 
 Focused tests cover HPKE authentication, wrong pins, replay, metadata tampering, chunks, once-only execution, read grants, pairing binding, native vault persistence, policy tightening, relay ownership, OAuth client negotiation and the stdio bridge. Native media and actual browser tests additionally exercise decoded frames, clipboard restoration, consent and Stop. Report per-device native and WAN evidence separately; an offline device or a local ICE-only test is not evidence of cross-platform WAN success.
+
+
+### AI client native comparison (0.2.272 candidate)
+
+New AI bridge enrollment requires a native comparison window on the local
+client and scoped approval on the paired device. Compare the same code on
+both screens. The relay response alone cannot authorize a pin. The client
+requires an authenticated encrypted read-only `get_system_info` result and
+explicit local confirmation within the bounded enrollment deadline.
+
+The encrypted client vault first stores a non-trusted recovery candidate,
+then a local-comparison receipt bound to that exact nonce, endpoint and key,
+then the trusted pin. After interruption, recovery additionally requires
+fresh encrypted proof for the same key. Older pending records without the
+receipt cannot automatically become trusted. Revoke any committed grant on
+the paired device, wait for pending expiry, deliberately forget and re-enroll.
+A declined or unavailable dialog never grants a new client pin. Cancellation
+is attempted, but an ambiguous cancellation cannot establish remote revocation;
+retain the recovery record. Saved trusted pins continue to work unchanged.
+No plaintext fallback is allowed. Native dialog tests using subprocess
+fixtures are not evidence of real OS consent or WAN capture termination.

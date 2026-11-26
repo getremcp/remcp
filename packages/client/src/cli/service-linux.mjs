@@ -7,6 +7,7 @@ import process from 'node:process';
 import { spawnSync } from 'node:child_process';
 import { home, linuxServiceFile, linuxServiceLauncherFile } from './env.mjs';
 import { replaceFileAtomically } from './atomic-file.mjs';
+import { promoteLinuxUnit, sameUnitIdentity } from './linux-unit-promotion.mjs';
 import { resolvedCliScript, shellQuote, quoteSystemd } from './service-paths.mjs';
 
 export const linuxSystemServiceFile = '/etc/systemd/system/remcp-agent.service';
@@ -125,13 +126,14 @@ function readOwnedLinuxUnit(file, launcher, expected = null, transform = null, l
       }
       source = `/proc/self/fd/${parent}/${parts.at(-1)}`;
     }
-    fd = fs.openSync(source, (transform ? fs.constants.O_RDWR : fs.constants.O_RDONLY) |
+    fd = fs.openSync(source, fs.constants.O_RDONLY |
       (fs.constants.O_NOFOLLOW || 0) | (fs.constants.O_NONBLOCK || 0));
     const opened = fs.fstatSync(fd);
+    const pinned = fs.fstatSync(fd,{bigint:true});
     const same = (a, b) => a.dev === b.dev && a.ino === b.ino;
     const limit = 64 * 1024;
     if (!opened.isFile() || opened.nlink !== 1 || (process.getuid && opened.uid !== process.getuid()) || opened.size > limit ||
-        (expected && !same(expected, opened))) {
+        (expected && (!same(expected, opened) || (expected.identity && !sameUnitIdentity(expected.identity,pinned))))) {
       throw new Error('Unrecognized or replaced ReMCP systemd unit: ' + file);
     }
     // Bound reads even if a malicious actor grows the file after fstat.
@@ -148,6 +150,8 @@ function readOwnedLinuxUnit(file, launcher, expected = null, transform = null, l
     const readStat = fs.fstatSync(fd);
     if (!after.isFile() || after.isSymbolicLink() || !same(after, opened) ||
         readStat.size !== opened.size || readStat.mtimeMs !== opened.mtimeMs ||
+        !sameUnitIdentity(pinned,fs.fstatSync(fd,{bigint:true})) ||
+        !sameUnitIdentity(pinned,fs.lstatSync(source,{bigint:true})) ||
         !(isManagedLinuxSystemUnit(body, launcher) || (legacyLauncher && isManagedLinuxSystemUnit(body, legacyLauncher)))) {
       throw new Error('Unrecognized or changed ReMCP systemd unit: ' + file);
     }
@@ -156,16 +160,9 @@ function readOwnedLinuxUnit(file, launcher, expected = null, transform = null, l
       const data = Buffer.from(replacement, 'utf8');
       if (data.length > limit || !isManagedLinuxSystemUnit(replacement, launcher))
         throw new Error('Refusing invalid replacement ReMCP systemd unit');
-      let offset = 0;
-      while (offset < data.length) {
-        const written = fs.writeSync(fd, data, offset, data.length - offset, offset);
-        if (!written) throw new Error('Could not finish rewriting the systemd unit');
-        offset += written;
-      }
-      fs.ftruncateSync(fd, data.length);
-      fs.fsyncSync(fd);
+      promoteLinuxUnit(source,data,pinned,fd);
     }
-    return { dev: opened.dev, ino: opened.ino, changed:replacement !== body };
+    return { dev: opened.dev, ino: opened.ino, identity:pinned, changed:replacement !== body };
   } finally {
     if (fd !== undefined) fs.closeSync(fd);
     for (const parent of pinnedDirs.reverse()) fs.closeSync(parent);
@@ -185,11 +182,11 @@ export function linuxUserAgentOwned() {
   catch { return false; }
 }
 
-// Existing files are checked and rewritten through the same pinned descriptor.
+// Existing files are authenticated through a pinned descriptor before atomic promotion.
 // Fresh creation is exclusive, never through a symlink or a redirected parent.
-export function writeOwnedLinuxUnit(file, text, launcher = linuxServiceLauncherFile) {
+export function writeOwnedLinuxUnit(file, text, launcher = linuxServiceLauncherFile, expected = undefined) {
   if (!isManagedLinuxSystemUnit(text, launcher)) throw new Error('Invalid ReMCP systemd unit');
-  const existing = assertOwnedLinuxUnit(file, launcher);
+  const existing = expected===undefined ? assertOwnedLinuxUnit(file, launcher) : expected;
   if (existing) return readOwnedLinuxUnit(file, launcher, existing, () => text);
   const dirs = [];
   try {
@@ -212,10 +209,7 @@ export function writeOwnedLinuxUnit(file, text, launcher = linuxServiceLauncherF
       }
       source = '/proc/self/fd/' + parent + '/' + parts.at(-1);
     } else fs.mkdirSync(path.dirname(file), {recursive:true});
-    const fd = fs.openSync(source, fs.constants.O_WRONLY | fs.constants.O_CREAT |
-      fs.constants.O_EXCL | (fs.constants.O_NOFOLLOW || 0), 0o644);
-    try { fs.writeFileSync(fd,text); fs.fsyncSync(fd); }
-    finally { fs.closeSync(fd); }
+    promoteLinuxUnit(source,Buffer.from(text));
   } finally { for (const dir of dirs.reverse()) fs.closeSync(dir); }
 }
 
@@ -225,8 +219,8 @@ export function recordedLegacyLinuxLauncher(config) {
     path.normalize(cli) === cli && /\/bin\/remcp(?:\.mjs)?$/.test(cli) ? cli : null;
 }
 
-export function repairOwnedLinuxUnit(file, transform, legacyLauncher = null) {
-  const existing = assertOwnedLinuxUnit(file, linuxServiceLauncherFile, legacyLauncher);
+export function repairOwnedLinuxUnit(file, transform, legacyLauncher = null, expected = undefined) {
+  const existing = expected===undefined ? assertOwnedLinuxUnit(file, linuxServiceLauncherFile, legacyLauncher) : expected;
   if (!existing) return null;
   return readOwnedLinuxUnit(file, linuxServiceLauncherFile, existing, transform, legacyLauncher);
 }

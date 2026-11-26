@@ -18,7 +18,7 @@ import { PACKAGE_NAME, VERSION } from '../version.mjs';
 import { saveConfig } from './config.mjs';
 import { configDir, home, linuxServiceFile, linuxServiceLauncherFile, macServiceFile, macServiceLabel, windowsServiceLauncherFile, windowsStartupScriptFile, windowsTaskName } from './env.mjs';
 import { run } from './shell.mjs';
-import { linuxActiveServiceFile, linuxServiceScope, linuxSystemAgentOwned, linuxSystemServiceFile, ensureLinuxLinger, ensureLinuxCliCommand, uninstallOwnedLinuxUnits, assertOwnedLinuxUnit, writeOwnedLinuxUnit, repairOwnedLinuxUnit, recordedLegacyLinuxLauncher, removeLinuxCliCommand, assertNoLinuxExecDropIns } from './service-linux.mjs';
+import { linuxActiveServiceFile, linuxServiceScope, linuxSystemServiceFile, ensureLinuxLinger, ensureLinuxCliCommand, uninstallOwnedLinuxUnits, assertOwnedLinuxUnit, writeOwnedLinuxUnit, repairOwnedLinuxUnit, recordedLegacyLinuxLauncher, removeLinuxCliCommand, assertNoLinuxExecDropIns } from './service-linux.mjs';
 import { windowsServiceLauncherText, windowsTaskAbsenceCommand, windowsStartupScriptText, windowsStartupScriptInstalled } from './windows-supervisor.mjs';
 import { removeWindowsCliCommand } from './windows-cli-purge.mjs';
 import { ensureWindowsSupervisorKey, windowsSupervisorCommand } from './windows-user-supervisor.mjs';
@@ -67,23 +67,21 @@ export function installLinuxService(cliPath = globalCliPath(), nodePath = proces
   const syntheticLinuxFixture = process.env.NODE_ENV === 'test' && process.env.REMCP_TEST_PLATFORM === 'linux';
   const privileged = !syntheticLinuxFixture && process.getuid?.() === 0
     && path.resolve(home) === path.resolve(os.userInfo().homedir);
-  if (privileged && fs.existsSync(linuxSystemServiceFile) && !linuxSystemAgentOwned()) {
-    throw new Error('Refusing to replace an unmanaged systemd remcp-agent.service');
-  }
-  const system = privileged && (linuxSystemAgentOwned() || !fs.existsSync(linuxServiceFile));
+  const ownedSystem = privileged ? assertOwnedLinuxUnit(linuxSystemServiceFile) : null;
+  const system = privileged && (ownedSystem !== null || !fs.existsSync(linuxServiceFile));
   const unitFile = system ? linuxSystemServiceFile : linuxServiceFile;
-  assertOwnedLinuxUnit(unitFile);
+  const ownedUnit = system ? ownedSystem : assertOwnedLinuxUnit(unitFile);
   assertNoLinuxExecDropIns(unitFile,system ? "system" : "user");
   const launcherFile = writeLinuxServiceLauncher(cliPath, nodePath);
   if (system) {
     const unit = `[Unit]\nDescription=ReMCP headless device agent (system service)\nAfter=network-online.target\nWants=network-online.target\n\n[Service]\nType=simple\nUser=root\nWorkingDirectory=/root\nEnvironment=HOME=/root\nUMask=0077\nExecStart=${quoteSystemd(launcherFile)} start --service\nRestart=always\nRestartSec=5\n\n[Install]\nWantedBy=multi-user.target\n`;
-    writeOwnedLinuxUnit(linuxSystemServiceFile, unit);
+    writeOwnedLinuxUnit(linuxSystemServiceFile, unit, linuxServiceLauncherFile, ownedUnit);
     run('systemctl', ['daemon-reload']);
     run('systemctl', ['enable', '--now', 'remcp-agent.service']);
   } else {
     ensureLinuxLinger();
     const unit = `[Unit]\nDescription=ReMCP device agent\nAfter=network-online.target\nWants=network-online.target\n\n[Service]\nType=simple\nExecStart=${quoteSystemd(launcherFile)} start --service\nRestart=always\nRestartSec=3\n\n[Install]\nWantedBy=default.target\n`;
-    writeOwnedLinuxUnit(linuxServiceFile, unit);
+    writeOwnedLinuxUnit(linuxServiceFile, unit, linuxServiceLauncherFile, ownedUnit);
     run('systemctl', ['--user', 'daemon-reload']);
     run('systemctl', ['--user', 'enable', '--now', 'remcp-agent.service']);
   }
@@ -281,13 +279,14 @@ export function ensureServiceIfRecorded(config) {
       const file = linuxActiveServiceFile();
       const legacy = scope === "user" ? recordedLegacyLinuxLauncher(config) : null;
       assertNoLinuxExecDropIns(file,scope,{legacyLauncher:legacy});
-      if (!assertOwnedLinuxUnit(file, linuxServiceLauncherFile, legacy)) {
+      const ownedUnit = assertOwnedLinuxUnit(file, linuxServiceLauncherFile, legacy);
+      if (!ownedUnit) {
         installLinuxService(cliPath, nodePath);
       } else {
         if (scope === 'user') ensureLinuxLinger();
         writeLinuxServiceLauncher(cliPath, nodePath);
         const result = repairOwnedLinuxUnit(file, unit => unit.replace(/^NoNewPrivileges=true\r?\n/gm, '')
-          .replace(/^\s*ExecStart=.*$/m, 'ExecStart=' + quoteSystemd(linuxServiceLauncherFile) + ' start --service'), legacy);
+          .replace(/^\s*ExecStart=.*$/m, 'ExecStart=' + quoteSystemd(linuxServiceLauncherFile) + ' start --service'), legacy, ownedUnit);
         if (!result) throw new Error('ReMCP systemd unit disappeared during repair');
         if (result.changed) run('systemctl', [...(scope === 'user' ? ['--user'] : []), 'daemon-reload']);
       }

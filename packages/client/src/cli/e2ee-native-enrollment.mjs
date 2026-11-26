@@ -16,14 +16,14 @@ export const AI_DESKTOP_E2EE_TOOLS=Object.freeze([...DESKTOP_E2EE_TOOLS,
   'wait_for_ui','clipboard','display_inventory','screenshot_region','take_screenshot']);
 
 export async function nativeEnrollmentDialog(code,{platform=process.platform,environment=process.env,
-  signal,spawnChild=spawn,desktop=false,assistant=false,
+  signal,spawnChild=spawn,desktop=false,assistant=false,comparison=false,
   canExecute=async binary=>{try{await access(binary,constants.X_OK);return true;}catch{return false;}},
 }={}){
   if(!validEnrollmentCode(code))return Promise.reject(new Error('Invalid enrollment code'));
   const permission=assistant?'Allow an AI client to read the screen and operate applications using mouse, keyboard and clipboard':desktop?'View screen, use mouse and keyboard, and transfer clipboard text':
     'Read basic system information only';
-  const target=assistant?'AI desktop client':'browser',allowLabel=assistant?'Allow AI client':'Allow browser';
-  const message='Allow this '+target+' to connect securely to ReMCP?\n\nCompare this code with the '+target+':\n'+
+  const target=assistant?'AI desktop client':'browser',allowLabel=comparison?'Codes match':assistant?'Allow AI client':'Allow browser';
+  const message=comparison?'Connect your AI client securely to ReMCP?\n\nCompare this code with the ReMCP window on the paired device:\n'+code+'\n\nThis request allows the AI client to read the screen and operate applications using mouse, keyboard and clipboard. No direct terminal or file API is granted.\n\nApprove on the paired device only if the codes match, then confirm here.\nDecline if you did not request this.':'Allow this '+target+' to connect securely to ReMCP?\n\nCompare this code with the '+target+':\n'+
     code+'\n\n'+permission+'.\nNo direct terminal or file API is granted.\nDecline if you did not request this.';
   let executable,args,input='';
   if(platform==='darwin'){

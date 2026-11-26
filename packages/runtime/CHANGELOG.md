@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.272 — 2026-11-26
+
+**Harden Linux service updates, encrypted client enrollment and release verification.**
+
+- Stage Linux systemd unit updates before promotion, retain verified original identity and restrictive permissions, and refuse concurrent creation or detected replacement.
+- Require explicit local AI client code comparison and authenticated encrypted read-only proof before persisting a new device pin; retain recovery evidence on uncertain cancellation.
+- Use the production Redis TLS and mounted password policy for read-only WebRTC lease census; preserve native Stop and rollout admission requirements.
+
 ## 0.2.271 — 2026-11-26
 
 **Strengthen remote session lifecycle, native recording cleanup and encrypted authorization.**

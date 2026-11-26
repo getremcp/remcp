@@ -1,10 +1,11 @@
+import fs from 'node:fs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { isManagedLinuxSystemUnit, linuxCliShimText, discoverOwnedLinuxUnits, uninstallOwnedLinuxUnits, removeLinuxCliCommand, ensureLinuxCliInShellPath, assertNoLinuxExecDropIns } from '../src/cli/service-linux.mjs';
+import { isManagedLinuxSystemUnit, linuxCliShimText, discoverOwnedLinuxUnits, uninstallOwnedLinuxUnits, removeLinuxCliCommand, ensureLinuxCliInShellPath, assertNoLinuxExecDropIns, assertOwnedLinuxUnit, writeOwnedLinuxUnit } from '../src/cli/service-linux.mjs';
 import { verifyLinuxService } from '../src/cli/linux-service-verification.mjs';
 import { deferredLinuxAgentRestartArgs, quoteSystemd } from '../src/cli/service.mjs';
 
@@ -386,4 +387,63 @@ test('Linux purge removes only generated launcher and complete PATH blocks', t =
   symlinkSync(bash, shim);
   removeLinuxCliCommand({homeDir:root});
   assert.equal(existsSync(shim), true);
+});
+
+
+function atomicUnitFixture(t) {
+  const root=fs.realpathSync(mkdtempSync(path.join(os.tmpdir(),'remcp-unit-atomic-')));
+  t.after(()=>rmSync(root,{recursive:true,force:true}));
+  const file=path.join(root,'remcp-agent.service');
+  const original='[Service]\nExecStart="'+launcher+'" start --service\n';
+  return {root,file,original,replacement:original+'Restart=always\n'};
+}
+test('unit staging failure preserves the complete previous systemd unit',t=>{
+  const x=atomicUnitFixture(t);writeFileSync(x.file,x.original);
+  const sync=fs.fsyncSync;let injected=false;
+  fs.fsyncSync=fd=>{injected=true;throw new Error('injected fsync failure');};
+  try{assert.throws(()=>writeOwnedLinuxUnit(x.file,x.replacement,launcher),/injected fsync failure/);}
+  finally{fs.fsyncSync=sync;}
+  assert.equal(injected,true);assert.equal(readFileSync(x.file,'utf8'),x.original);
+  assert.deepEqual(fs.readdirSync(x.root),['remcp-agent.service']);
+});
+test('unit promotion refuses a stale previously authenticated identity',t=>{
+  const x=atomicUnitFixture(t);writeFileSync(x.file,x.original);
+  const proof=assertOwnedLinuxUnit(x.file,launcher);
+  renameSync(x.file,x.file+'.old');writeFileSync(x.file,x.original);
+  assert.throws(()=>writeOwnedLinuxUnit(x.file,x.replacement,launcher,proof),/changed|replaced/);
+  assert.equal(readFileSync(x.file,'utf8'),x.original);
+});
+test('unit creation failure leaves the previously absent unit absent',t=>{
+  const x=atomicUnitFixture(t);const sync=fs.fsyncSync;
+  fs.fsyncSync=()=>{throw new Error('injected fsync failure');};
+  try{assert.throws(()=>writeOwnedLinuxUnit(x.file,x.original,launcher),/injected fsync failure/);}
+  finally{fs.fsyncSync=sync;}
+  assert.equal(existsSync(x.file),false);assert.deepEqual(fs.readdirSync(x.root),[]);
+});
+test('unit promotion preserves a replacement introduced during staging',t=>{
+  const x=atomicUnitFixture(t);writeFileSync(x.file,x.original);
+  const sync=fs.fsyncSync;let swapped=false;
+  fs.fsyncSync=fd=>{sync(fd);if(!swapped){swapped=true;renameSync(x.file,x.file+'.old');writeFileSync(x.file,'foreign unit');}};
+  try{assert.throws(()=>writeOwnedLinuxUnit(x.file,x.replacement,launcher),/changed|replaced/);}
+  finally{fs.fsyncSync=sync;}
+  assert.equal(swapped,true);assert.equal(readFileSync(x.file,'utf8'),'foreign unit');
+  assert.equal(readFileSync(x.file+'.old','utf8'),x.original);
+});
+
+test('unit promotion preserves restrictive permissions and replaces the complete file',t=>{
+  const x=atomicUnitFixture(t);writeFileSync(x.file,x.original,{mode:0o600});
+  const original=fs.lstatSync(x.file,{bigint:true});
+  const result=writeOwnedLinuxUnit(x.file,x.replacement,launcher);
+  assert.equal(result.changed,true);assert.equal(readFileSync(x.file,'utf8'),x.replacement);
+  assert.equal(fs.lstatSync(x.file).mode&0o777,0o600);
+  assert.notEqual(fs.lstatSync(x.file,{bigint:true}).ino,original.ino);
+  assert.deepEqual(fs.readdirSync(x.root),['remcp-agent.service']);
+});
+test('exclusive new unit promotion never replaces a concurrent creator',t=>{
+  const x=atomicUnitFixture(t);const sync=fs.fsyncSync;let created=false;
+  fs.fsyncSync=fd=>{sync(fd);if(!created){created=true;writeFileSync(x.file,'foreign unit');}};
+  try{assert.throws(()=>writeOwnedLinuxUnit(x.file,x.original,launcher),/EEXIST/);}
+  finally{fs.fsyncSync=sync;}
+  assert.equal(created,true);assert.equal(readFileSync(x.file,'utf8'),'foreign unit');
+  assert.deepEqual(fs.readdirSync(x.root),['remcp-agent.service']);
 });
