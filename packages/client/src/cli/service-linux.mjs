@@ -6,16 +6,15 @@ import path from 'node:path';
 import process from 'node:process';
 import { spawnSync } from 'node:child_process';
 import { home, linuxServiceFile, linuxServiceLauncherFile } from './env.mjs';
-import { resolvedCliScript, shellQuote } from './service-paths.mjs';
+import { replaceFileAtomically } from './atomic-file.mjs';
+import { resolvedCliScript, shellQuote, quoteSystemd } from './service-paths.mjs';
 
 export const linuxSystemServiceFile = '/etc/systemd/system/remcp-agent.service';
 
 export function isManagedLinuxSystemUnit(text, launcher = linuxServiceLauncherFile) {
   if (typeof text !== 'string') return false;
-  const expected = new Set([
-    'ExecStart="' + launcher.replaceAll('\\', '\\\\').replaceAll('"', '\\"') + '" start --service',
-    'ExecStart=' + launcher + ' start --service',
-  ]);
+  const expected = new Set(['ExecStart=' + quoteSystemd(launcher) + ' start --service']);
+  if (!/[%$]/.test(launcher)) expected.add('ExecStart=' + launcher + ' start --service');
   let section = '';
   const commands = [];
   for (const raw of text.split(/\r?\n/)) {
@@ -371,17 +370,18 @@ export function linuxCliShimText(cliPath, nodePath) {
 
 const linuxCliPathBlockStart = '# >>> ReMCP CLI PATH >>>';
 const linuxCliPathBlockEnd = '# <<< ReMCP CLI PATH <<<';
+const linuxCliPathBlock = [linuxCliPathBlockStart,
+    'case ":$PATH:" in',
+    '  *":$HOME/.local/bin:"*) ;;',
+    '  *) export PATH="$HOME/.local/bin:$PATH" ;;',
+    'esac', linuxCliPathBlockEnd].join('\n');
 
 // Put the managed command before NVM's global bins after the shell's normal
 // startup logic. This updates only the owning user's shell profiles, never
 // Node versions, npm packages, system profiles, or another account.
 export function ensureLinuxCliInShellPath(homeDir = home) {
   if (process.platform !== 'linux' || process.getuid?.() === 0) return;
-  const block = [linuxCliPathBlockStart,
-    'case ":$PATH:" in',
-    '  *":$HOME/.local/bin:"*) ;;',
-    '  *) export PATH="$HOME/.local/bin:$PATH" ;;',
-    'esac', linuxCliPathBlockEnd].join('\n');
+  const block = linuxCliPathBlock;
   for (const basename of ['.bashrc', '.profile']) {
     const profile = path.join(homeDir, basename);
     let current = '';
@@ -425,4 +425,44 @@ export function ensureLinuxCliCommand(cliPath, nodePath) {
   fs.writeFileSync(temp, content, { mode:0o755 });
   fs.renameSync(temp, destination);
   ensureLinuxCliInShellPath();
+}
+
+// Purge only installer-created files. A modified/foreign command or profile
+// is not permission to delete arbitrary user content.
+export function removeLinuxCliCommand({homeDir = home, uid = process.getuid?.(),
+  destination = uid === 0 ? '/usr/local/bin/remcp' : path.join(homeDir, '.local', 'bin', 'remcp')} = {}) {
+  function ownedText(file) {
+    try {
+      const stat = fs.lstatSync(file);
+      if (!stat.isFile() || stat.uid !== uid || stat.size > 1024 * 1024 ||
+          fs.realpathSync(file) !== path.resolve(file)) return null;
+      return fs.readFileSync(file, 'utf8');
+    } catch (error) {
+      if (error?.code === 'ENOENT') return null;
+      throw error;
+    }
+  }
+  const shim = ownedText(destination);
+  if (shim !== null && /^#!\/bin\/sh\n# ReMCP managed CLI shim\nNPM_CONFIG_PREFIX=/.test(shim)) {
+    const lines = shim.split('\n');
+    if (lines.length === 8 && lines[3] === 'export NPM_CONFIG_PREFIX' &&
+        lines[4].startsWith('PATH=') && lines[5] === 'export PATH' &&
+        lines[6].startsWith('exec ') && lines[6].endsWith(' "$@"')) fs.unlinkSync(destination);
+  }
+  if (uid === 0) return;
+  for (const basename of ['.bashrc', '.profile']) {
+    const file = path.join(homeDir, basename);
+    const current = ownedText(file);
+    if (current === null) continue;
+    // Remove exact, complete generated blocks only, preserving unrelated bytes.
+    const lines = current.split('\n');
+    const block = linuxCliPathBlock.split('\n');
+    const kept = [];
+    for (let i = 0; i < lines.length;) {
+      if (block.every((line, offset) => lines[i + offset] === line)) i += block.length;
+      else kept.push(lines[i++]);
+    }
+    const next = kept.join('\n');
+    if (next !== current) replaceFileAtomically(file, next, {preserveMode:true});
+  }
 }

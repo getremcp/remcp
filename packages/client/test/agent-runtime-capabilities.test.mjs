@@ -99,3 +99,27 @@ test('temporary MCP list failure retries while active and stops after success', 
   assert.deepEqual(tools, ['browser_tabs']);
   assert.equal(errors.length, 1);
 });
+
+test('runtime starts are serialized and concurrent requests coalesce behind cleanup', async () => {
+  const {serializeRuntimeStarts}=await import('../src/agent-runtime-capabilities.mjs');
+  let active=0, maximum=0, calls=0, release, stopping=false;
+  const gate=new Promise(resolve=>{release=resolve;});
+  const request=serializeRuntimeStarts(async()=>{
+    maximum=Math.max(maximum,++active);
+    if(++calls===1) await gate;
+    --active;
+  },()=>stopping);
+  const first=request();
+  await Promise.resolve();
+  const second=request(), third=request();
+  assert.equal(calls,1);
+  assert.equal(first,second);
+  assert.equal(second,third);
+  release();
+  await first;
+  assert.equal(calls,2);
+  assert.equal(maximum,1);
+  stopping=true;
+  await request();
+  assert.equal(calls,2);
+});

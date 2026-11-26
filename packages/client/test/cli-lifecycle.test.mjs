@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -151,7 +151,7 @@ test('macOS CLI repair never overwrites or deletes an unrelated user-local comma
     'if [ "$1" = "prefix" ]; then echo "$REMCP_TEST_PREFIX"; fi',
     'exit 0',
   ].join('\n'));
-  fakeExecutable(path.join(fakeBin, 'launchctl'), 'exit 0');
+  fakeExecutable(path.join(fakeBin, 'launchctl'), 'if [ "$1" = print ]; then exit 113; fi\nexit 0');
   const env = {
     ...process.env,
     HOME:home,
@@ -178,8 +178,60 @@ test('macOS CLI repair never overwrites or deletes an unrelated user-local comma
     'uninstall leaves a non-ReMCP command untouched');
 });
 
+// Model npm's on-disk contract, not only its success exit code. The updater
+// must refuse an absent CLI and validate staged manifests and entry files.
+function fakeMacNpm(file,prefix){
+  writeFileSync(path.join(path.dirname(file),'package.json'),JSON.stringify({type:'module'}));
+  const anchor=path.join(prefix,'lib','node_modules','@remcp','remcp','bin','remcp.mjs');
+  mkdirSync(path.dirname(anchor),{recursive:true});
+  writeFileSync(anchor,'console.log("fixture");\n');
+  writeFileSync(path.join(path.dirname(path.dirname(anchor)),'package.json'),
+    JSON.stringify({name:'@remcp/remcp',version:'0.2.1'}));
+  mkdirSync(path.join(prefix,'bin'),{recursive:true});
+  symlinkSync('../lib/node_modules/@remcp/remcp/bin/remcp.mjs',path.join(prefix,'bin','remcp'));
+  const script=`
+const fs=require('node:fs'),path=require('node:path');
+const args=process.argv.slice(2);
+fs.appendFileSync(process.env.REMCP_TEST_LOG,'npm '+args.join(' ')+'\\n');
+if(args[0]==='prefix'){console.log(process.env.REMCP_TEST_PREFIX);process.exit(0);}
+const prefix=args[0]==='--prefix'?args[1]:process.env.REMCP_TEST_PREFIX;
+const pos=args.indexOf('--global');
+if(pos<0)process.exit(1);
+if(args.includes('uninstall')){
+  fs.rmSync(path.join(prefix,'bin/remcp'),{force:true});
+  for(const name of args.slice(pos+1).filter(x=>!x.startsWith('--'))){
+    fs.rmSync(path.join(prefix,'lib','node_modules',...name.split('/')),{recursive:true,force:true});
+  }
+  process.exit(0);
+}
+for(const spec of args.slice(pos+1).filter(x=>!x.startsWith('--'))){
+  const split=spec.lastIndexOf('@'),name=spec.slice(0,split),requested=spec.slice(split+1);
+  const version=requested==='latest'? ${JSON.stringify(VERSION)}:requested;
+  const root=path.join(prefix,'lib','node_modules',...name.split('/'));
+  fs.mkdirSync(root,{recursive:true});
+  fs.writeFileSync(path.join(root,'package.json'),JSON.stringify({name,version}));
+  const entry=path.join(root,name==='@remcp/remcp'?'bin/remcp.mjs':'dist/index.js');
+  fs.mkdirSync(path.dirname(entry),{recursive:true});
+  if(name==='@remcp/remcp'){
+    fs.mkdirSync(path.join(prefix,'bin'),{recursive:true});
+    const shim=path.join(prefix,'bin/remcp');
+    if(!fs.existsSync(shim))fs.symlinkSync('../lib/node_modules/@remcp/remcp/bin/remcp.mjs',shim);
+  }
+  fs.writeFileSync(entry,'console.log("fixture");\\n');
+}
+`;
+  // Keep the fixture explicitly CommonJS even when TMPDIR is located
+  // beneath a checkout with a type=module package.json (native CI/QA).
+  // A shell shim also permits a Node installation path containing spaces.
+  const helper=file+'.cjs';
+  writeFileSync(helper,script,{mode:0o600});
+  const quote=value=>"'"+String(value).replaceAll("'","'\\''")+"'";
+  fakeExecutable(file,'exec '+quote(process.execPath)+' '+quote(helper)+' "$@"');
+  return anchor;
+}
+
 test('macOS uninstall preserves CLI and pairing; purge removes only managed launcher', () => {
-  const root = mkdtempSync(path.join(os.tmpdir(), 'remcp-cli-path-'));
+  const root = realpathSync(mkdtempSync(path.join(os.tmpdir(), 'remcp-cli-path-')));
   const home = path.join(root, 'home');
   const fakeBin = path.join(root, 'bin');
   const prefix = path.join(root, 'fnm node with spaces');
@@ -196,14 +248,10 @@ test('macOS uninstall preserves CLI and pairing; purge removes only managed laun
     deviceName:'test',
     runtime:{ kind:'npm', packageName:'@example/local-runtime', packageSpec:'@example/local-runtime@1.2.3', entry:'dist/index.js' },
   }));
-  fakeExecutable(path.join(fakeBin, 'npm'), [
-    'echo "npm $@" >> "$REMCP_TEST_LOG"',
-    'if [ "$1" = "prefix" ]; then echo "$REMCP_TEST_PREFIX"; fi',
-    'exit 0',
-  ].join('\n'));
+  const anchor=fakeMacNpm(path.join(fakeBin,'npm'),prefix);
   fakeExecutable(path.join(fakeBin, 'launchctl'), [
     'echo "launchctl $@" >> "$REMCP_TEST_LOG"',
-    'if [ "$1" = "print" ]; then exit 1; fi',
+    'if [ "$1" = "print" ]; then exit 113; fi',
     'exit 0',
   ].join('\n'));
   const env = {
@@ -228,7 +276,7 @@ test('macOS uninstall preserves CLI and pairing; purge removes only managed laun
   const shimBody = readFileSync(shim, 'utf8');
   assert.match(shimBody, /^#!\/bin\/sh\n# ReMCP managed CLI shim\nexec /);
   assert.ok(shimBody.includes(process.execPath), 'the wrapper pins the node interpreter used by the service');
-  assert.ok(shimBody.includes(prefix + '/bin/remcp'), 'the wrapper targets the npm-global CLI even when its prefix contains spaces');
+  assert.ok(shimBody.includes(anchor), 'the wrapper targets the npm-global CLI even when its prefix contains spaces');
   const firstProfile = readFileSync(path.join(home, '.zshrc'), 'utf8');
   assert.match(firstProfile, /# user setting/);
   assert.match(firstProfile, /# >>> ReMCP CLI PATH >>>/);
@@ -276,7 +324,7 @@ test('macOS uninstall preserves CLI and pairing; purge removes only managed laun
 // leaves launchd starting a deleted file. The plist has to be rewritten, not just recreated when
 // missing — the machine otherwise loops like the Linux unit used to.
 test('a macOS plist pointing at an old prefix is rewritten', () => {
-  const root = mkdtempSync(path.join(os.tmpdir(), 'remcp-cli-'));
+  const root = realpathSync(mkdtempSync(path.join(os.tmpdir(), 'remcp-cli-')));
   const home = path.join(root, 'home');
   const fakeBin = path.join(root, 'bin');
   const prefix = path.join(root, 'global');
@@ -286,7 +334,7 @@ test('a macOS plist pointing at an old prefix is rewritten', () => {
   mkdirSync(fakeBin, { recursive: true });
   mkdirSync(configDir, { recursive: true });
   writeFileSync(path.join(configDir, 'config.json'), JSON.stringify({ serverUrl: 'https://example.invalid', deviceId: 'test', deviceToken: 'test', deviceName: 'test', serviceInstalled: true, runtime: { kind: 'npm', packageName: '@example/local-runtime', packageSpec: '@example/local-runtime@1.2.3', entry: 'dist/index.js' } }));
-  fakeExecutable(path.join(fakeBin, 'npm'), 'echo "npm $@" >> "$REMCP_TEST_LOG"\nif [ "$1" = "prefix" ]; then echo "$REMCP_TEST_PREFIX"; fi');
+  const anchor=fakeMacNpm(path.join(fakeBin,'npm'),prefix);
   fakeExecutable(path.join(fakeBin, 'launchctl'), 'echo "launchctl $@" >> "$REMCP_TEST_LOG"');
   const plistFile = path.join(home, 'Library', 'LaunchAgents', 'com.remcp.agent.plist');
   mkdirSync(path.dirname(plistFile), { recursive: true });
@@ -308,7 +356,7 @@ test('a macOS plist pointing at an old prefix is rewritten', () => {
   assert.equal(update.status, 0, update.stderr || update.stdout);
   const plist = readFileSync(plistFile, 'utf8');
   assert.doesNotMatch(plist, /old\/nvm/, 'the plist no longer launches the deleted CLI');
-  assert.match(plist, new RegExp(`${prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/bin/remcp`));
+  assert.ok(plist.includes(anchor),'launchd must reference the stable release anchor');
   const calls = readFileSync(log, 'utf8');
   assert.match(calls, /launchctl print gui\/\d+\/com\.remcp\.agent/);
   assert.match(calls, /launchctl submit -l com\.remcp\.agent\.reload\./,
@@ -323,7 +371,7 @@ test('a macOS plist pointing at an old prefix is rewritten', () => {
 // If launchd has forgotten that job (logout cleanup, migration, manual bootout), update must infer
 // that this is a managed install from the plist and bootstrap it again before trying kickstart.
 test('a legacy macOS install re-bootstraps an unloaded LaunchAgent during update', () => {
-  const root = mkdtempSync(path.join(os.tmpdir(), 'remcp-cli-'));
+  const root = realpathSync(mkdtempSync(path.join(os.tmpdir(), 'remcp-cli-')));
   const home = path.join(root, 'home');
   const fakeBin = path.join(root, 'bin');
   const prefix = path.join(root, 'global');
@@ -335,7 +383,7 @@ test('a legacy macOS install re-bootstraps an unloaded LaunchAgent during update
   mkdirSync(configDir, { recursive: true });
   // Intentionally no serviceInstalled flag: this is the persisted shape from older clients.
   writeFileSync(path.join(configDir, 'config.json'), JSON.stringify({ serverUrl: 'https://example.invalid', deviceId: 'test', deviceToken: 'test', deviceName: 'test', runtime: { kind: 'npm', packageName: '@example/local-runtime', packageSpec: '@example/local-runtime@1.2.3', entry: 'dist/index.js' } }));
-  fakeExecutable(path.join(fakeBin, 'npm'), 'echo "npm $@" >> "$REMCP_TEST_LOG"\nif [ "$1" = "prefix" ]; then echo "$REMCP_TEST_PREFIX"; fi');
+  const anchor=fakeMacNpm(path.join(fakeBin,'npm'),prefix);
   fakeExecutable(path.join(fakeBin, 'launchctl'), [
     'echo "launchctl $@" >> "$REMCP_TEST_LOG"',
     'if [ "$1" = "print" ]; then [ -f "$REMCP_LAUNCHD_LOADED" ]; exit $?; fi',
@@ -371,7 +419,7 @@ test('a legacy macOS install re-bootstraps an unloaded LaunchAgent during update
 
 
 test('an explicit service opt-out is stronger than a stale macOS plist', () => {
-  const root = mkdtempSync(path.join(os.tmpdir(), 'remcp-cli-'));
+  const root = realpathSync(mkdtempSync(path.join(os.tmpdir(), 'remcp-cli-')));
   const home = path.join(root, 'home');
   const fakeBin = path.join(root, 'bin');
   const prefix = path.join(root, 'global');
@@ -389,7 +437,7 @@ test('an explicit service opt-out is stronger than a stale macOS plist', () => {
     serviceInstalled: false,
     runtime: { kind: 'npm', packageName: '@example/local-runtime', packageSpec: '@example/local-runtime@1.2.3', entry: 'dist/index.js' },
   }));
-  fakeExecutable(path.join(fakeBin, 'npm'), 'echo "npm $@" >> "$REMCP_TEST_LOG"\nif [ "$1" = "prefix" ]; then echo "$REMCP_TEST_PREFIX"; fi');
+  const anchor=fakeMacNpm(path.join(fakeBin,'npm'),prefix);
   fakeExecutable(path.join(fakeBin, 'launchctl'), 'echo "launchctl $@" >> "$REMCP_TEST_LOG"');
   const plistFile = path.join(home, 'Library', 'LaunchAgents', 'com.remcp.agent.plist');
   mkdirSync(path.dirname(plistFile), { recursive: true });

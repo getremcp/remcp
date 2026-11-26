@@ -8,6 +8,7 @@ import { globalCliPath, servicePlatform } from './npm-global.mjs';
 import { persistentServiceExpected, canonicalServiceCliPath, canonicalServiceNodePath } from './service-inventory.mjs';
 import { configDir, home, macLogFile, macServiceFile, macServiceLabel } from './env.mjs';
 import { run } from './shell.mjs';
+import { replaceFileAtomically } from './atomic-file.mjs';
 import { resolvedCliScript, shellQuote, xmlEscape } from './service-paths.mjs';
 
 export function macLaunchDomain() {
@@ -47,7 +48,8 @@ function upsertManagedPathBlock(file) {
     remcpPathBlockEnd,
   ].join('\n');
   let current = '';
-  try { current = fs.readFileSync(file, 'utf8'); } catch {}
+  try { current = fs.readFileSync(file, 'utf8'); }
+  catch (error) { if (error?.code !== 'ENOENT') throw error; }
   const start = current.indexOf(remcpPathBlockStart);
   const end = start >= 0 ? current.indexOf(remcpPathBlockEnd, start + remcpPathBlockStart.length) : -1;
   let next;
@@ -58,7 +60,7 @@ function upsertManagedPathBlock(file) {
     next = prefix + (prefix ? '\n' : '') + block + '\n';
   }
   if (next === current) return false;
-  fs.writeFileSync(file, next, { mode:0o600 });
+  replaceFileAtomically(file, next, { mode:0o600, preserveMode:true, followSymlink:true });
   return true;
 }
 
@@ -73,7 +75,7 @@ function removeManagedPathBlock(file) {
   let after = current.slice(end + remcpPathBlockEnd.length);
   if (before.endsWith('\n') && after.startsWith('\n')) after = after.slice(1);
   const next = before + after;
-  fs.writeFileSync(file, next, { mode:0o600 });
+  replaceFileAtomically(file, next, { mode:0o600, preserveMode:true, followSymlink:true });
 }
 
 export function ensureMacCliCommand(config = {}, { cliPath = '', nodePath = '' } = {}) {
@@ -126,7 +128,7 @@ function macServicePlist(cliPath, nodePath = process.execPath) {
   // launchd wants an absolute path; a symlinked prefix that npm has not materialised yet (or a path
   // that is about to be replaced by the next install) must not abort the repair — a stale plist is
   // exactly the loop this function exists to break.
-  const cliScript = fs.existsSync(cliPath) ? fs.realpathSync(cliPath) : path.resolve(cliPath);
+  const cliScript = resolvedCliScript(cliPath);
   return `<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n<plist version="1.0"><dict>\n<key>Label</key><string>${macServiceLabel}</string>\n<key>ProgramArguments</key><array><string>${xmlEscape(nodePath)}</string><string>${xmlEscape(cliScript)}</string><string>start</string><string>--service</string></array>\n<key>RunAtLoad</key><true/><key>KeepAlive</key><true/>\n<key>ProcessType</key><string>Background</string>\n<key>StandardOutPath</key><string>${xmlEscape(macLogFile)}</string>\n<key>StandardErrorPath</key><string>${xmlEscape(macLogFile)}</string>\n</dict></plist>\n`;
 }
 
@@ -196,7 +198,7 @@ export function installMacService(cliPath = globalCliPath(), { restart = true, n
 
   fs.mkdirSync(path.dirname(macServiceFile), { recursive: true });
   fs.mkdirSync(path.dirname(macLogFile), { recursive: true });
-  fs.writeFileSync(macServiceFile, plist, { mode: 0o600 });
+  replaceFileAtomically(macServiceFile, plist, { mode: 0o600 });
 
   if (loaded && previous === plist) {
     run('launchctl', ['enable', target]);

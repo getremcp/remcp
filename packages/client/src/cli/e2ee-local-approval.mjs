@@ -51,6 +51,10 @@ export async function startLocalE2eeApprovalServer({endpoint,config,directory=co
         try{
           const parsed=JSON.parse(input);
           if(!parsed||Array.isArray(parsed)||typeof parsed!=='object')throw unavailable();
+          if(parsed.operation==='pressure'&&Object.keys(parsed).join(',')==='operation'){
+            if(typeof endpoint.pressure!=='function')throw unavailable();
+            finish({ok:true,pressure:endpoint.pressure()});return;
+          }
           if(parsed.operation==='pending'&&Object.keys(parsed).join(',')==='operation'){
             finish({ok:true,requests:endpoint.pendingEnrollments()});return;
           }
@@ -97,7 +101,7 @@ export async function requestLocalE2eeApproval(operation,{directory=configDir,co
   const stat=await fs.lstat(filename);
   if(!stat.isSocket()||stat.uid!==process.getuid()||
       (stat.mode&0o077)!==0)throw unavailable();
-  if(!['approve','pending'].includes(operation)||operation==='approve'&&!validEnrollmentCode(code))
+  if(!['approve','pending','pressure'].includes(operation)||operation==='approve'&&!validEnrollmentCode(code))
     throw unavailable();
   return new Promise((resolve,reject)=>{
     const client=net.createConnection(filename),payload={operation,

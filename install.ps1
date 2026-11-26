@@ -280,32 +280,17 @@ function Get-ReMCPExistingPairing {
   } catch { return $false }
 }
 
-# A ReMCP-owned Node/launcher process may hold its runtime files open after
-# Task Scheduler /End. Never kill an unrelated script merely because it uses
-# the bundled node.exe: a foreign process must cause a safe swap refusal instead.
+# Stop only through the authenticated user supervisor. A filename or command-line
+# substring is not proof of process ownership. Locked files must refuse the swap.
 function Stop-ReMCPRuntimeProcesses {
-  $prefix = $runtimeDir.TrimEnd('\') + '\'
-  $packageRoot = Join-Path $runtimeDir 'node_modules\@remcp\'
-  $runtimeLauncher = Join-Path $runtimeDir 'remcp.cmd'
-  try { $processes = @(Get-CimInstance -ClassName Win32_Process -ErrorAction Stop) }
-  catch { return }
-  foreach ($process in $processes) {
-    if (!$process -or !$process.ProcessId -or $process.ProcessId -eq $PID) { continue }
-    $exe = [string]$process.ExecutablePath
-    $command = ([string]$process.CommandLine).Replace('/', '\')
-    $name = [string]$process.Name
-    $nodeOwned = $name -ieq 'node.exe' -and
-      $exe.StartsWith($prefix, [StringComparison]::OrdinalIgnoreCase) -and
-      $command.IndexOf($packageRoot, [StringComparison]::OrdinalIgnoreCase) -ge 0
-    $launcherOwned = ($name -ieq 'cmd.exe' -or $name -ieq 'wscript.exe') -and
-      ($command.IndexOf($wrapper, [StringComparison]::OrdinalIgnoreCase) -ge 0 -or
-       $command.IndexOf($runtimeLauncher, [StringComparison]::OrdinalIgnoreCase) -ge 0)
-    if (!$nodeOwned -and !$launcherOwned) { continue }
-    try {
-      Stop-Process -Id $process.ProcessId -Force -ErrorAction Stop
-      Write-Host ("Stopped existing ReMCP process {0}." -f $process.ProcessId)
-    } catch {}
-  }
+  $node = Join-Path $runtimeDir 'node.exe'
+  $supervisor = Join-Path $runtimeDir 'node_modules\@remcp\remcp\src\cli\windows-user-supervisor.mjs'
+  if (!(Test-Path -LiteralPath $node -PathType Leaf) -or
+      !(Test-Path -LiteralPath $supervisor -PathType Leaf) -or $supervisor.Contains('"')) { return }
+  try {
+    $exitCode = Invoke-ReMCPQuietNative -Binary $node -Arguments ('"' + $supervisor + '" control stop')
+    if ($exitCode -eq 0) { Write-Host 'Stopped existing ReMCP supervisor.' }
+  } catch { Write-Warning 'ReMCP supervisor stop could not be confirmed; locked files will refuse replacement.' }
 }
 function Initialize-ReMCPStage {
   param([Parameter(Mandatory=$true)][string]$Destination, [Parameter(Mandatory=$true)]$Release)

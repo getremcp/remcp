@@ -16,6 +16,7 @@ import { installedVersion } from './doctor.mjs';
 import { globalPrefix } from './npm-global.mjs';
 import { clearRecoveryHold } from '../windows-recovery-state.mjs';
 import { recoverWindowsUpdateLock } from './windows-update-lock.mjs';
+import { macOuterPrefix } from './mac-release-anchor.mjs';
 import { serviceNpmPrefixFromCliPath } from './service-inventory.mjs';
 import { macServiceFile, officialOrigin } from './env.mjs';
 import { linuxSystemAgentOwned, linuxUserAgentOwned } from './service-linux.mjs';
@@ -302,11 +303,12 @@ export async function updateCommand(flags) {
   // An old task may survive an explicit service opt-out. Its ownership must be
   // checked independently of that preference before replacing either package.
   assertWindowsUpdateLifecycleSafe();
-  if (servicePlatform() === 'win32' && flags.repair === true) {
+  if (['win32','darwin'].includes(servicePlatform()) && flags.repair === true) {
+    const platform=servicePlatform();
     const prefixes = new Set([globalPrefix()]);
-    if (serviceExpected) prefixes.add(serviceNpmPrefixFromCliPath(serviceInstall.cliPath, 'win32'));
+    if (serviceExpected) prefixes.add(serviceNpmPrefixFromCliPath(serviceInstall.cliPath, platform));
     for (const prefix of prefixes) {
-      const archived = recoverWindowsUpdateLock(prefix);
+      const archived = recoverWindowsUpdateLock(platform==='darwin'?macOuterPrefix(prefix):prefix,platform==='darwin'?'macOS':'Windows');
       if (archived) console.log('ReMCP interrupted update lock archived at ' + archived + '; original stages and backups preserved.');
     }
   }

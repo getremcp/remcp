@@ -1,7 +1,7 @@
 // First-party AI bridge enrollment: OAuth authenticates account ownership;
 // independent native confirmation binds the keys. No relay reply grants trust.
 import {createE2eeDeviceClient} from '../agent-e2ee-client.mjs';
-import {createEnrollmentIntent} from '../e2ee-enrollment-code.mjs';
+import {createEnrollmentIntent,ENROLL_TTL_MS} from '../e2ee-enrollment-code.mjs';
 import {loadEncryptedClient,manageEncryptedClient,encryptedClientEndpoint} from './e2ee-client-profile.mjs';
 import {connectEncryptedRelay} from './e2ee-oauth.mjs';
 import {withEncryptedClientVaultLock} from './e2ee-client-mutation.mjs';
@@ -18,16 +18,18 @@ export async function prepareEncryptedMcpConnection(flags={},{
   await initialize();
   const {vault,record,identity}=await load();
   const saved=record.devices.find(item=>item.device===deviceId);
+  const pending=record.pendingDevices?.find(item=>item.device===deviceId);
+  const existing=saved||pending;
   const server=encryptedClientEndpoint(flags.server);
   // A reconnect must honor the trusted endpoint. An explicit alternative
   // --server cannot silently bypass the pinned device/server association.
-  if(saved&&flags.server!==undefined&&server!==encryptedClientEndpoint(saved.server))
+  if(existing&&flags.server!==undefined&&server!==encryptedClientEndpoint(existing.server))
     throw new Error('Encrypted device is pinned to another MCP server; forget and re-enroll deliberately');
   const provisional={device:deviceId,server,
     issuer:new URL(server).hostname==='mcp.remcp.site'?'https://remcp.site':new URL(server).origin};
-  const pin=saved||provisional;
+  const pin=existing||provisional;
   const relay=await connect({vault,pin,port:flags['oauth-port']?Number(flags['oauth-port']):42831});
-  let cancelPending=null;
+  let cancelPending=null,candidate=null;
   try{
     const forward=async(operation,value,{signal}={})=>{
       const result=await relay.callTool({name:'e2ee_transport',arguments:{device:deviceId,operation,
@@ -39,42 +41,76 @@ export async function prepareEncryptedMcpConnection(flags={},{
       return data;
     };
     const descriptor=saved?null:await forward('identity');
-    const fingerprint=saved?.fingerprint||descriptor.fingerprint;
+    if(pending&&!saved&&(descriptor.fingerprint!==pending.fingerprint||
+        descriptor.publicKey!==pending.publicKey))
+      throw new Error('Encrypted pending device identity changed; forget and re-enroll deliberately');
+    const fingerprint=existing?.fingerprint||descriptor.fingerprint;
     const client=createE2eeDeviceClient({identity,deviceId,pinnedDevice:fingerprint,
       describe:options=>forward('identity',undefined,options),
       dispatch:(packet,options)=>forward('packet',packet,options)});
+    const verify=async()=>{
+      const catalog=await client.listTools();
+      if(!catalog?.tools?.some(tool=>tool.name==='get_system_info'))throw new Error('Missing scoped read grant');
+      const result=await client.callTool({name:'get_system_info',arguments:{}});
+      if(result?.isError||!result?.content?.some(item=>item.type==='text'&&item.text?.trim()))
+        throw new Error('Encrypted device verification failed');
+    };
     if(!saved){
-      const {intent,code}=await createEnrollmentIntent({browser:identity,descriptor,device:deviceId,
-        permission:'assistant',now:now()});
-      report('ReMCP: compare '+code+' with the secure connection dialog on the device, then approve the AI desktop client.');
-      // A failure/timeout must close a pending native approval prompt and
-      // fence its nonce, not leave authorization possible after the CLI exits.
-      cancelPending=()=>forward('cancel',intent);
-      await forward('enroll',intent);
-      const deadline=now()+120000;let verified=false;
-      while(now()<deadline){
-        try{
-          const catalog=await client.listTools();
-          if(!catalog?.tools?.some(tool=>tool.name==='get_system_info'))throw new Error('Missing scoped read grant');
-          const result=await client.callTool({name:'get_system_info',arguments:{}});
-          if(result?.isError||!result?.content?.some(item=>item.type==='text'&&item.text?.trim()))
-            throw new Error('Encrypted device verification failed');
-          verified=true;break;
-        }catch(error){
+      let verified=false;
+      if(pending){
+        // A crash or failed final vault write may have left an approved grant.
+        // Recover only after proof of possession of the exact candidate key.
+        try{await verify();verified=true;}catch(error){
           if(/identity_changed/.test(error?.message||''))throw error;
-          await delay(1500);
+          if(now()<pending.expiresAt)throw new Error('Encrypted enrollment is pending; retry after approval or expiry');
         }
       }
-      if(!verified)throw new Error('Encrypted AI client was not approved on the device');
-      // OAuth may have refreshed tokens while consent was pending. Re-read the
-      // vault and preserve those tokens; never replace a concurrently saved pin.
+      if(verified){candidate=pending;}
+      else{
+        const {intent,code}=await createEnrollmentIntent({browser:identity,descriptor,device:deviceId,
+          permission:'assistant',now:now()});
+        candidate={...provisional,server:pin.server,issuer:pin.issuer,
+          publicKey:descriptor.publicKey,fingerprint,nonce:intent.nonce,
+          expiresAt:intent.createdAt+ENROLL_TTL_MS};
+        // Durable recovery record before the owner can possibly approve.
+        // This is NOT a trusted pin and is never used without encrypted proof.
+        await mutate(async()=>{
+          const current=await vault.read();
+          const previous=current?.pendingDevices||[];
+          const prior=previous.find(item=>item.device===deviceId);
+          if(current?.identity?.publicKey!==identity.publicKey||!Array.isArray(current.devices)||
+              current.devices.some(item=>item.device===deviceId)||
+              prior?.nonce!==pending?.nonce||
+              current.devices.length+previous.filter(item=>item.device!==deviceId).length>=32)
+            throw new Error('Encrypted client identity or device pin changed during enrollment');
+          await vault.write({...current,pendingDevices:[...previous.filter(item=>item.device!==deviceId),candidate]});
+        });
+        report('ReMCP: compare '+code+' with the secure connection dialog on the device, then approve the AI desktop client.');
+        cancelPending=()=>forward('cancel',intent);
+        await forward('enroll',intent);
+        const deadline=now()+120000;
+        while(now()<deadline){
+          try{await verify();verified=true;break;}
+          catch(error){
+            if(/identity_changed/.test(error?.message||''))throw error;
+            await delay(1500);
+          }
+        }
+        if(!verified)throw new Error('Encrypted AI client was not approved on the device');
+      }
+      // Preserve concurrent OAuth refresh and only promote the exact candidate.
       await mutate(async()=>{
         const current=await vault.read();
+        const previous=current?.pendingDevices||[];
+        const prior=previous.find(item=>item.device===deviceId);
         if(current?.identity?.publicKey!==identity.publicKey||!Array.isArray(current.devices)||
-            current.devices.some(item=>item.device===deviceId)||current.devices.length>=32)
+            current.devices.some(item=>item.device===deviceId)||current.devices.length>=32||
+            prior?.nonce!==candidate.nonce||prior.fingerprint!==candidate.fingerprint||
+            prior.publicKey!==candidate.publicKey)
           throw new Error('Encrypted client identity or device pin changed during enrollment');
-        await vault.write({...current,devices:[...current.devices,{...provisional,
-          publicKey:descriptor.publicKey,fingerprint}]});
+        const {nonce,expiresAt,...trusted}=candidate;
+        await vault.write({...current,pendingDevices:previous.filter(item=>item.device!==deviceId),
+          devices:[...current.devices,trusted]});
       });
       cancelPending=null;
       report('ReMCP: encrypted AI desktop connection verified. Future starts use the saved device key.');
@@ -82,7 +118,23 @@ export async function prepareEncryptedMcpConnection(flags={},{
     await client.listTools();
     return {client,relay};
   }catch(error){
-    if(cancelPending)try{await cancelPending();}catch{}
+    if(cancelPending)try{
+      const result=await cancelPending();
+      if(result?.cancelled===true){
+        // Only an acknowledged pre-commit cancellation permits removal.
+        await mutate(async()=>{
+          const current=await vault.read();
+          if(current?.identity?.publicKey!==identity.publicKey)return;
+          const previous=current.pendingDevices||[];
+          if(previous.some(item=>item.device===deviceId&&item.nonce===candidate?.nonce)){
+            const remaining=previous.filter(item=>item.device!==deviceId||item.nonce!==candidate.nonce);
+            // A new cancelled offer cannot prove that an older ambiguous
+            // approval did not commit. Retain the older recovery record.
+            await vault.write({...current,pendingDevices:pending?[...remaining,pending]:remaining});
+          }
+        });
+      }else report('ReMCP: device approval may have committed; recovery key retained in the client vault.');
+    }catch{report('ReMCP: enrollment cancellation unconfirmed; recovery key retained in the client vault.');}
     await relay.close();throw error;
   }
 }

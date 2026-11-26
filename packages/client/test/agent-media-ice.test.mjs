@@ -125,3 +125,39 @@ test('STOP during native ICE body read rejects late valid credentials',async()=>
  assert.equal(reads,2,'read and parse a valid response before detecting late STOP');
  assert.equal(dispatched,0,'the late STOP must block native desktop capture');
 });
+
+test('ICE expiry enforces exact maximum TTL and clock skew',()=>{
+  const now=1_800_000_000_000;
+  const candidate=(ttl,offset)=>{
+    const value=config();value.ttlSeconds=ttl;value.expiresAt=now/1000+offset;
+    value.iceServers[0].username=value.expiresAt+':'+'a'.repeat(32);return value;
+  };
+  for(const validate of [validateDeviceIce]){
+    for(const ttl of [120,720,900]){
+      const max=candidate(ttl,ttl+15);
+      assert.deepEqual(validate(max,now),max);
+      assert.throws(()=>validate(candidate(ttl,ttl+16),now));
+      assert.deepEqual(validate(candidate(ttl,60),now),candidate(ttl,60));
+      assert.throws(()=>validate(candidate(ttl,59),now));
+    }
+    for(const ttl of [119,901,NaN,Infinity])assert.throws(()=>validate(candidate(ttl,120),now));
+    for(const expiry of [NaN,Infinity,Number.MAX_SAFE_INTEGER,Number.MAX_SAFE_INTEGER+1]){
+      const value=candidate(900,915);value.expiresAt=expiry;
+      assert.throws(()=>validate(value,now));
+    }
+  }
+});
+
+
+test('recording admission refuses a duration outside the remote deadline before capture',async()=>{
+  let dispatched=0;
+  const mcp={callTool:async()=>{dispatched++;return 'ok';}};
+  const call=(duration,timeout)=>callAgentRuntimeTool({mcp,
+    params:{name:'record_screen',arguments:{duration_seconds:duration}},options:{timeout}});
+  await assert.rejects(call(120,110000),/maximum 70 seconds/);
+  await assert.rejects(call(5,40000),/maximum 0 seconds/);
+  assert.equal(dispatched,0);
+  assert.equal(await call(70,110000),'ok');
+  assert.equal(await call(120,160000),'ok');
+  assert.equal(dispatched,2);
+});

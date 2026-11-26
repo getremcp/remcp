@@ -6,10 +6,10 @@ import {createAgentE2eeEndpoint} from '../src/agent-e2ee-endpoint.mjs';
 import {createE2eeDeviceClient} from '../src/agent-e2ee-client.mjs';
 import {AI_DESKTOP_E2EE_TOOLS} from '../src/cli/e2ee-native-enrollment.mjs';
 const deviceId='device-1234';
-async function fixture({mode='control',tools,invoke,catalog}={}){
+async function fixture({mode='control',tools,invoke,catalog,now=Date.now}={}){
   const device=await createE2eeIdentity(),owner=await createE2eeIdentity(),calls=[],wire=[];
   let peer={publicKey:owner.publicKey,fingerprint:owner.fingerprint,mode,tools};
-  const endpoint=createAgentE2eeEndpoint({identity:device,deviceId,getPeer:async()=>peer,
+  const endpoint=createAgentE2eeEndpoint({identity:device,deviceId,now,getPeer:async()=>peer,
     getRuntimeState:()=>({runtimeDown:false,mcp:{
       listTools:async()=>({tools:catalog||[{name:'get_system_info',annotations:{readOnlyHint:true}},
         {name:'write',annotations:{readOnlyHint:false}},{name:'unknown'}]}),
@@ -24,7 +24,7 @@ async function fixture({mode='control',tools,invoke,catalog}={}){
   const packet=async(body,overrides={})=>(await sealE2eeMessage({
     sender:owner,recipient:device.publicKey,pinnedRecipient:device.fingerprint,device:deviceId,
     epoch:endpoint.identity().epoch,session:'session-1234',call:'call-1234',direction:'request',
-    plaintext:JSON.stringify(body),...overrides}))[0];
+    plaintext:JSON.stringify(body),now:now(),...overrides}))[0];
   return {device,owner,calls,wire,endpoint,client,packet,setPeer:value=>{peer=value;}};
 }
 test('real endpoint executes an encrypted request and no plaintext reaches relay',async()=>{
@@ -145,4 +145,115 @@ test('E2EE read mode rejects unfamiliar tools with forged readOnlyHint',async()=
   assert.deepEqual((await readOnly.client.listTools()).tools.map(x=>x.name),safe);
   await readOnly.client.callTool({name:'get_system_info',arguments:{text:'test-only'}});
   assert.equal(readOnly.calls.length,1,'explicitly approved basic read remains available');
+});
+
+test('a cosmetic peer rename during an executed call preserves result and cached pulls',async()=>{
+  let f;
+  f=await fixture({invoke:async()=>{
+    f.setPeer({publicKey:f.owner.publicKey,fingerprint:f.owner.fingerprint,mode:'control',label:'Renamed'});
+    return {content:[{type:'text',text:'committed'}]};
+  }});
+  const response=await f.client.callTool({name:'write',arguments:{text:'once'}});
+  assert.equal(response.content[0].text,'committed');assert.equal(f.calls.length,1);
+  const p=await f.packet({method:'tools/list',params:{}});
+  await f.endpoint.handle(p);
+  f.setPeer({publicKey:f.owner.publicKey,fingerprint:f.owner.fingerprint,mode:'control',label:'Again'});
+  assert.ok((await f.endpoint.handle(await f.packet({method:'result/pull',params:{index:0}}))).packet);
+  f.setPeer({publicKey:f.owner.publicKey,fingerprint:f.owner.fingerprint,mode:'read',tools:['get_system_info']});
+  await assert.rejects(f.endpoint.handle(await f.packet({method:'result/pull',params:{index:0}})),/rejected/);
+  f.endpoint.close();
+});
+test('full worst-case result budget refuses new side effects before dispatch',async()=>{
+  let release,entered;
+  const gate=new Promise(resolve=>{release=resolve;});
+  const two=new Promise(resolve=>{entered=resolve;});
+  let calls=0;
+  const f=await fixture({invoke:async()=>{
+    if(++calls===2)entered();
+    await gate;
+    return {content:[{type:'text',text:'committed'}]};
+  }});
+  const body={method:'tools/call',params:{name:'write',arguments:{text:'once'}}};
+  const first=f.endpoint.handle(await f.packet(body,{call:'first-call'}));
+  const second=f.endpoint.handle(await f.packet(body,{call:'second-call'}));
+  const timeout=setTimeout(()=>release(),2000);
+  try{
+    await Promise.race([two,new Promise((_,reject)=>setTimeout(()=>reject(Error('two calls did not enter')),1000))]);
+    await assert.rejects(f.endpoint.handle(await f.packet(body,{call:'third-call'})),/rejected/);
+    assert.equal(calls,2);
+    release();
+    await Promise.all([first,second]);
+    await f.endpoint.handle(await f.packet(body,{call:'fourth-call'}));
+    assert.equal(calls,3);
+  }finally{clearTimeout(timeout);release();await Promise.allSettled([first,second]);f.endpoint.close();}
+});
+
+test('native Stop retains result capacity while two maximum general responses are reserved',async()=>{
+  let release,entered;
+  const gate=new Promise(resolve=>{release=resolve;});
+  const two=new Promise(resolve=>{entered=resolve;});
+  let calls=0;
+  const f=await fixture({catalog:[{name:'write'},{name:'desktop_webrtc_stop'}],invoke:async args=>{
+    if(args.name==='desktop_webrtc_stop')return {ok:true,sessionId:'synthetic'};
+    if(++calls===2)entered();
+    await gate;return {ok:true};
+  }});
+  const body={method:'tools/call',params:{name:'write',arguments:{text:'once'}}};
+  const first=f.endpoint.handle(await f.packet(body,{call:'first-call'}));
+  const second=f.endpoint.handle(await f.packet(body,{call:'second-call'}));
+  const timeout=setTimeout(release,2000);
+  try{
+    await Promise.race([two,new Promise((_,reject)=>setTimeout(()=>reject(Error('two calls did not enter')),1000))]);
+    assert.deepEqual(await f.client.callTool({name:'desktop_webrtc_stop',arguments:{session_id:'synthetic'}}),{ok:true,sessionId:'synthetic'});
+    assert.equal(calls,2);
+  }finally{clearTimeout(timeout);release();await Promise.allSettled([first,second]);f.endpoint.close();}
+});
+
+test('owner-local pressure reports bounded aggregate cache occupancy, rejection and expiry',async()=>{
+  let at=Date.now();
+  const f=await fixture({now:()=>at});
+  const initial={uploadsPending:0,resultsCached:0,executedEntries:0,
+    bufferedBytes:0,bufferLimitBytes:32*1024*1024,rejectedTotal:0};
+  assert.deepEqual(f.endpoint.pressure(),initial);
+  assert.ok(Object.isFrozen(f.endpoint.pressure()));
+  const p=await f.packet({method:'tools/call',params:{name:'write',arguments:{text:'private fixture'}}});
+  await f.endpoint.handle(p);
+  const sample=f.endpoint.pressure();
+  assert.equal(sample.resultsCached,1);assert.equal(sample.executedEntries,1);
+  assert.equal(sample.uploadsPending,0);
+  assert.ok(sample.bufferedBytes>0&&sample.bufferedBytes<=sample.bufferLimitBytes);
+  assert.ok(Object.values(sample).every(Number.isSafeInteger));
+  await assert.rejects(f.endpoint.handle(p),/rejected/);
+  assert.equal(f.endpoint.pressure().rejectedTotal,1);
+  const partial=await sealE2eePacket({sender:f.owner,recipient:f.device.publicKey,
+    pinnedRecipient:f.device.fingerprint,device:deviceId,epoch:f.endpoint.identity().epoch,
+    session:'session-1234',call:'partial-1234',direction:'request',
+    chunk:0,chunks:2,plaintext:new Uint8Array(1024),now:at});
+  assert.deepEqual(await f.endpoint.handle(partial),{accepted:true});
+  assert.equal(f.endpoint.pressure().uploadsPending,1);
+  assert.equal(f.endpoint.pressure().bufferedBytes,sample.bufferedBytes+1024);
+  at+=135001;
+  assert.deepEqual(f.endpoint.pressure(),{...initial,rejectedTotal:1});
+  f.endpoint.close();
+  assert.deepEqual(f.endpoint.pressure(),{...initial,rejectedTotal:1});
+});
+
+
+test('authenticated Stop can still execute with all multipart upload slots occupied',async()=>{
+  const f=await fixture({catalog:[{name:'desktop_webrtc_stop'},{name:'write'}],
+    invoke:async args=>({ok:true,tool:args.name})});
+  try{
+    for(let i=0;i<32;i++){
+      const packet=await sealE2eePacket({sender:f.owner,recipient:f.device.publicKey,
+        pinnedRecipient:f.device.fingerprint,device:deviceId,epoch:f.endpoint.identity().epoch,
+        session:'session-1234',call:'partial-'+i,direction:'request',chunk:0,chunks:2,
+        plaintext:new Uint8Array(1024),now:Date.now()});
+      assert.deepEqual(await f.endpoint.handle(packet),{accepted:true});
+    }
+    assert.equal(f.endpoint.pressure().uploadsPending,32);
+    await assert.rejects(f.client.callTool({name:'write',arguments:{text:'not admitted'}}),/rejected/);
+    assert.deepEqual(await f.client.callTool({name:'desktop_webrtc_stop',arguments:{session_id:'fixture'}}),{ok:true,tool:'desktop_webrtc_stop'});
+    assert.equal(f.endpoint.pressure().uploadsPending,32);
+    assert.equal(f.calls.length,1);
+  }finally{f.endpoint.close();}
 });

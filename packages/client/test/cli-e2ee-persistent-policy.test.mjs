@@ -7,7 +7,7 @@ import { join, resolve } from 'node:path';
 import { assertAgentE2eeAdmission, createAgentRelayConnection } from '../src/agent-relay-connection.mjs';
 import { runAgent } from '../src/agent.mjs';
 import {
-  effectiveE2eeRequirement, persistedE2eeRequired, setE2eeRequirement,
+  effectiveE2eeRequirement, persistedE2eeRequired, setE2eeRequirement, formatE2eePressurePrometheus,
 } from '../src/cli/e2ee-policy.mjs';
 
 const bin = resolve('bin/remcp.mjs');
@@ -102,4 +102,16 @@ test('operator may retry failed supervised reload without writing a weaker polic
   }),'scheduled');
   assert.equal(attempts,2);
   assert.equal(extraWrites,0);
+});
+
+test('local E2EE pressure exports bounded numeric Prometheus counters without labels',()=>{
+  const sample={uploadsPending:2,resultsCached:3,executedEntries:4,bufferedBytes:1024,
+    bufferLimitBytes:32*1024*1024,rejectedTotal:5,privateField:'must not be exported'};
+  const metrics=formatE2eePressurePrometheus(sample);
+  assert.match(metrics,/# TYPE remcp_e2ee_uploads_pending gauge\nremcp_e2ee_uploads_pending 2\n/);
+  assert.match(metrics,/# TYPE remcp_e2ee_rejected_total counter\nremcp_e2ee_rejected_total 5\n/);
+  assert.equal(metrics.split('\n').filter(line=>line.startsWith('remcp_e2ee_')).length,6);
+  assert.ok(!metrics.includes('privateField')&&!metrics.includes('must not be exported'));
+  for(const invalid of [undefined,-1,NaN,Infinity,'1\nmalicious',1.5])
+    assert.throws(()=>formatE2eePressurePrometheus({...sample,bufferedBytes:invalid}),/Invalid local/);
 });

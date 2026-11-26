@@ -127,22 +127,80 @@ export function desktopMediaEnvironment(profile,runtimeEntry){
       REMCP_WEBRTC_DEV_SOURCE:desktopMediaNativeSource()};
   }catch{return {REMCP_WEBRTC_RUNTIME_PILOT:'0'};}
 }
-export async function installDesktopMedia({python,runtimeEntry,directory,run=execute}){
+export async function installDesktopMedia({python,runtimeEntry,directory,previous,run=execute,prepareRuntime=prepareMacDesktopMediaRuntime,prepareCommit=()=>()=>{}}){
   if(typeof python!=='string'||!path.isAbsolute(python)||!fs.existsSync(python))
     throw new Error('Use --python with the absolute path to a trusted Python 3.11–3.14 installation');
   if(typeof directory!=='string'||!path.isAbsolute(directory))throw new Error('Private media install directory required');
   const source=packageSource(runtimeEntry);
   const version=JSON.parse(await run(python,['-c','import json,sys; print(json.dumps(list(sys.version_info[:2])))'],{timeout:15000}));
   if(version[0]!==3||version[1]<11||version[1]>14)throw new Error('This media release requires Python 3.11–3.14');
-  const base=path.join(directory,'desktop-media',VERSION+'-'+randomUUID());
-  await privateDirectory(base);
-  const venv=path.join(base,'venv');
-  await run(python,['-m','venv',venv],{inherit:true});
-  const executable=path.join(venv,process.platform==='win32'?'Scripts':'bin',process.platform==='win32'?'python.exe':'python');
-  await run(executable,['-m','pip','install','--disable-pip-version-check','--only-binary=:all:',
-    '--require-hashes','-r',path.join(source,'requirements.lock')],{inherit:true});
-  const probe=path.join(source,'install_probe.py');
-  await run(executable,[probe,'--source',desktopMediaNativeSource()],{timeout:20000});
-  prepareMacDesktopMediaRuntime();
-  return {version:1,protocol:'remcp-media-stdio-v1',enabled:true,python:executable,installedVersion:VERSION};
+  const root=path.join(directory,'desktop-media');
+  fs.mkdirSync(root,{recursive:true,mode:0o700});
+  const info=fs.lstatSync(root);
+  if(!info.isDirectory()||info.isSymbolicLink()||
+      (process.platform!=='win32'&&(info.uid!==process.getuid()||(info.mode&0o022)!==0)))
+    throw new Error('Unsafe desktop media directory');
+  const requirementsSha256=createHash('sha256').update(fs.readFileSync(path.join(source,'requirements.lock'))).digest('hex');
+  const basePython=fs.realpathSync(python);
+  const metadata={requirementsSha256,basePython};
+  let reusable=null;
+  // Reuse only a previously committed, locally managed environment built
+  // from the same locked dependencies and requested Python. This avoids
+  // creating a new venv on every install or version-only upgrade. Never
+  // delete an older successful installation while an agent may still use it.
+  if(previous?.version===1&&previous.protocol==='remcp-media-stdio-v1'&&
+      previous.requirementsSha256===requirementsSha256&&previous.basePython===basePython&&
+      typeof previous.python==='string'){
+    const relative=path.relative(root,previous.python);
+    const parts=relative.split(path.sep);
+    const executableParts=process.platform==='win32'?['venv','Scripts','python.exe']:['venv','bin','python'];
+    if(parts.length===4&&/^\d+\.\d+\.\d+-[a-f0-9-]{36}$/.test(parts[0])&&
+        parts.slice(1).every((part,i)=>part===executableParts[i])){
+      try{
+        for(const name of [parts[0],path.join(parts[0],'venv'),path.join(parts[0],'venv',executableParts[1])]){
+          const info=fs.lstatSync(path.join(root,name));
+          if(!info.isDirectory()||info.isSymbolicLink()||
+             (process.platform!=='win32'&&(info.uid!==process.getuid()||(info.mode&0o022)!==0)))
+            throw new Error('Unsafe previous media directory');
+        }
+        await run(previous.python,['-m','pip','check'],{timeout:20000});
+        await run(previous.python,[path.join(source,'install_probe.py'),'--source',desktopMediaNativeSource()],{timeout:20000});
+        prepareRuntime();
+        reusable={version:1,protocol:'remcp-media-stdio-v1',enabled:true,python:previous.python,installedVersion:VERSION,...metadata};
+      }catch{/* A failed dependency probe requires a fresh, isolated install. */}
+    }
+  }
+  // Admission failures must not be mistaken for a failed dependency probe.
+  if(reusable){
+    prepareCommit(reusable)();
+    return reusable;
+  }
+  let commitAttempted=false;
+  const base=path.join(root,VERSION+'-'+randomUUID());
+  fs.mkdirSync(base,{mode:0o700}); // exclusive creation; only this directory may be removed
+  try {
+    await privateDirectory(base);
+    const venv=path.join(base,'venv');
+    await run(python,['-m','venv',venv],{inherit:true});
+    const executable=path.join(venv,process.platform==='win32'?'Scripts':'bin',process.platform==='win32'?'python.exe':'python');
+    await run(executable,['-m','pip','install','--disable-pip-version-check','--only-binary=:all:',
+      '--require-hashes','-r',path.join(source,'requirements.lock')],{inherit:true});
+    const probe=path.join(source,'install_probe.py');
+    await run(executable,[probe,'--source',desktopMediaNativeSource()],{timeout:20000});
+    prepareRuntime();
+    const profile={version:1,protocol:'remcp-media-stdio-v1',enabled:true,python:executable,installedVersion:VERSION,...metadata};
+    const commit=prepareCommit(profile);
+    // A persistence failure might have occurred after config was written.
+    // Never delete a candidate that could already be referenced by an agent.
+    commitAttempted=true;
+    commit();
+    return profile;
+  } catch(error) {
+    if(commitAttempted)throw error;
+    try { fs.rmSync(base,{recursive:true,force:true}); }
+    catch(cleanupError){
+      throw new Error('Media install failed and its uncommitted directory could not be removed',{cause:new AggregateError([error,cleanupError])});
+    }
+    throw error;
+  }
 }

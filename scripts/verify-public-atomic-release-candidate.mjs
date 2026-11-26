@@ -2,7 +2,7 @@
 // Only verifies an already signed bundle; never publishes or modifies a release.
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
-import { lstatSync, readdirSync, readFileSync } from 'node:fs';
+import { lstatSync, readdirSync, openSync, fstatSync, readSync, closeSync, constants } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { payloadNames, provenanceName } from './release-assets-allowlist.mjs';
@@ -19,9 +19,43 @@ function sha256(bytes) {
   return createHash('sha256').update(bytes).digest('hex');
 }
 
+function sameIdentity(a, b) {
+  return ['dev','ino','mode','uid','gid','nlink','size','mtimeNs','ctimeNs'].every(key => a[key] === b[key]);
+}
+
+// Open once, reject links and special files before reading any bytes, and
+// read no more than the verified size. A pathname pre-check cannot pin a file.
+function readStagedAsset(path, name) {
+  let fd;
+  try {
+    if (!constants.O_NOFOLLOW || !constants.O_NONBLOCK) throw new Error('safe open flags unavailable');
+    fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+    const before = fstatSync(fd, {bigint:true});
+    if (!before.isFile() || before.nlink !== 1n || (before.mode & 0o022n) ||
+        (typeof process.getuid === 'function' && before.uid !== BigInt(process.getuid())) ||
+        before.size <= 0n || before.size > BigInt(maxBytes[name])) throw new Error('unsafe file');
+    const bytes = Buffer.alloc(Number(before.size));
+    let offset = 0;
+    while (offset < bytes.length) {
+      const count = readSync(fd, bytes, offset, bytes.length-offset, null);
+      if (!count) throw new Error('truncated file');
+      offset += count;
+    }
+    if (readSync(fd, Buffer.alloc(1), 0, 1, null) !== 0 ||
+        !sameIdentity(before, fstatSync(fd,{bigint:true}))) throw new Error('file changed during read');
+    return {path,size:bytes.length,digest:sha256(bytes),identity:before,
+      ...(payloadNames.includes(name) ? {} : {bytes})};
+  } catch {
+    throw new Error('invalid staged release asset: ' + name);
+  } finally {
+    if (fd !== undefined) closeSync(fd);
+  }
+}
+
 function inventory(directory) {
   const stat = lstatSync(directory);
-  if (!stat.isDirectory() || (stat.mode & 0o022)) {
+  if (!stat.isDirectory() || (stat.mode & 0o022) ||
+      (typeof process.getuid === 'function' && stat.uid !== process.getuid())) {
     throw new Error('unsafe release staging directory');
   }
   const existing = readdirSync(directory).sort();
@@ -31,17 +65,13 @@ function inventory(directory) {
   const result = new Map();
   for (const name of names) {
     const path = join(directory, name);
-    const item = lstatSync(path);
-    if (!item.isFile() || item.size === 0 || item.size > maxBytes[name]) {
-      throw new Error('invalid staged release asset: ' + name);
-    }
-    result.set(name, { path, size:item.size, digest:sha256(readFileSync(path)) });
+    result.set(name, readStagedAsset(path, name));
   }
   return result;
 }
 
-function parseBundle(path, predicate) {
-  const text = readFileSync(path, 'utf8');
+function parseBundle(bytes, predicate) {
+  const text = bytes.toString('utf8');
   const record = JSON.parse(text);
   if (!record || typeof record !== 'object' || !predicate(record)) {
     throw new Error('staged signed release metadata has unexpected structure');
@@ -88,13 +118,13 @@ export function verifyAtomicCandidate({
   const root = resolve(directory);
   const paths = inventory(root);
   const expected = expectedChecksums(paths);
-  if (readFileSync(paths.get(sumName).path, 'utf8') !== expected) {
+  if (paths.get(sumName).bytes.toString('utf8') !== expected) {
     throw new Error('release payload checksums differ from the signed manifest');
   }
-  parseBundle(paths.get(sigName).path, value =>
+  parseBundle(paths.get(sigName).bytes, value =>
     !!value.verificationMaterial &&
     (!!value.messageSignature || !!value.dsseEnvelope));
-  parseBundle(paths.get(provenanceName).path, value =>
+  parseBundle(paths.get(provenanceName).bytes, value =>
     !!value.verificationMaterial && !!value.dsseEnvelope);
   if (typeof verifyCryptography !== 'function') {
     throw new Error('cryptographic verification is mandatory');
@@ -105,7 +135,8 @@ export function verifyAtomicCandidate({
   const current = inventory(root);
   for (const name of names) {
     if (current.get(name).digest !== paths.get(name).digest ||
-        current.get(name).size !== paths.get(name).size) {
+        current.get(name).size !== paths.get(name).size ||
+        !sameIdentity(current.get(name).identity, paths.get(name).identity)) {
       throw new Error('signed release candidate changed during verification');
     }
   }

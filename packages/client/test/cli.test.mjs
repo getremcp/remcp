@@ -138,6 +138,32 @@ test('a newer config schema is never downgraded and unknown fields survive local
 });
 
 
+test('future runtime schema remains inspectable without starting an incompatible agent', async () => {
+  const clientFile=path.join(configDir,'config.json');
+  const runtimeFile=path.join(configDir,'runtime.json');
+  const value={configSchemaVersion:99,deviceId:'fixture-device',deviceToken:'fixture-private-token',
+    runtime:{kind:'future-runtime',metadata:{keep:true}},futureField:{opaque:true},serviceInstalled:true};
+  writeFileSync(clientFile,JSON.stringify(value));
+  writeFileSync(runtimeFile,JSON.stringify({futureRuntimeField:7}));
+  try {
+    const status=JSON.parse(await captureLog(()=>main(['status'])));
+    assert.equal(status.diagnosis.verdict,'unsupported-config-schema');
+    assert.equal(status.configSchemaVersion,99);
+    assert.ok(!JSON.stringify(status).includes(value.deviceToken));
+    assert.deepEqual(JSON.parse(readFileSync(clientFile,'utf8')),value);
+    assert.match(await captureLog(()=>main(['auto-update','off'])),/Agent was not restarted/);
+    assert.match(await captureLog(()=>main(['telemetry','off'])),/Agent was not restarted/);
+    assert.deepEqual(JSON.parse(readFileSync(clientFile,'utf8')),{...value,autoUpdate:false,telemetryEnabled:false});
+    assert.deepEqual(JSON.parse(readFileSync(runtimeFile,'utf8')),{futureRuntimeField:7,telemetryEnabled:false});
+    await assert.rejects(()=>main(['start']),/supported local runtime/);
+    await assert.rejects(()=>main(['godmode','on']),/Unrestricted mode was not changed/);
+  } finally {
+    rmSync(clientFile,{force:true});
+    rmSync(runtimeFile,{force:true});
+  }
+});
+
+
 test('changing auto-update policy persists the preference before reloading the managed agent', () => {
   const actions = [];
   const hooks = {

@@ -2,7 +2,7 @@
   "name": "@remcp/runtime",
   "remcpWindowsInterop": 2,
   "remcpBuildProfile": "dllfree-source-release",
-  "version": "0.2.270",
+  "version": "0.2.271",
   "description": "First-party ReMCP local device runtime: filesystem, terminal, computer-use, browser, diagnostics and document tools over MCP.",
   "type": "module",
   "license": "MIT",
@@ -35,7 +35,7 @@
   },
   "devDependencies": {
     "@modelcontextprotocol/client": "^2.3.1",
-    "fast-check": "4.10.2"
+    "fast-check": "4.11.0"
   },
   "repository": {
     "type": "git",

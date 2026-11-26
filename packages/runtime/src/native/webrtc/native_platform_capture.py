@@ -163,29 +163,40 @@ class NativeDesktopCapture:
             input_name = "desktop"
             options = {"framerate": str(fps), "draw_mouse": "1" if self.cursor_embedded else "0"}
         self.player = media_player_cls(input_name, format=source, options=options)
-        raw_track = getattr(self.player, "video", None)
-        if raw_track is None:
-            raise RuntimeError("native_video_track_unavailable")
-        if getattr(self.player, "audio", None) is not None:
-            raw_track.stop()
-            self.player.audio.stop()
-            raise RuntimeError("native_audio_track_forbidden")
-        if real_media_player:
-            from aiortc.contrib.media import MediaRelay
-            self.relay = MediaRelay()
-            self.track = PermissionGuardedDesktopTrack(
-                self.relay.subscribe(raw_track, buffered=False), target,
-                permission_check=permission_check, profile=profile)
-        else:
-            self.track = raw_track
+        self.track = None
+        try:
+            raw_track = getattr(self.player, "video", None)
+            if raw_track is None:
+                raise RuntimeError("native_video_track_unavailable")
+            if getattr(self.player, "audio", None) is not None:
+                raise RuntimeError("native_audio_track_forbidden")
+            if real_media_player:
+                from aiortc.contrib.media import MediaRelay
+                self.relay = MediaRelay()
+                self.track = PermissionGuardedDesktopTrack(
+                    self.relay.subscribe(raw_track, buffered=False), target,
+                    permission_check=permission_check, profile=profile)
+            else:
+                self.track = raw_track
+        except BaseException:
+            self.close()
+            raise
 
     def close(self):
         track, self.track = self.track, None
-        if track is not None:
-            track.stop()
-        # A relay proxy stops its subscription, not the native MediaPlayer.
-        # Explicitly close the source so no capture survives Stop.
         player, self.player = self.player, None
         raw = getattr(player, "video", None)
-        if raw is not None and raw is not track:
-            raw.stop()
+        audio = getattr(player, "audio", None)
+        # aiortc 1.15.0 has no MediaPlayer.close(): stopping its source
+        # tracks invokes _stop(), which joins the worker and closes AV.
+        # A MediaRelay proxy is not the source; stop it even on setup errors.
+        try:
+            if track is not None:
+                track.stop()
+        finally:
+            try:
+                if raw is not None and raw is not track:
+                    raw.stop()
+            finally:
+                if audio is not None and audio is not raw and audio is not track:
+                    audio.stop()

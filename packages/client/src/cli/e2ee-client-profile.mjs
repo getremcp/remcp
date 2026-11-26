@@ -41,13 +41,18 @@ export async function manageEncryptedClient(action,flags={}){
     const {vault,record}=await loadEncryptedClient();
     if(action==='client-forget'){
       record.devices=record.devices.filter(item=>item.device!==device);
+      if(record.pendingDevices?.some(item=>item.device===device&&item.expiresAt>Date.now()))
+        throw new Error('Encrypted enrollment is still pending; wait for approval or expiry before forgetting');
+      if(record.pendingDevices)record.pendingDevices=record.pendingDevices.filter(item=>item.device!==device);
     }else{
+      if(record.pendingDevices?.some(item=>item.device===device))
+        throw new Error('Encrypted enrollment is pending; recover or deliberately forget it first');
       const fingerprint=String(flags.fingerprint||'').toLowerCase(),publicKey=String(flags['public-key']||'');
       if(!/^[0-9a-f]{64}$/.test(fingerprint)||await e2eeFingerprint(publicKey)!==fingerprint)
         throw new Error('Device public key must match the independently confirmed full fingerprint');
       const server=encryptedClientEndpoint(flags.server);
       const issuer=new URL(server).hostname==='mcp.remcp.site'?'https://remcp.site':new URL(server).origin;
-      if(record.devices.length>=32&&!record.devices.some(item=>item.device===device))
+      if(record.devices.length+(record.pendingDevices?.length||0)>=32&&!record.devices.some(item=>item.device===device))
         throw new Error('Maximum 32 trusted devices');
       record.devices=[...record.devices.filter(item=>item.device!==device),
         {device,publicKey,fingerprint,server,issuer}];

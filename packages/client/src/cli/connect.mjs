@@ -42,6 +42,18 @@ export function assertSecureServerUrl(value, { allowInsecure = false } = {}) {
   return url.href.replace(/\/$/, '');
 }
 
+// RFC 8628 requires increasing all subsequent polls by five seconds on slow_down.
+export function devicePollIntervalMs(seconds) {
+  const n = Number(seconds);
+  return Math.min(600_000, Math.max(1_000, Number.isFinite(n) && n > 0 ? n * 1000 : 5_000));
+}
+export function nextDevicePollIntervalMs(current, error, status, retryAfter) {
+  if (error !== 'slow_down' && status !== 429) return current;
+  const hint = typeof retryAfter === 'string' && /^[0-9]{1,6}$/.test(retryAfter)
+    ? Number(retryAfter) * 1000 : 0;
+  return Math.min(600_000, Math.max(current + 5_000, hint));
+}
+
 const TRANSIENT_FETCH_RETRY_DELAY_MS = 150;
 
 async function fetchWithTransientRetry(url, options) {
@@ -84,9 +96,10 @@ export async function pairWithDeviceCode(server, flags) {
   console.log('Waiting for approval… (Ctrl+C to cancel)');
   const deadline = Date.now() + (Number(grant.expires_in) || 600) * 1000;
   let lastReminder = Date.now();
-  const intervalMs = Math.max(1, Number(grant.interval) || 5) * 1000;
+  let intervalMs = devicePollIntervalMs(grant.interval);
   while (Date.now() < deadline) {
-    await sleep(intervalMs);
+    await sleep(Math.min(intervalMs, Math.max(0, deadline - Date.now())));
+    if (Date.now() >= deadline) break;
     const response = await fetchWithTransientRetry(`${server}/oauth/token`, {
       method: 'POST',
       redirect: 'error',
@@ -99,7 +112,8 @@ export async function pairWithDeviceCode(server, flags) {
     });
     const data = await response.json().catch(() => ({}));
     if (response.ok && data.device_token) return data;
-    if (data.error === 'authorization_pending' || data.error === 'slow_down') {
+    if (data.error === 'authorization_pending' || data.error === 'slow_down' || response.status === 429) {
+      intervalMs = nextDevicePollIntervalMs(intervalMs, data.error, response.status, response.headers.get('retry-after'));
       if (Date.now() - lastReminder > 60_000) {
         lastReminder = Date.now();
         const left = Math.max(0, Math.round((deadline - Date.now()) / 60_000));

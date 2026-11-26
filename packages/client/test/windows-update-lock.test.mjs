@@ -251,3 +251,29 @@ test('fresh CLI fallback inspects global payload rather than its intentional run
   assert.equal(quarantined.npmMutations, 0);
   assert.equal(quarantined.taskChanges, 0);
 });
+
+
+test('stale lock recovery is serialized and cannot archive a replacement owner', async t => {
+  const prefix=fixture(t);
+  const {recoverWindowsUpdateLock,withWindowsUpdateLock}=await import(moduleUrl.href);
+  const dead=spawnSync(process.execPath,['-e','process.exit(0)']);
+  assert.equal(dead.status,0);
+  const lock=path.join(prefix,'.remcp-update-lock');
+  const repairLock=path.join(prefix,'.remcp-update-repair-lock');
+  fs.mkdirSync(lock);
+  fs.writeFileSync(path.join(lock,'owner.json'),JSON.stringify({pid:dead.pid,token:'interrupted-owner',startedAt:1}));
+  fs.mkdirSync(repairLock);
+  fs.writeFileSync(path.join(repairLock,'owner.json'),JSON.stringify({pid:process.pid,token:'active-repair',startedAt:2}));
+  assert.throws(()=>recoverWindowsUpdateLock(prefix,'macOS'),/update already in progress/);
+  assert.equal(fs.existsSync(lock),true);
+  fs.rmSync(repairLock,{recursive:true});
+  const archived=recoverWindowsUpdateLock(prefix,'macOS');
+  assert.equal(fs.existsSync(archived),true);
+  assert.equal(fs.existsSync(lock),false);
+  assert.equal(fs.existsSync(repairLock),false);
+  withWindowsUpdateLock(prefix,()=>{
+    assert.throws(()=>recoverWindowsUpdateLock(prefix,'macOS'),/owner is still active/);
+    assert.equal(fs.existsSync(lock),true);
+  },'macOS');
+  assert.equal(recoverWindowsUpdateLock(prefix,'macOS'),null);
+});

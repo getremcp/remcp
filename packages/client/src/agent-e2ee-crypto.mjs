@@ -19,7 +19,8 @@ export function encodeE2eeBytes(value) {
   return btoa(text).replaceAll('+','-').replaceAll('/','_').replace(/=+$/,'');
 }
 export function decodeE2eeBytes(text, maximum=E2EE_PACKET_LIMIT) {
-  if (typeof text !== 'string' || text.length > maximum * 1.4 ||
+  if (!Number.isSafeInteger(maximum) || maximum < 1 || maximum > E2EE_PACKET_LIMIT ||
+      typeof text !== 'string' || text.length > Math.ceil(maximum * 4 / 3) ||
       !/^[A-Za-z0-9_-]+$/.test(text)) fail();
   let out;
   try { out=Uint8Array.from(atob(text.replaceAll('-','+').replaceAll('_','/')),c=>c.charCodeAt(0)); }

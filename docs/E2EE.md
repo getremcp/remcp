@@ -73,6 +73,11 @@ To verify a particular browser session, independently pin both fingerprints, gra
 
 Losing the OS-vault key requires explicit rotation and re-enrollment; do not copy private identities between accounts or re-pairings.
 
+### Owner-local E2EE pressure diagnostics
+
+On a running Linux or macOS agent with the private owner-local approval socket available, run `remcp e2ee pressure`. The JSON snapshot contains only numeric counters: pending uploads, cached results, executed-call entries, retained buffered bytes, the buffer limit, and a cumulative count of rejected packet-handler calls for the current agent process. Expired entries are swept before sampling. Buffered bytes describe retained upload, active request and result accounting, not total process heap or RSS. The rejection counter excludes ordinary encrypted tool-error results; it resets when the agent process restarts. No keys, peer/session IDs, payloads, or per-call timing are returned. For local monitoring, use remcp e2ee pressure --prometheus to emit the same fixed, label-free gauges and counter in Prometheus text format. Nothing is uploaded to the hosted relay or exposed via a network metrics endpoint. Windows retains the existing fail-closed local approval transport policy: this CLI diagnostic is unavailable there until a verified owner-only IPC transport is implemented. Unavailable or stopped local sockets fail rather than reporting a misleading zero.
+
+
 ## Cryptographic limitations and assurance claims
 
 - **No recipient-compromise forward secrecy:** RFC 9180 Section 9.7.4 explicitly states that HPKE does not protect historical ciphertexts if the recipient's long-term private key is later compromised. The per-message ephemeral sender encapsulation, random packet nonce and replay checks do not change this. A future, separately reviewed session-ratchet/ephemeral recipient-key design would be necessary for that threat model.

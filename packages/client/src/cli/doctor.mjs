@@ -11,6 +11,7 @@ import { PACKAGE_NAME, VERSION } from '../version.mjs';
 
 import { npm, runtimeConfigFile } from './env.mjs';
 import { servicePlatform } from './npm-global.mjs';
+import {activeMacReleasePrefix} from './mac-release-anchor.mjs';
 
 // when it really owns this process: a terminal gets an explicit instruction instead of a silent exit
 // that would take the device offline.
@@ -128,6 +129,7 @@ export function globalPackageVersionAtPrefix(packageName, prefix, platform = ser
     || (parts.length === 2 && /^@[a-z0-9][a-z0-9._-]*$/i.test(parts[0])
       && /^[a-z0-9][a-z0-9._-]*$/i.test(parts[1]));
   if (!valid || !path.isAbsolute(String(prefix || ''))) return null;
+  if(platform==='darwin')prefix=activeMacReleasePrefix(prefix);
   const modules = platform === 'win32' ? ['node_modules'] : ['lib', 'node_modules'];
   const manifest = path.join(prefix, ...modules, ...parts, 'package.json');
   try {

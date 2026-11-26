@@ -3,7 +3,7 @@
   "protocol": "remcp-media-stdio-v1",
   "files": {
     "gst_frames.py": "359afcd66522b5c38b543abc291726537c47a7ed4c924b2a5d7cd83f6dc1a018",
-    "native_platform_capture.py": "c3b9d1e93ef09cf063263cab2fb447818cb8c2ec117773633686a393f86a8f11",
+    "native_platform_capture.py": "da87fc779513d67f4ff6c844efd2a834b970a17ff3bff4a4b6b76f82a87d06d2",
     "portal_capture.py": "aa0efe3faf87ef753957f8b308f928f15d8399e45a67c2eda6c9c7c921b45e35",
     "portal_token_store.py": "fab0f37458205acbcf201f8ba7b9d61b89806019064d40f82552d996a939b054",
     "video_profiles.py": "ffd6cc0502ac1dbd89bb98f6cbc0b087b87e76af7fbafc68f137af7dbd530337",

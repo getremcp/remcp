@@ -3,12 +3,14 @@ import path from 'node:path';
 import process from 'node:process';
 import { spawnSync } from 'node:child_process';
 import { PACKAGE_NAME, VERSION } from '../version.mjs';
+import {isRuntimeSpecFor} from '../runtime.mjs';
 import { saveConfig } from './config.mjs';
 import { linuxServiceLauncherFile, macServiceFile, macServiceLabel, windowsStartupScriptFile, windowsTaskName } from './env.mjs';
 import { linuxSystemAgentOwned, linuxUserAgentOwned } from './service-linux.mjs';
 import { servicePlatform, globalCliPath, npmGlobalUpdateAtPrefix, npmGlobalUpdateForNode } from './npm-global.mjs';
 import { windowsStartupScriptInstalled } from './windows-supervisor.mjs';
 import { windowsSupervisorRequest } from './windows-user-supervisor.mjs';
+import {stableMacCliPath,macOuterPrefix} from './mac-release-anchor.mjs';
 import { installationPayloadAtCliPath } from './installation-payload.mjs';
 
 export function persistentServiceExpected(config) {
@@ -109,9 +111,9 @@ export function canonicalServiceCliPath(config) {
       return shim;
     }
   }
-  if (configured && fs.existsSync(configured)) return configured;
+  if (configured && fs.existsSync(configured)) return servicePlatform()==='darwin'?stableMacCliPath(configured):configured;
   const inferred = inferServiceIdentity().cliPath;
-  if (inferred && fs.existsSync(inferred)) return inferred;
+  if (inferred && fs.existsSync(inferred)) return servicePlatform()==='darwin'?stableMacCliPath(inferred):inferred;
   return globalCliPath();
 }
 
@@ -142,6 +144,7 @@ function packageVersionBesideCli(cliPath, packageName) {
 }
 
 function packageVersionForCli(cliPath, packageName) {
+  if(servicePlatform()==='darwin'&&cliPath){try{cliPath=fs.realpathSync(cliPath);}catch{}}
   const beside = packageVersionBesideCli(cliPath, packageName);
   if (beside || servicePlatform() !== 'win32' || !cliPath || !packageName) return beside;
   // npm's Windows global executable is a .cmd shim in the prefix root, not a symlink into
@@ -155,7 +158,7 @@ function packageVersionForCli(cliPath, packageName) {
 function exactPackageSpecVersion(packageName, packageSpec) {
   const prefix = `${String(packageName || '')}@`;
   const spec = String(packageSpec || '');
-  return prefix !== '@' && spec.startsWith(prefix) ? spec.slice(prefix.length) : '';
+  return prefix !== '@' && isRuntimeSpecFor(packageName,spec) ? spec.slice(prefix.length) : '';
 }
 
 // A PowerShell bootstrap already installs the exact client/runtime pair before it starts pairing.
@@ -197,7 +200,7 @@ export function serviceNpmPrefixFromCliPath(cliPath, platform = servicePlatform(
   if (!prefix || !paths.isAbsolute(prefix) || paths.parse(prefix).root === prefix) {
     throw new Error('ReMCP update refused: cannot identify the canonical service npm prefix.');
   }
-  return paths.normalize(prefix);
+  return platform==='darwin'?macOuterPrefix(prefix):paths.normalize(prefix);
 }
 
 export function serviceInstallationInfo(config) {
@@ -209,7 +212,7 @@ export function serviceInstallationInfo(config) {
   return {
     cliVersion:packageVersionForCli(resolvedCliPath, PACKAGE_NAME),
     runtimeVersion:packageVersionForCli(resolvedCliPath, config?.runtime?.packageName),
-    cliPath:resolvedCliPath || cliPath,
+    cliPath:servicePlatform()==='darwin'?stableMacCliPath(resolvedCliPath||cliPath):resolvedCliPath || cliPath,
     nodePath,
     ...(servicePlatform() === 'win32' ? installationPayloadAtCliPath(resolvedCliPath || cliPath, config?.runtime) : {}),
   };
@@ -221,7 +224,7 @@ export function currentInstallationInfo(config) {
   return {
     cliVersion:VERSION,
     runtimeVersion:config?.runtime?.packageName ? packageVersionForCli(cliPath, config.runtime.packageName) : null,
-    cliPath:cliPath || null,
+    cliPath:cliPath?(servicePlatform()==='darwin'?stableMacCliPath(cliPath):cliPath):null,
     nodePath:process.execPath,
     ...(servicePlatform() === 'win32' ? installationPayloadAtCliPath(cliPath, config?.runtime) : {}),
   };

@@ -257,8 +257,17 @@ test('standalone screenshot checks the Windows session before allocating capture
 
 test('screen recording checks Windows session before staging temporary files or invoking ffmpeg', async () => {
   const source=await readFile(new URL('../src/extended/diagnostics-recording.mjs',import.meta.url),'utf8');
-  assert.match(source,/export async function recordScreen\(args\)\s*\{[\s\S]{0,180}await assertWindowsInteractiveDesktop\(\)/);
-  assert.equal(typeof recordScreen,'function');
+  const entry=source.indexOf('export async function recordScreen(args, {signal}={}) {');
+  assert.ok(entry>=0,'recording must accept the cancellation signal');
+  const body=source.slice(entry);
+  const guard=body.indexOf('await assertWindowsInteractiveDesktop()');
+  const staging=body.indexOf('await mkdtemp(');
+  assert.ok(guard>0 && guard<180 && staging>guard,'Windows guard must precede staging');
+  assert.ok(body.indexOf('signal?.throwIfAborted()')>0 && body.indexOf('signal?.throwIfAborted()')<guard);
+  const controller=new AbortController();
+  const reason=new Error('cancelled before any recording side effects');
+  controller.abort(reason);
+  await assert.rejects(recordScreen({}, {signal:controller.signal}),error=>error===reason);
 });
 
 test('computer_action preserves explicit CDP browser actions and non-UI waits', () => {

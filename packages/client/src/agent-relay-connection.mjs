@@ -9,6 +9,17 @@ import { nextDeployReconnect } from './agent-deploy-reconnect.mjs';
 const RECONNECT_BASE_MS = 2_000;
 const RECONNECT_FIRST_MS = 500;
 const RECONNECT_MAX_MS = 60_000;
+// A temporary owner pause must recover automatically without constant dials.
+export function pausedReconnectDelay(attempt, randomize = jitter) {
+  const n = Math.max(1, Math.min(6, Number.isFinite(attempt) ? Math.floor(attempt) : 1));
+  return Math.min(RECONNECT_MAX_MS, randomize(RECONNECT_BASE_MS * 2 ** (n - 1)));
+}
+// The relay uses delta-seconds on 429/503; retain the local reconnect bound.
+export function relayRetryAfterDelay(status, header) {
+  if ((status !== 429 && status !== 503) || typeof header !== 'string' ||
+    !/^[0-9]{1,6}$/.test(header)) return 0;
+  return Math.min(RECONNECT_MAX_MS, Number(header) * 1000);
+}
 const HEARTBEAT_INTERVAL_MS = 15_000;
 // Retry one unanswered ping before declaring the socket stale. A single lost
 // pong must not create a new device session during transient NIC packet loss.
@@ -35,7 +46,7 @@ export function createAgentRelayConnection({
   setSocket, getHelloState, respond, inFlight,
   sendMetricsSample, reportInstallOnce, flushTelemetry,
   checkForUpdate, schedulePostConnectUpdateChecks, clearPostConnectUpdateChecks, stop,
-  checkUpdatesOnConnect = false, requireE2ee = false,
+  onRevoked, checkUpdatesOnConnect = false, requireE2ee = false,
   readCurrentE2eeRequirement = null, secureTransportReady = false,
   heartbeatIntervalMs = HEARTBEAT_INTERVAL_MS, handshakeTimeoutMs = HANDSHAKE_TIMEOUT_MS,
 }) {
@@ -46,6 +57,7 @@ export function createAgentRelayConnection({
   };
   assertCurrentPolicy();
   let revoked = false;
+  let pausedAttempts = 0;
   let reconnectTimer = null;
   let askedToReconnect = false;
   let requestedReconnectDelayMs = 0;
@@ -102,7 +114,17 @@ export function createAgentRelayConnection({
     // clearReconnect() releases the timer on intentional shutdown.
   }
 
-  function scheduleBackoffReconnect() {
+  function stopForRevocation() {
+    if (revoked) return;
+    revoked = true;
+    markStopping?.();
+    void Promise.resolve().then(() => stop?.()).then(() => onRevoked?.()).catch(() => {
+      console.error('ReMCP revoked agent cleanup failed.');
+    });
+    console.error('ReMCP access for this device was revoked. Generate a new pairing command in your workspace and add --re-pair.');
+  }
+
+  function scheduleBackoffReconnect(minimumDelayMs = 0) {
     if (isStopping() || revoked || reconnectTimer) return;
     setReconnects(getReconnects() + 1);
     // The first retry after an unexpected drop is quick on purpose: a deploy blip, a proxy restart or
@@ -110,7 +132,7 @@ export function createAgentRelayConnection({
     const delay = getReconnects() === 1
       ? jitter(RECONNECT_FIRST_MS)
       : jitter(Math.min(RECONNECT_MAX_MS, RECONNECT_BASE_MS * 2 ** Math.min(getReconnects(), 5)));
-    scheduleReconnect(delay);
+    scheduleReconnect(Math.max(delay, minimumDelayMs));
   }
 
   function connect() {
@@ -148,20 +170,17 @@ export function createAgentRelayConnection({
       activeSocket = null;
       setSocket(null);
       const handshakeRevoked = String(response.headers['x-remcp-revoked'] || '') === '1';
-      const handshakeDisabled = String(response.headers['x-remcp-disabled'] || '') === '1';
-      if (handshakeRevoked) {
-        revoked = true;
-        markStopping?.();
-        void Promise.resolve().then(()=>stop?.()).catch(()=>{});
-      }
+      const handshakeDisabled = response.statusCode === 423 || String(response.headers['x-remcp-disabled'] || '') === '1';
+      if (handshakeRevoked) stopForRevocation();
       console.error(`ReMCP relay refused the connection (HTTP ${response.statusCode})${handshakeRevoked ? ': this device was revoked' : handshakeDisabled ? ': this device is temporarily disabled' : ''}.`);
       response.resume();
       request.destroy();
       if (handshakeDisabled && !revoked) {
         setReconnects(getReconnects() + 1);
-        // Service access is a user-controlled pause, not an outage. Poll slowly enough not to hammer
-        // the relay, but cap recovery so an enable action becomes effective within seconds.
-        scheduleReconnect(jitter(RECONNECT_BASE_MS));
+        // Preserve a fast first recovery; prolonged pauses exponentially reduce load.
+        // Reset only on a successful handshake, including across transient proxy failures.
+        pausedAttempts = Math.min(6, pausedAttempts + 1);
+        scheduleReconnect(pausedReconnectDelay(pausedAttempts));
         return;
       }
       if (!revoked) {
@@ -169,7 +188,7 @@ export function createAgentRelayConnection({
         // ws does not reliably emit close with an unexpected-response listener, so retry
         // all non-revocation failures with bounded backoff rather than staying offline forever.
         // The explicit revocation signal above remains final and cannot be bypassed.
-        scheduleBackoffReconnect();
+        scheduleBackoffReconnect(relayRetryAfterDelay(response.statusCode, response.headers['retry-after']));
       }
     });
     setSocket(ws);
@@ -179,6 +198,7 @@ export function createAgentRelayConnection({
         ws.terminate();
         return;
       }
+      pausedAttempts = 0;
       connectedAt = Date.now();
       if (reconnectTimer) {
         clearTimeout(reconnectTimer);
@@ -256,10 +276,7 @@ export function createAgentRelayConnection({
       if (isStopping()) return;
       // A replacement owner or revoked device takes precedence over a reconnect hint.
       if (code === 1008 || revoked) {
-        revoked = true;
-        markStopping?.();
-        void Promise.resolve().then(()=>stop?.()).catch(()=>{});
-        console.error('ReMCP access for this device was revoked. Pair the machine again from the ReMCP workspace: remcp connect --server <url> --code <code> --install');
+        stopForRevocation();
         return;
       }
       if (code === 1012) {

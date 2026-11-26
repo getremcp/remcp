@@ -40,18 +40,35 @@ function normalizedShim(text) {
   return text.replace(/^\uFEFF/, '').replace(/\r\n/g, '\n').replace(/\n+$/, '');
 }
 
+function sameFileIdentity(a,b) {
+  return a.isFile() && b.isFile() && !b.isSymbolicLink() &&
+    a.nlink===1n && b.nlink===1n && a.dev===b.dev && a.ino===b.ino &&
+    a.size===b.size && a.mtimeNs===b.mtimeNs && a.ctimeNs===b.ctimeNs;
+}
+function readPinnedShim(file) {
+  const flags=fs.constants.O_RDONLY | (process.platform==='win32'?0:
+    (fs.constants.O_NOFOLLOW||0)|(fs.constants.O_NONBLOCK||0));
+  const named=fs.lstatSync(file,{bigint:true});
+  if(!named.isFile()||named.isSymbolicLink()||named.nlink!==1n||named.size>16000n)
+    throw new Error('Refusing unknown or unsafe ReMCP launcher');
+  const fd=fs.openSync(file,flags);
+  try {
+    const pinned=fs.fstatSync(fd,{bigint:true});
+    if(!sameFileIdentity(pinned,named))throw new Error('ReMCP launcher changed before read');
+    const buffer=Buffer.alloc(16001);let used=0;
+    while(used<buffer.length){const n=fs.readSync(fd,buffer,used,buffer.length-used,used);if(!n)break;used+=n;}
+    if(BigInt(used)!==pinned.size||!sameFileIdentity(pinned,fs.fstatSync(fd,{bigint:true}))||
+      !sameFileIdentity(pinned,fs.lstatSync(file,{bigint:true})))throw new Error('ReMCP launcher changed during read');
+    return buffer.toString('utf8',0,used);
+  }finally{fs.closeSync(fd);}
+}
 export function assertWindowsNpmPowerShellShimOwned(prefix) {
   const powershell = path.join(prefix, 'remcp.ps1');
-  let metadata;
-  try { metadata = fs.lstatSync(powershell); }
+  try { fs.lstatSync(powershell); }
   catch (error) { if (error?.code === 'ENOENT') return false; throw error; }
-  if (!metadata.isFile() || metadata.isSymbolicLink()) {
-    throw new Error('Refusing to replace an unknown ReMCP PowerShell launcher');
-  }
-  const contents = fs.readFileSync(powershell, 'utf8');
-  if (contents.length > 16000 || normalizedShim(contents) !== normalizedShim(WINDOWS_NPM_POWERSHELL_SHIM)) {
+  const contents=readPinnedShim(powershell);
+  if(normalizedShim(contents)!==normalizedShim(WINDOWS_NPM_POWERSHELL_SHIM))
     throw new Error('Refusing to remove a non-npm ReMCP PowerShell launcher');
-  }
   return true;
 }
 
@@ -68,7 +85,16 @@ export function preferWindowsCmdShim(prefix) {
   if (!batchStat.isFile() || batchStat.isSymbolicLink()) {
     throw new Error('Cannot remove the PowerShell launcher without a trusted ReMCP .cmd launcher');
   }
-  fs.unlinkSync(powershell);
+  if(!assertWindowsNpmPowerShellShimOwned(prefix))throw new Error('PowerShell launcher changed before removal');
+  const stage=fs.mkdtempSync(path.join(prefix,'.remcp-shim-release-'));
+  const isolated=path.join(stage,'remcp.ps1');
+  try { fs.renameSync(powershell,isolated); }
+  catch(error){try{fs.rmdirSync(stage);}catch{}throw error;}
+  // Preserve unexpected content, rather than unlinking a mutable shared path.
+  if(normalizedShim(readPinnedShim(isolated))!==normalizedShim(WINDOWS_NPM_POWERSHELL_SHIM))
+    throw new Error('PowerShell launcher changed before removal; isolated evidence retained at '+stage);
+  fs.unlinkSync(isolated);
+  fs.rmdirSync(stage);
   return true;
 }
 
@@ -99,10 +125,27 @@ endLocal & goto #_undefined_# 2>NUL || title %COMSPEC% & "%_prog%"  "%dp0%\node_
 function sameCanonicalFile(actual, expected) {
   if (!actual || !expected) return false;
   const same = (a, b) => path.resolve(a).toLowerCase() === path.resolve(b).toLowerCase();
+  if (!same(actual, expected)) return false;
+  let fd;
   try {
-    return same(actual, expected) && same(fs.realpathSync(actual), expected)
-      && same(fs.realpathSync(expected), expected);
+    // Pin a real executable/source file before inspecting mutable path names.
+    // A Windows reparse point must also be rejected by the post-open lstat.
+    const unixFlags=process.platform==='win32'?0:
+      (fs.constants.O_NOFOLLOW||0)|(fs.constants.O_NONBLOCK||0);
+    fd=fs.openSync(expected,fs.constants.O_RDONLY|unixFlags);
+    const pinned=fs.fstatSync(fd,{bigint:true});
+    const sameIdentity=stat=>stat.isFile()&&!stat.isSymbolicLink()&&
+      stat.dev===pinned.dev&&stat.ino===pinned.ino&&
+      stat.size===pinned.size&&stat.mtimeNs===pinned.mtimeNs&&
+      stat.ctimeNs===pinned.ctimeNs;
+    if(!sameIdentity(pinned)||!sameIdentity(fs.lstatSync(expected,{bigint:true})))
+      return false;
+    // Canonicalize parents too, preventing startup repair through symlinks.
+    if(!same(fs.realpathSync(expected),expected))return false;
+    return sameIdentity(fs.lstatSync(expected,{bigint:true}))&&
+      sameIdentity(fs.fstatSync(fd,{bigint:true}));
   } catch { return false; }
+  finally { if(fd!==undefined)fs.closeSync(fd); }
 }
 
 export function repairManagedWindowsPowerShellShimOnStart({
@@ -127,7 +170,7 @@ export function repairManagedWindowsPowerShellShimOnStart({
   if (!cmdStat.isFile() || cmdStat.isSymbolicLink()) {
     throw new Error('Refusing Windows launcher self-repair without a trusted batch shim');
   }
-  const cmdBody = fs.readFileSync(cmdPath, 'utf8');
+  const cmdBody = readPinnedShim(cmdPath);
   if (normalizedShim(cmdBody) !== normalizedShim(WINDOWS_NPM_CMD_SHIM)) {
     throw new Error('Refusing Windows launcher self-repair for an unrecognized batch shim');
   }

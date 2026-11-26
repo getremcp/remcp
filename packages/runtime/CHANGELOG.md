@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.2.271 — 2026-11-26
+
+**Strengthen remote session lifecycle, native recording cleanup and encrypted authorization.**
+
+- Keep abandoned WebRTC view, control and preview starts fenced until their native Stop is confirmed; clear stale previews and serialize clipboard write-and-paste.
+- Bound Redis quota operations, pending leases and drain accounting; count active leases without counting persistent fencing metadata.
+- Reserve encrypted response capacity before side effects, retain lifecycle headroom, and distinguish authorization changes from cosmetic peer labels; expose owner-local aggregate pressure only.
+- Finalize GNOME recordings on the originating D-Bus sender, allow bounded recording finalization time, preserve X11 authorization, and stop native media source tracks on setup or proxy failures.
+- Remove failed uncommitted media install candidates and reuse verified environments with unchanged locked dependencies; retain potentially active older environments.
+- Cancel recording helpers on MCP abort, wait for exit before staging cleanup, and reject recordings that exceed the current remote call budget before capture. Preserve local recording support up to 120 seconds.
+- Isolate POSIX recording process groups, bound inherited-output cleanup, and forward scheduled wf-recorder finalization signals without nesting process-group ownership.
+- Reject media installation if pairing, runtime or media configuration changes before commit; remove only a definitely uncommitted new environment.
+- Stage complete macOS client/runtime releases before atomically switching the stable CLI entry; preserve prior releases and owner configuration.
+- Preserve pairing and future-schema preferences with atomic file replacement; serialize runtime starts and fence relay access invalidation.
+- Verify effective Linux service identity, escape literal systemd paths, and purge only recognized installer-created CLI launchers and PATH blocks.
+- Persist encrypted enrollment recovery before approval and fence first OAuth code consumption against disconnect.
+- Reserve a durable Stripe Checkout attempt per account before contacting Stripe; reconcile uncertain or completed sessions instead of creating duplicate subscriptions.
+- Fence credential invalidation to the observed relay lease and verified credential generation; preserve a replacement agent.
+- On explicit macOS purge, require verified LaunchAgent removal and stable launcher removal; preserve retained releases for separate offline maintenance because manually started processes may still use them.
+- Align the runtime Node.js compatibility floor at 22.13.0.
+- Reserve independent bounded Stop capacity under encrypted upload and lifecycle pressure.
+
 ## 0.2.270 — 2026-11-25
 
 **Protect release inputs, Linux service ownership and workspace recovery.**

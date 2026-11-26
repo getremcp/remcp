@@ -51,6 +51,22 @@ export async function describeLocalE2ee(config){
       reason:'OS vault locked or local pairing no longer matches its encryption identity'};
   }
 }
+// Fixed, label-free owner-local exposition; no arbitrary strings from the socket.
+export function formatE2eePressurePrometheus(sample) {
+  const metrics=[
+    ['uploadsPending','remcp_e2ee_uploads_pending','gauge','Incomplete encrypted uploads.'],
+    ['resultsCached','remcp_e2ee_results_cached','gauge','Cached encrypted results.'],
+    ['executedEntries','remcp_e2ee_executed_entries','gauge','Retained executed call entries.'],
+    ['bufferedBytes','remcp_e2ee_buffered_bytes','gauge','Accounted retained buffer bytes and in-flight reservations.'],
+    ['bufferLimitBytes','remcp_e2ee_buffer_limit_bytes','gauge','Retained buffer byte limit.'],
+    ['rejectedTotal','remcp_e2ee_rejected_total','counter','Rejected packet handler calls since agent start.'],
+  ];
+  if(!sample||metrics.some(([key])=>!Number.isSafeInteger(sample[key])||sample[key]<0))
+    throw new Error('Invalid local E2EE pressure sample');
+  return metrics.map(([key,name,type,help])=>
+    ['# HELP '+name+' '+help,'# TYPE '+name+' '+type,name+' '+sample[key]].join('\n')
+  ).join('\n')+'\n';
+}
 export async function manageE2eePolicy(action = 'status', flags = {}) {
   const config = loadConfig(false) || {};
   const mode = String(action || 'status').toLowerCase();
@@ -58,6 +74,12 @@ export async function manageE2eePolicy(action = 'status', flags = {}) {
     const result=await approveE2eeFromTerminal({code:flags.code});
     console.log(JSON.stringify(result,null,2));
     console.log('Now return to the browser and verify the encrypted system-information call.');
+    return;
+  }
+  if (mode === 'pressure') {
+    const result=await requestLocalE2eeApproval('pressure');
+    if(flags.prometheus===true)process.stdout.write(formatE2eePressurePrometheus(result.pressure));
+    else console.log(JSON.stringify(result.pressure,null,2));
     return;
   }
   if (mode === 'requests') {
@@ -94,7 +116,7 @@ export async function manageE2eePolicy(action = 'status', flags = {}) {
     return;
   }
   if (!['require', 'on', 'off'].includes(mode))
-    throw new Error('Usage: remcp e2ee [init|rotate|status|require|off|trust|peers|revoke|requests|approve]');
+    throw new Error('Usage: remcp e2ee [init|rotate|status|pressure|require|off|trust|peers|revoke|requests|approve]');
   const required = mode !== 'off';
   const restarted = setE2eeRequirement(config, required);
   if (required) {

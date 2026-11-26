@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { resolveNpm } from './npm.mjs';
 import { isRuntimeSpecFor, normalizeRuntime } from './runtime.mjs';
 import { PACKAGE_NAME, VERSION } from './version.mjs';
+import { stableMacCliPath } from './cli/mac-release-anchor.mjs';
 
 const npm = resolveNpm();
 const PACKAGE_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -140,7 +141,9 @@ export function updateDecision({ advertised, cliVersion, runtimeVersion, runtime
 export async function restartToApplyUpdate(cli, stopAgent, markStopping, onRuntimeRepaired, isStopping) {
   try {
     const installed = globalInstalledVersion();
-    if (installed && !isNewer(installed, VERSION)) {
+    const macReleaseSwitched = process.platform === 'darwin' && existsSync(cli) &&
+      realpathSync(cli) !== PACKAGE_CLI_ENTRY;
+    if (installed && !isNewer(installed, VERSION) && !macReleaseSwitched) {
       // The client is current, so the update was a runtime repair: restart the runtime rather than
       // the whole agent, or a device with no usable runtime would stay broken.
       console.log(`ReMCP ${VERSION} is already the installed version; restarting the local runtime.`);
@@ -151,7 +154,7 @@ export async function restartToApplyUpdate(cli, stopAgent, markStopping, onRunti
     // retry. The new CLI has to answer `--version` before this process steps aside.
     const probe = spawnSync(process.execPath, [cli, '--version'], { encoding: 'utf8', timeout: 30000, windowsHide: true });
     const reported = String(probe.stdout || '').trim();
-    if (probe.error || probe.status !== 0 || !/^\d+\.\d+\.\d+/.test(reported)) {
+    if (probe.error || probe.status !== 0 || !/^\d+\.\d+\.\d+/.test(reported) || (installed && reported !== installed)) {
       console.error(`The installed ReMCP ${installed || 'update'} did not run (${probe.error?.message || `exit ${probe.status}`}${reported ? `: ${reported}` : ''}). Keeping ${VERSION} running; retry with: remcp update`);
       return;
     }
@@ -180,7 +183,10 @@ export async function restartToApplyUpdate(cli, stopAgent, markStopping, onRunti
 export function globalInstalledVersion() {
   try {
     try {
-      const local = JSON.parse(readFileSync(PACKAGE_MANIFEST, 'utf8')).version;
+      const active = process.platform === 'darwin' && existsSync(PACKAGE_CLI_ENTRY)
+        ? path.join(path.dirname(realpathSync(stableMacCliPath(PACKAGE_CLI_ENTRY))), '..', 'package.json')
+        : PACKAGE_MANIFEST;
+      const local = JSON.parse(readFileSync(active, 'utf8')).version;
       if (local) return local;
     } catch {}
     const cli = globalCliEntry({ packageLocal:false });
@@ -227,7 +233,8 @@ export function globalCliEntry({ packageLocal = true } = {}) {
   // The running agent already knows exactly which @remcp/remcp package owns it. Prefer the sibling
   // CLI entry and avoid asking npm which global prefix happens to be active in a minimal service
   // environment (FNM/NVM/Hermes/Homebrew can all disagree with the shell).
-  if (packageLocal && existsSync(PACKAGE_CLI_ENTRY)) return PACKAGE_CLI_ENTRY;
+  if (packageLocal && existsSync(PACKAGE_CLI_ENTRY)) return process.platform === 'darwin'
+    ? stableMacCliPath(PACKAGE_CLI_ENTRY) : PACKAGE_CLI_ENTRY;
   const prefix = spawnSync(npm.command, [...npm.args, 'prefix', '--global'], { encoding:'utf8', windowsHide:true });
   if (prefix.error || prefix.status !== 0) return null;
   const base = String(prefix.stdout || '').trim();

@@ -67,6 +67,41 @@ test('missing CMD shim refuses repair and keeps the original PS1', t => {
   assert.equal(fs.existsSync(x.powershell), true);
 });
 
+test('managed Windows startup pins Node and CLI descriptors before resolving their paths',t=>{
+  const x=fixture(t),paths=[x.nodePath,x.cliEntry],trace=new Map(paths.map(p=>[p,[]]));
+  const open=fs.openSync,realpath=fs.realpathSync;
+  fs.openSync=function(file,...args){
+    if(trace.has(file))trace.get(file).push('open');
+    return open(file,...args);
+  };
+  fs.realpathSync=function(file,...args){
+    if(trace.has(file))trace.get(file).push('realpath');
+    return realpath(file,...args);
+  };
+  try{assert.equal(x.invoke(),true);}
+  finally{fs.openSync=open;fs.realpathSync=realpath;}
+  for(const file of paths)
+    assert.deepEqual(trace.get(file).slice(0,2),['open','realpath'],
+      'trust an open regular-file descriptor before path canonicalization');
+});
+
+test('managed Windows startup rejects an identical-looking CLI swapped during realpath',t=>{
+  const x=fixture(t),original=fs.realpathSync;let swapped=false;
+  fs.realpathSync=function(file,...args){
+    const resolved=original(file,...args);
+    if(!swapped&&file===x.cliEntry){
+      swapped=true;
+      fs.renameSync(x.cliEntry,x.cliEntry+'.original');
+      fs.writeFileSync(x.cliEntry,'test-cli');
+    }
+    return resolved;
+  };
+  try{assert.equal(x.invoke(),false,'do not repair when the original CLI path changed identity');}
+  finally{fs.realpathSync=original;}
+  assert.equal(swapped,true);
+  assert.equal(fs.existsSync(x.powershell),true,'leave PowerShell shadow unchanged');
+});
+
 test('managed entry symlink cannot redirect startup repair outside the intended prefix', t => {
   const x = fixture(t);
   const outside = path.join(x.localAppData, 'unrelated.mjs');

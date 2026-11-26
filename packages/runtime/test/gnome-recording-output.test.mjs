@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
+import vm from 'node:vm';
 
 function record({ format = 'mp4', extension = '', outside = false, symlink = false, noDestination = false } = {}) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'remcp-gnome-record-test-'));
@@ -75,4 +76,120 @@ test('GNOME recording staging symlinks are rejected', {skip:process.platform!=='
   const r=record({symlink:true});assert.equal(r.ok,false);assert.equal(r.content,null);
   assert.match(r.error,/non-empty regular file/);
   assert.equal(r.outside,'KEEP_OUTSIDE');assert.deepEqual(r.remaining,[]);
+});
+
+test('GNOME helper stops on the original sender after normal completion, signal or exception',()=>{
+  const source=fs.readFileSync(new URL('../src/extended/diagnostics-recording.mjs',import.meta.url),'utf8');
+  const helper=source.split('const GNOME_SCREENCAST_HELPER = `')[1].split('`')[0];
+  assert.ok(helper);
+  for(const scenario of ['normal','signal','error','start-denied','stop-denied']){
+    const events=[],callbacks=new Map(),removed=[],reports=[];
+    let seq=0;
+    const id=fn=>{callbacks.set(++seq,fn);return seq;};
+    const GLib={Variant:class{},VariantType:class{},PRIORITY_HIGH:-100,PRIORITY_DEFAULT:0,
+      SOURCE_CONTINUE:true,SOURCE_REMOVE:false,unix_signal_add:(_priority,_signal,fn)=>id(fn),
+      timeout_add:(_priority,ms,fn)=>{assert.equal(ms,120_000);return id(fn);},
+      source_remove:source=>removed.push(source),
+      MainLoop:{new:()=>({quit(){},run(){
+        if(scenario==='error')throw Error('synthetic loop failure');
+        if(scenario==='signal')callbacks.get(1)();else callbacks.get(3)();
+      }})}};
+    const bus={call_sync(...args){
+      const method=args[3];events.push(method);
+      return {deepUnpack:()=>method==='Get'?[{deepUnpack:()=>true}]:
+        method==='Screencast'?[scenario!=='start-denied','/tmp/test.webm']:[scenario!=='stop-denied']};
+    }};
+    const run=()=>vm.runInNewContext(helper,{imports:{gi:{GLib,Gio:{bus_get_sync:()=>bus,
+      BusType:{SESSION:1},DBusCallFlags:{NONE:0}}}},ARGV:['/tmp/test.webm','120','15'],
+      print:message=>reports.push(JSON.parse(message))});
+    if(scenario==='normal'){run();assert.equal(reports[0].stopped,true);}
+    else assert.throws(run,/cancelled|loop failure|refused|did not stop/);
+    assert.deepEqual(events,scenario==='start-denied'?['Get','Screencast']:['Get','Screencast','StopScreencast']);
+    assert.ok(removed.includes(1)&&removed.includes(2));
+    if(scenario==='signal'||scenario==='error')assert.ok(removed.includes(3));
+  }
+});
+
+
+test('recording cancellation waits for the helper to exit after its cleanup', {skip:process.platform==='win32'},async t=>{
+  const {runFile}=await import('../src/extended/common.mjs');
+  const root=fs.mkdtempSync(path.join(os.tmpdir(),'remcp-record-cancel-'));
+  t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
+  const ready=path.join(root,'ready'),stopped=path.join(root,'stopped');
+  const controller=new AbortController();
+  const completion=runFile(process.execPath,['-e',`
+    const fs=require('node:fs');
+    process.on('SIGTERM',()=>setTimeout(()=>{fs.writeFileSync(process.argv[2],'stopped');process.exit(0)},60));
+    fs.writeFileSync(process.argv[1],'ready');
+    setInterval(()=>{},100);
+  `,ready,stopped],{timeout:5000,recordingFinalization:true,signal:controller.signal});
+  const rejection=assert.rejects(completion,/cancelled/);
+  try {
+    for(let i=0;i<200&&!fs.existsSync(ready);i++)await new Promise(r=>setTimeout(r,10));
+    assert.ok(fs.existsSync(ready),'helper started');
+  } finally {controller.abort();}
+  await rejection;
+  assert.equal(fs.readFileSync(stopped,'utf8'),'stopped','return only after cleanup');
+});
+
+
+test('a signalled recorder is not treated as a successful allowed exit', {skip:process.platform==='win32'},async()=>{
+  const {runFile}=await import('../src/extended/common.mjs');
+  await assert.rejects(runFile(process.execPath,['-e','process.kill(process.pid,"SIGTERM")'],
+    {timeout:5000,recordingFinalization:true,allowFailure:true}),/terminated without a valid exit code/);
+});
+
+
+test('recording rejects promptly if a descendant keeps inherited output open',{skip:process.platform==='win32',timeout:6000},async()=>{
+  const {runFile}=await import('../src/extended/common.mjs');
+  const started=performance.now();
+  await assert.rejects(runFile(process.execPath,['-e',`
+    const {spawn}=require('node:child_process');
+    const c=spawn(process.execPath,['-e','setTimeout(()=>{},2500)'],{stdio:['ignore','inherit','inherit']});
+    c.unref();
+  `],{timeout:5000,recordingFinalization:true}),/output streams did not close/);
+  assert.ok(performance.now()-started<2200,'recorder exit must not wait for descendant pipes');
+});
+
+test('recording cancellation signals its owned POSIX child group',{skip:process.platform==='win32',timeout:8000},async t=>{
+  const {runFile}=await import('../src/extended/common.mjs');
+  const root=fs.mkdtempSync(path.join(os.tmpdir(),'remcp-record-group-'));
+  t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
+  const ready=path.join(root,'ready'),stopped=path.join(root,'stopped');
+  const controller=new AbortController();
+  const script=`
+    const {spawn}=require('node:child_process');
+    const child=spawn(process.execPath,['-e',process.argv[1],process.argv[2],process.argv[3]],{stdio:['ignore','inherit','inherit']});
+    process.on('SIGTERM',()=>{});
+    child.on('exit',()=>process.exit(0));
+  `;
+  const descendant=`
+    const fs=require('node:fs');
+    process.on('SIGTERM',()=>{fs.writeFileSync(process.argv[2],'stopped');process.exit(0);});
+    fs.writeFileSync(process.argv[1],'ready');
+    setTimeout(()=>process.exit(2),5000);
+  `;
+  const completion=runFile(process.execPath,['-e',script,descendant,ready,stopped],
+    {timeout:5000,recordingFinalization:true,signal:controller.signal});
+  const rejection=assert.rejects(completion,/cancelled/);
+  try{
+    for(let i=0;i<200&&!fs.existsSync(ready);i++)await new Promise(r=>setTimeout(r,10));
+    assert.ok(fs.existsSync(ready));
+  }finally{controller.abort();}
+  await rejection;
+  assert.equal(fs.readFileSync(stopped,'utf8'),'stopped');
+});
+
+
+test('GNU timeout forwards scheduled SIGINT in the recorder-owned process group',{
+  skip:process.platform!=='linux'||spawnSync('timeout',['--version']).status!==0,timeout:8000
+},async()=>{
+  const {runFile}=await import('../src/extended/common.mjs');
+  const r=await runFile('timeout',['--foreground','--signal=INT','--kill-after=2s','1s',process.execPath,'-e',
+    'process.on("SIGINT",()=>{console.log("finalized");process.exit(0)});setInterval(()=>{},100)'],
+    {timeout:5000,recordingFinalization:true,allowFailure:true});
+  assert.equal(r.code,124);
+  assert.match(r.stdout,/finalized/);
+  const source=fs.readFileSync(new URL('../src/extended/diagnostics-recording.mjs',import.meta.url),'utf8');
+  assert.ok(source.includes("runFile('timeout', ['--foreground', '--signal=INT'"));
 });

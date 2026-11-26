@@ -6,6 +6,14 @@ import { once } from 'node:events';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { WebSocketServer } from 'ws';
+import { pausedReconnectDelay } from '../src/agent-relay-connection.mjs';
+
+test('prolonged pause backs off, with bounded jitter and fast first recovery', () => {
+  const identity = n => n;
+  assert.deepEqual([1,2,3,4,5,6,100].map(n => pausedReconnectDelay(n, identity)), [2000,4000,8000,16000,32000,60000,60000]);
+  assert.equal(pausedReconnectDelay(100, n => n * 1.25), 60000);
+  assert.equal(pausedReconnectDelay(NaN, identity), 2000);
+});
 
 async function waitFor(predicate, message, timeoutMs = 4000) {
   const deadline = Date.now() + timeoutMs;
@@ -48,7 +56,7 @@ printf '%s\\n' '${join(root, 'modules')}'
   server.on('upgrade', (request, socket, head) => {
     if (disabled) {
       rejectedWhileDisabled += 1;
-      socket.end('HTTP/1.1 423 Locked\r\nX-ReMCP-Disabled: 1\r\nConnection: close\r\nContent-Length: 0\r\n\r\n');
+      socket.end('HTTP/1.1 423 Locked\r\nConnection: close\r\nContent-Length: 0\r\n\r\n');
       return;
     }
     wss.handleUpgrade(request, socket, head, ws => wss.emit('connection', ws, request));

@@ -54,3 +54,24 @@ export function createRuntimeCapabilities({
 
   return { apply, clearRetry, refresh, scheduleRetry };
 }
+
+// Serialize close/connect cycles. Requests that arrive while a start is in
+// progress are coalesced into one subsequent cycle, so an update cannot be
+// lost and two live transports can never overwrite each other's handles.
+export function serializeRuntimeStarts(start, isStopping) {
+  let pending = null;
+  let rerun = false;
+  return function requestStart() {
+    if (isStopping()) return Promise.resolve();
+    if (pending) { rerun = true; return pending; }
+    pending = Promise.resolve().then(async () => {
+      try {
+        do {
+          rerun = false;
+          if (!isStopping()) await start();
+        } while (rerun && !isStopping());
+      } finally { pending = null; }
+    });
+    return pending;
+  };
+}

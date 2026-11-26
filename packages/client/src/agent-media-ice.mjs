@@ -3,6 +3,17 @@ import {validateDeviceIce} from './webrtc-device-ice-contract.mjs';
 import {normalizedServerUrl} from './agent-utilities.mjs';
 export async function callAgentRuntimeTool({mcp,params,options={},serverUrl,deviceToken,encrypted=false,fetchFn=fetch}){
   const safe={name:params?.name,arguments:params?.arguments};
+  // The local tool supports 120 seconds, but a remote call must leave
+  // room for startup, container finalization and returning its result.
+  // Do not silently shorten a recording or start one that cannot fit.
+  options.signal?.throwIfAborted();
+  if(safe.name==='record_screen'&&Number.isFinite(options.timeout)){
+    const raw=Number(safe.arguments?.duration_seconds);
+    const seconds=Number.isFinite(raw)?Math.min(120,Math.max(1,Math.trunc(raw))):5;
+    const maximum=Math.max(0,Math.min(120,Math.floor((options.timeout-40_000)/1000)));
+    if(seconds>maximum)
+      throw Error('Requested screen recording exceeds remote call budget; maximum '+maximum+' seconds for this connection. Use a shorter recording or local runtime.');
+  }
   if(safe.name==='desktop_webrtc_offer'){
     const sid=safe.arguments?.session_id;
     if(!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(sid||''))

@@ -17,7 +17,7 @@ import { prepareAgentE2eeProfile } from './cli/e2ee-automatic.mjs';
 import {startNativeE2eeEnrollment} from './cli/e2ee-native-enrollment.mjs';
 import {startLocalE2eeApprovalServer} from './cli/e2ee-local-approval.mjs';
 import { assertAgentE2eeAdmission, createAgentRelayConnection } from './agent-relay-connection.mjs';
-import { createRuntimeCapabilities, normalizeRuntimeToolNames } from './agent-runtime-capabilities.mjs';
+import { createRuntimeCapabilities, normalizeRuntimeToolNames, serializeRuntimeStarts } from './agent-runtime-capabilities.mjs';
 
 const METRICS_INTERVAL_MS = 5 * 60_000;
 const TELEMETRY_QUEUE_LIMIT = 500;
@@ -123,7 +123,8 @@ export async function runAgent(options,{prepareE2eeProfile=prepareAgentE2eeProfi
   });
   const refreshRuntimeTools = (client = mcp, options) => runtimeCapabilities.refresh(client, options);
 
-  async function startRuntime() {
+  const startRuntime = serializeRuntimeStarts(startRuntimeOnce, () => stopping);
+  async function startRuntimeOnce() {
     if (stopping) return;
     clearTimeout(runtimeRestartTimer);
     runtimeRestartTimer = null;
@@ -193,6 +194,7 @@ export async function runAgent(options,{prepareE2eeProfile=prepareAgentE2eeProfi
       runtimeDown = false;
       runtimeError = '';
       await refreshRuntimeTools(client);
+      if (stopping || mcp !== client || runtimeDown) return;
       console.log(`ReMCP local runtime ready (${runtimeVersion})`);
       send({ type: 'metrics', runtimeState: 'ready', runtimeError: '', metrics: deviceMetrics({ reconnects, pendingRequests, runtimeVersion, runtimeRestarts, runtimeDown: false }) });
       if (runtimeRestarts > 1) queueEvent({ event: 'runtime_restart', at: Date.now(), count: runtimeRestarts, success: true });
@@ -327,6 +329,7 @@ export async function runAgent(options,{prepareE2eeProfile=prepareAgentE2eeProfi
     }),
     respond, inFlight, sendMetricsSample, reportInstallOnce, flushTelemetry,
     checkForUpdate, schedulePostConnectUpdateChecks, clearPostConnectUpdateChecks, stop,
+    onRevoked: options.onRevoked,
     checkUpdatesOnConnect: Array.isArray(options.updateRecheckDelaysMs),
     requireE2ee: options.requireE2ee, secureTransportReady: Boolean(e2eeEndpoint),
     readCurrentE2eeRequirement: options.readCurrentE2eeRequirement,
@@ -370,5 +373,6 @@ export async function runAgent(options,{prepareE2eeProfile=prepareAgentE2eeProfi
   process.once('SIGTERM', () => void stop().finally(() => process.exit(0)));
   await startRuntime();
   connect();
-  return { stop, runtimeVersion: () => runtimeVersion, runtimeRestarts: () => runtimeRestarts, isRuntimeDown: () => runtimeDown };
+  return { stop, runtimeVersion: () => runtimeVersion, runtimeRestarts: () => runtimeRestarts, isRuntimeDown: () => runtimeDown,
+    e2eePressure: () => e2eeEndpoint?.pressure() ?? null };
 }

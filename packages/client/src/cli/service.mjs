@@ -9,7 +9,7 @@ import os from 'node:os';
 import path from 'node:path';
 import process from 'node:process';
 import { spawnSync } from 'node:child_process';
-import { resolvedCliScript, shellQuote } from './service-paths.mjs';
+import { resolvedCliScript, shellQuote, quoteSystemd } from './service-paths.mjs';
 import { macLaunchDomain, ensureMacCliCommand, installMacService, macJobLoaded, scheduleMacServiceRestart, removeMacCliCommand } from './service-macos.mjs';
 export { xmlEscape } from './service-paths.mjs';
 export { macLaunchDomain, ensureMacCliCommand, installMacService } from './service-macos.mjs';
@@ -18,13 +18,12 @@ import { PACKAGE_NAME, VERSION } from '../version.mjs';
 import { saveConfig } from './config.mjs';
 import { configDir, home, linuxServiceFile, linuxServiceLauncherFile, macServiceFile, macServiceLabel, windowsServiceLauncherFile, windowsStartupScriptFile, windowsTaskName } from './env.mjs';
 import { run } from './shell.mjs';
-import { linuxActiveServiceFile, linuxServiceScope, linuxSystemAgentOwned, linuxSystemServiceFile, ensureLinuxLinger, ensureLinuxCliCommand, uninstallOwnedLinuxUnits, assertOwnedLinuxUnit, writeOwnedLinuxUnit, repairOwnedLinuxUnit, recordedLegacyLinuxLauncher, assertNoLinuxExecDropIns } from './service-linux.mjs';
+import { linuxActiveServiceFile, linuxServiceScope, linuxSystemAgentOwned, linuxSystemServiceFile, ensureLinuxLinger, ensureLinuxCliCommand, uninstallOwnedLinuxUnits, assertOwnedLinuxUnit, writeOwnedLinuxUnit, repairOwnedLinuxUnit, recordedLegacyLinuxLauncher, removeLinuxCliCommand, assertNoLinuxExecDropIns } from './service-linux.mjs';
 import { windowsServiceLauncherText, windowsTaskAbsenceCommand, windowsStartupScriptText, windowsStartupScriptInstalled } from './windows-supervisor.mjs';
+import { removeWindowsCliCommand } from './windows-cli-purge.mjs';
 import { ensureWindowsSupervisorKey, windowsSupervisorCommand } from './windows-user-supervisor.mjs';
 
-export function quoteSystemd(value) {
-  return `"${String(value).replaceAll('\\', '\\\\').replaceAll('"', '\\"')}"`;
-}
+export { quoteSystemd } from './service-paths.mjs';
 
 // A systemd user's PATH may resolve system npm even when the CLI lives under nvm.
 // Pin the npm installation target to the CLI's own existing global prefix.
@@ -369,9 +368,12 @@ export function uninstallPersistentService({ removeCli = false } = {}) {
   const platform = servicePlatform();
   if (platform === 'linux') {
     uninstallOwnedLinuxUnits();
+    if (removeCli) removeLinuxCliCommand();
   } else if (platform === 'darwin') {
     const domain = macLaunchDomain();
     spawnSync('launchctl', ['bootout', domain, macServiceFile], { stdio: 'ignore' });
+    const stopped=spawnSync('launchctl',['print',domain+'/'+macServiceLabel],{encoding:'utf8',timeout:15000});
+    if (stopped.status!==113) throw new Error('ReMCP LaunchAgent removal not confirmed; refusing uninstall');
     try { fs.unlinkSync(macServiceFile); } catch {}
     // Ordinary uninstall keeps the CLI/runtime/pairing so `remcp install`
     // remains available. Only --purge removes the managed command.
@@ -398,6 +400,7 @@ export function uninstallPersistentService({ removeCli = false } = {}) {
       }
       fs.unlinkSync(windowsStartupScriptFile);
     }
+    if (removeCli) removeWindowsCliCommand();
     // Retain legacy launch files. Their presence alone is not proof of ownership,
     // and an absent task provides no safe justification for deleting them.
   }

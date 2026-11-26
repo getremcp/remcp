@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import test from 'node:test';
-import { guardSupervisorDisconnect } from '../src/cli/supervised-agent-lifecycle.mjs';
+import { guardSupervisorDisconnect, parkRevokedService } from '../src/cli/supervised-agent-lifecycle.mjs';
 
 function fakeProcess({ ipc = false, connected = ipc } = {}) {
   const child = new EventEmitter();
@@ -52,4 +52,10 @@ test('failed orphan stop exits unsuccessfully without unhandled rejection', asyn
   child.emit('disconnect');
   await flush();
   assert.deepEqual(child.exits, [1]);
+});
+
+test('revoked managed service retains only a referenced idle timer', () => {
+  const timer = parkRevokedService();
+  try { assert.equal(timer.hasRef(), true); }
+  finally { clearInterval(timer); }
 });

@@ -10,17 +10,17 @@ import { normalizeRuntime } from './runtime.mjs';
 import { PACKAGE_NAME, VERSION } from './version.mjs';
 import { probeFilesystemAccess } from './fs-access.mjs';
 
-import { autoUpdateEnabled, ensureMachineId, loadConfig, readJsonFile, saveConfig, setTelemetry, telemetryState, writeJsonFile } from './cli/config.mjs';
+import { autoUpdateEnabled, ensureMachineId, handleFutureConfigCommand, loadConfig, readJsonFile, saveConfig, setTelemetry, telemetryState, writeJsonFile } from './cli/config.mjs';
 import { assertRuntimeTrust, assertSecureServerUrl, pairWithDeviceCode } from './cli/connect.mjs';
 import { diagnoseLocalRuntime, installedVersion, runtimeAllowedRoots } from './cli/doctor.mjs';
-import { configFile, npm, officialOrigin, runtimeConfigFile } from './cli/env.mjs';
+import { configFile, officialOrigin, runtimeConfigFile } from './cli/env.mjs';
 import { currentInstallationInfo, ensureMacCliCommand, installPersistentAgent, persistentServiceState, persistentServiceStatus, servicePlatform, rememberCurrentInstallation, restartPersistentServiceIfInstalled, serviceInstallationInfo, uninstallPersistentService } from './cli/service.mjs';
 import { auditKnownInstallations, summarizeUpdateInstallations } from './cli/installation-audit.mjs';
 import { scheduleMacTemperatureRepair } from './cli/mac-native-temperature.mjs';
-import { guardSupervisorDisconnect } from './cli/supervised-agent-lifecycle.mjs';
-import { repairMacTemperatureAfterStart } from './cli/npm-global.mjs';
+import { guardSupervisorDisconnect, parkRevokedService } from './cli/supervised-agent-lifecycle.mjs';
+import { repairMacTemperatureAfterStart, npmGlobalUninstall } from './cli/npm-global.mjs';
 import { repairManagedWindowsPowerShellShimOnStart } from './cli/windows-cli-shim.mjs';
-import { run } from './cli/shell.mjs';
+import { verifyLinuxService } from './cli/linux-service-verification.mjs';
 import { updateCommand } from './cli/update.mjs';
 import {manageDesktopMedia} from './cli/desktop-media.mjs';
 import { describeLocalE2ee, effectiveE2eeRequirement, manageE2eePolicy } from './cli/e2ee-policy.mjs';
@@ -44,7 +44,7 @@ function parse(argv) {
 }
 
 function printHelp() {
-  console.log(`ReMCP ${VERSION}\n\nCommands:\n  remcp connect [--no-qr]\n  remcp start\n  remcp status\n  remcp doctor\n  remcp update [--repair] [--no-restart]\n  remcp auto-update [status|on|off]\n  remcp desktop [status|install --python <absolute path>|off]\n  remcp e2ee [init|rotate|status|require|off|trust|peers|revoke|requests|approve|client-init|client-pin|client-login]\n  remcp mcp --device <id> (encrypted stdio MCP for AI clients)\n  remcp install\n  remcp uninstall\n  remcp uninstall --purge\n  remcp telemetry [status|on|off]\n  remcp godmode [status|on|off]\n  remcp --version\n\nPairing commands are generated in the ReMCP workspace.\n\nUsage metrics are opt-out (tool names, timings, outcomes only, sent to your own ReMCP\naccount through the paired agent). Disable them at any time with: remcp telemetry off\n\nUnrestricted mode (remcp godmode on) lifts the access roots and the command guardrails for this\ncomputer only. The MCP configuration tool cannot enable it; protect remote terminal access.`);
+  console.log(`ReMCP ${VERSION}\n\nCommands:\n  remcp connect [--no-qr]\n  remcp start\n  remcp status\n  remcp doctor\n  remcp update [--repair] [--no-restart]\n  remcp auto-update [status|on|off]\n  remcp desktop [status|install --python <absolute path>|off]\n  remcp e2ee [init|rotate|status|pressure|require|off|trust|peers|revoke|requests|approve|client-init|client-pin|client-login]\n  remcp mcp --device <id> (encrypted stdio MCP for AI clients)\n  remcp install\n  remcp uninstall\n  remcp uninstall --purge\n  remcp telemetry [status|on|off]\n  remcp godmode [status|on|off]\n  remcp --version\n\nPairing commands are generated in the ReMCP workspace.\n\nUsage metrics are opt-out (tool names, timings, outcomes only, sent to your own ReMCP\naccount through the paired agent). Disable them at any time with: remcp telemetry off\n\nUnrestricted mode (remcp godmode on) lifts the access roots and the command guardrails for this\ncomputer only. The MCP configuration tool cannot enable it; protect remote terminal access.`);
 }
 
 // The running agent snapshots update policy at startup. A saved toggle alone does not
@@ -84,6 +84,8 @@ export async function main(argv = process.argv.slice(2)) {
     return;
   }
 
+  if (command === '__verify-linux-service') { verifyLinuxService(); console.log('verified'); return; }
+  if (handleFutureConfigCommand(command, positional[0], VERSION)) return;
   if (command === 'mcp') {
     const { runEncryptedMcp } = await import('./cli/e2ee-mcp.mjs');
     await runEncryptedMcp(flags); return;
@@ -237,6 +239,7 @@ export async function main(argv = process.argv.slice(2)) {
           throw new Error('Paired ReMCP config no longer matches running agent');
         return effectiveE2eeRequirement(latest);
       },
+      onRevoked: supervised ? parkRevokedService : undefined,
       autoUpdate: autoUpdateEnabled(cfg),
       trustRuntime: cfg.trustRuntime === true
         || process.env.REMCP_TRUST_RUNTIME === '1'
@@ -485,7 +488,7 @@ export async function main(argv = process.argv.slice(2)) {
     if (cfg) saveConfig({ ...cfg, serviceInstalled: false });
     if (flags.purge) {
       const specs = [PACKAGE_NAME, ...(cfg?.runtime?.packageName ? [cfg.runtime.packageName] : [])];
-      run(npm.command, [...npm.args, 'uninstall', '--global', ...specs, '--no-audit', '--no-fund', '--loglevel=error']);
+      npmGlobalUninstall(...specs);
       console.log('ReMCP background service removed and global npm packages uninstalled. Device pairing was retained.');
     } else {
       console.log('ReMCP background service removed. The CLI, runtime packages and device pairing were retained. Use remcp uninstall --purge to also uninstall global npm packages.');

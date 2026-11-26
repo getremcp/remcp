@@ -7,6 +7,7 @@ import { assertWindowsPackagePayload } from './installation-payload.mjs';
 import { home, npm } from './env.mjs';
 import { buildVettedMacTemperatureAddon } from './mac-native-temperature.mjs';
 import { output, run } from './shell.mjs';
+import { activeMacReleasePrefix, macOuterPrefix, uninstallMacGlobalPreservingReleases, stageAndActivateMacRelease, withMacReleaseMutation } from './mac-release-anchor.mjs';
 import { withWindowsUpdateLock } from './windows-update-lock.mjs';
 import { assertWindowsNpmPowerShellShimOwned, preferWindowsCmdShim } from './windows-cli-shim.mjs';
 
@@ -57,6 +58,11 @@ function npmGlobalInstallArgs(specs, { preferOnline = false } = {}) {
 
 export function npmGlobalInstall(...specs) {
   const prefix = assertSafeReMcpNpmPrefix(globalPrefix()); // Reject an unsafe prefix before npm writes anything.
+  if (servicePlatform() === 'darwin' && fs.existsSync(path.join(prefix,'lib','node_modules','@remcp','remcp','bin','remcp.mjs'))) {
+    const packageNames=specs.map(spec=>String(spec).slice(0,String(spec).lastIndexOf('@')));
+    transactionalMacGlobalInstall({resolved:npm,prefix,packageNames,specs});
+    return;
+  }
   const install = () => {
     const updatingClient = servicePlatform() === 'win32' && isManagedWindowsRuntimePrefix(prefix)
       && specs.some(spec => /^@remcp\/remcp@/.test(spec));
@@ -66,17 +72,22 @@ export function npmGlobalInstall(...specs) {
     if (updatingClient) preferWindowsCmdShim(prefix);
   };
   if (servicePlatform() === 'win32') withWindowsUpdateLock(prefix, install);
-  else install();
-  if (servicePlatform() === 'darwin' && specs.some(spec => /^@remcp\/runtime@[0-9]/.test(spec))) {
-    try {
-      buildVettedMacTemperatureAddon({
-        runtimeRoot:globalPackagePath(globalPrefix(), '@remcp/runtime'), resolved:npm, runCommand:run,
-      });
-    } catch {
-      // Native temperature is optional; a second prefix lookup cannot undo a successful CLI install.
-      console.error('ReMCP: optional macOS temperature sensor unavailable; other tools remain functional.');
-    }
-  }
+  else if (servicePlatform() === 'darwin') {
+    withMacReleaseMutation(macOuterPrefix(prefix),()=>{
+      if(fs.existsSync(path.join(prefix,'lib','node_modules','@remcp','remcp','bin','remcp.mjs')))
+        throw Error('macOS CLI appeared during initial install; retry using the staged update');
+      install();
+      if (specs.some(spec => /^@remcp\/runtime@[0-9]/.test(spec))) {
+        try {
+          buildVettedMacTemperatureAddon({
+            runtimeRoot:globalPackagePath(prefix, '@remcp/runtime'), resolved:npm, runCommand:run,
+          });
+        } catch {
+          console.error('ReMCP: optional macOS temperature sensor unavailable; other tools remain functional.');
+        }
+      }
+    });
+  } else install();
 }
 
 // Called only by the post-start macOS helper: an older updater may have
@@ -87,7 +98,7 @@ export function repairMacTemperatureAfterStart(runtimePackageName) {
   if (servicePlatform() !== 'darwin' || runtimePackageName !== '@remcp/runtime') return false;
   try {
     return buildVettedMacTemperatureAddon({
-      runtimeRoot:globalPackagePath(assertSafeReMcpNpmPrefix(globalPrefix()), '@remcp/runtime'),
+      runtimeRoot:globalPackagePath(activeMacReleasePrefix(assertSafeReMcpNpmPrefix(globalPrefix())), '@remcp/runtime'),
       resolved:npm, runCommand:run,
     });
   } catch {
@@ -132,57 +143,11 @@ function isManagedWindowsRuntimePrefix(prefix) {
 }
 
 function transactionalMacGlobalInstall({ resolved, prefix, packageNames, specs, preferOnline = false }) {
-  prefix = String(prefix || '').trim();
-  if (!path.isAbsolute(prefix)) throw new Error(`npm global prefix must be absolute for a macOS update: ${prefix || '(empty)'}`);
-  const backupRoot = path.join(prefix, `.remcp-update-backup-${process.pid}-${Date.now()}`);
-  const moved = [];
-  const moveAside = (source, label) => {
-    if (!pathEntryExists(source)) return;
-    const backup = path.join(backupRoot, label);
-    fs.renameSync(source, backup);
-    moved.push({ source, backup });
-  };
-  const restore = originalError => {
-    let rollbackError = null;
-    for (const item of [...moved].reverse()) {
-      try {
-        if (pathEntryExists(item.source)) fs.rmSync(item.source, { recursive:true, force:true });
-        fs.mkdirSync(path.dirname(item.source), { recursive:true });
-        fs.renameSync(item.backup, item.source);
-      } catch (error) {
-        rollbackError ??= error;
-      }
-    }
-    try { fs.rmSync(backupRoot, { recursive:true, force:true }); } catch (error) { rollbackError ??= error; }
-    if (rollbackError) {
-      throw new Error(
-        `ReMCP update failed and the previous macOS installation could not be fully restored: ${rollbackError instanceof Error ? rollbackError.message : String(rollbackError)}`,
-        { cause:originalError },
-      );
-    }
-  };
-
-  fs.mkdirSync(prefix, { recursive:true });
-  fs.mkdirSync(backupRoot, { recursive:false, mode:0o700 });
-  try {
-    const uniqueNames = [...new Set(packageNames.map(name => String(name || '').trim()).filter(Boolean))];
-    uniqueNames.forEach((name, index) => moveAside(globalPackagePath(prefix, name), `package-${index}`));
-    if (uniqueNames.includes(PACKAGE_NAME)) moveAside(path.join(prefix, 'bin', 'remcp'), 'bin-remcp');
-
-    run(resolved.command, [...resolved.args, ...npmGlobalInstallArgs(specs, { preferOnline })]);
-    if (uniqueNames.includes('@remcp/runtime')) buildVettedMacTemperatureAddon({
-      runtimeRoot:globalPackagePath(prefix, '@remcp/runtime'), resolved, runCommand:run,
-    });
-  } catch (error) {
-    restore(error);
-    throw error;
-  }
-
-  try {
-    fs.rmSync(backupRoot, { recursive:true, force:true });
-  } catch (error) {
-    console.error(`ReMCP update: could not remove macOS rollback backup ${backupRoot}: ${error instanceof Error ? error.message : String(error)}`);
-  }
+  return stageAndActivateMacRelease({prefix,packageNames,specs,
+    install:stage=>run(resolved.command,[...resolved.args,'--prefix',stage,
+      ...npmGlobalInstallArgs(specs,{preferOnline})]),
+    buildAddon:runtimeRoot=>buildVettedMacTemperatureAddon({runtimeRoot,resolved,runCommand:run}),
+  });
 }
 
 // Fetch and validate a complete release in a private npm prefix before touching
@@ -390,4 +355,15 @@ export function npmGlobalUpdateForNode(nodePath, packageNames, ...specs) {
     return;
   }
   run(resolved.command, [...resolved.args, ...npmGlobalInstallArgs(specs, { preferOnline:true })]);
+}
+
+export function npmGlobalUninstall(...specs) {
+  const mac = servicePlatform() === 'darwin';
+  const prefix = mac ? macOuterPrefix(assertSafeReMcpNpmPrefix(globalPrefix())) : null;
+  const uninstall=()=>run(npm.command, [...npm.args, ...(mac ? ['--prefix',prefix] : []),
+    'uninstall','--global',...specs,'--no-audit','--no-fund','--loglevel=error']);
+  if (mac && fs.existsSync(prefix)) {
+    const result=uninstallMacGlobalPreservingReleases(prefix,{uninstall});
+    if (result.preserved) console.error('ReMCP: preserved '+result.preserved+' macOS release directories because manually launched processes may still use them. Review them during offline maintenance.');
+  } else uninstall();
 }

@@ -5,7 +5,7 @@ import { once } from 'node:events';
 import { setTimeout as sleep } from 'node:timers/promises';
 import test from 'node:test';
 import { WebSocketServer } from 'ws';
-import { createAgentRelayConnection } from '../src/agent-relay-connection.mjs';
+import { createAgentRelayConnection, relayRetryAfterDelay } from '../src/agent-relay-connection.mjs';
 
 async function until(predicate, timeoutMs = 3000) {
   const deadline = Date.now() + timeoutMs;
@@ -180,6 +180,51 @@ test('a captive-portal proxy redirect is retried after the network clears', asyn
   assert.equal(client.getSocket().readyState, 1);
 });
 
+test('relay Retry-After accepts only bounded numeric overload hints', () => {
+  for (const status of [429, 503]) {
+    assert.equal(relayRetryAfterDelay(status, '1'), 1000);
+    assert.equal(relayRetryAfterDelay(status, '3600'), 60000);
+    assert.equal(relayRetryAfterDelay(status, '999999'), 60000);
+    for (const header of [undefined, null, '', '-1', '1.5', '1e3', ' 1', '1, 2', 'Infinity', '1000000', ['2']]) {
+      assert.equal(relayRetryAfterDelay(status, header), 0);
+    }
+  }
+  for (const status of [302, 401, 423, 502, 504]) {
+    assert.equal(relayRetryAfterDelay(status, '60'), 0);
+  }
+});
+
+test('an overload retry hint delays reconnect without preventing recovery', async t => {
+  const httpServer = createHttpServer();
+  const wss = new WebSocketServer({ noServer: true });
+  const attempts = [];
+  let hello = false;
+  httpServer.on('upgrade', (request, socket, head) => {
+    attempts.push(Date.now());
+    if (attempts.length === 1) {
+      socket.end('HTTP/1.1 429 Too Many Requests\r\nRetry-After: 1\r\nConnection: close\r\nContent-Length: 0\r\n\r\n');
+      return;
+    }
+    wss.handleUpgrade(request, socket, head, ws => wss.emit('connection', ws));
+  });
+  wss.on('connection', ws => ws.on('message', raw => {
+    if (JSON.parse(raw.toString()).type === 'hello') hello = true;
+  }));
+  await new Promise(resolve => httpServer.listen(0, '127.0.0.1', resolve));
+  const client = makeClient(httpServer.address().port);
+  t.after(async () => {
+    client.shutdown();
+    for (const ws of wss.clients) ws.terminate();
+    await new Promise(resolve => wss.close(resolve));
+    await new Promise(resolve => httpServer.close(resolve));
+  });
+  client.controller.connect();
+  await until(() => hello, 5000);
+  assert.equal(attempts.length, 2);
+  assert.ok(attempts[1] - attempts[0] >= 990, 'must not retry before the overload delay');
+  assert.equal(client.getReconnects(), 0);
+});
+
 test('explicitly revoked device does not reconnect or bypass revocation', async t => {
   const httpServer = createHttpServer();
   let attempts = 0;
@@ -188,8 +233,11 @@ test('explicitly revoked device does not reconnect or bypass revocation', async 
     socket.end('HTTP/1.1 401 Unauthorized\r\nX-ReMCP-Revoked: 1\r\nConnection: close\r\nContent-Length: 0\r\n\r\n');
   });
   await new Promise(resolve => httpServer.listen(0, '127.0.0.1', resolve));
-  let stopped=0;
-  const client = makeClient(httpServer.address().port,{stop:async()=>{stopped++;}});
+  let stopped=0, parked=0;
+  const client = makeClient(httpServer.address().port,{
+    stop:async()=>{stopped++;},
+    onRevoked:()=>{assert.equal(stopped,1);parked++;},
+  });
   t.after(async () => {
     client.shutdown();
     await new Promise(resolve => httpServer.close(resolve));
@@ -198,16 +246,17 @@ test('explicitly revoked device does not reconnect or bypass revocation', async 
   await until(() => attempts === 1 && stopped === 1);
   await sleep(850);
   assert.equal(attempts, 1, 'revocation must not trigger a retry');
+  assert.equal(parked, 1);
 });
 
 
 test('established socket revocation closes the owned runtime and cancels in-flight commands',async t=>{
-  const wss=await server(t);let stopped=0,connected=0;
+  const wss=await server(t);let stopped=0,connected=0,parked=0;
   const pending=new AbortController();
   wss.on('connection',ws=>{connected++;ws.once('message',()=>ws.close(1008,'revoked'));});
-  const client=makeClient(wss.address().port,{inFlight:new Map([['capture',pending]]),stop:async()=>{stopped++;}});
+  const client=makeClient(wss.address().port,{inFlight:new Map([['capture',pending]]),stop:async()=>{stopped++;},onRevoked:()=>{assert.equal(stopped,1);parked++;}});
   t.after(()=>client.shutdown());client.controller.connect();
   await until(()=>stopped===1);
   assert.equal(pending.signal.aborted,true);
-  await sleep(850);assert.equal(connected,1);assert.equal(stopped,1);
+  await sleep(850);assert.equal(connected,1);assert.equal(stopped,1);assert.equal(parked,1);
 });

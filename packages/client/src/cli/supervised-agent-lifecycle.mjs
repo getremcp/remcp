@@ -19,3 +19,12 @@ export function guardSupervisorDisconnect(agent, childProcess = process) {
   if (!childProcess.connected) stopOrphan();
   return true;
 }
+
+
+// A managed service may be configured to restart even after a clean exit.
+// Once revoked, retain only an idle process; no runtime, relay, or update
+// polling survives. Explicit re-pair restarts the service with new credentials.
+export function parkRevokedService() {
+  console.error('ReMCP managed service is inactive pending explicit re-pair.');
+  return setInterval(() => {}, 60 * 60 * 1000);
+}

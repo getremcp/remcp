@@ -4,8 +4,9 @@ import { spawnSync } from 'node:child_process';
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { isManagedLinuxSystemUnit, linuxCliShimText, discoverOwnedLinuxUnits, uninstallOwnedLinuxUnits, assertNoLinuxExecDropIns } from '../src/cli/service-linux.mjs';
-import { deferredLinuxAgentRestartArgs } from '../src/cli/service.mjs';
+import { isManagedLinuxSystemUnit, linuxCliShimText, discoverOwnedLinuxUnits, uninstallOwnedLinuxUnits, removeLinuxCliCommand, ensureLinuxCliInShellPath, assertNoLinuxExecDropIns } from '../src/cli/service-linux.mjs';
+import { verifyLinuxService } from '../src/cli/linux-service-verification.mjs';
+import { deferredLinuxAgentRestartArgs, quoteSystemd } from '../src/cli/service.mjs';
 
 const launcher = '/root/.config/remcp/remcp-agent-launcher';
 
@@ -313,4 +314,76 @@ test('foreign per-user unit is refused for install, repair and both restart mode
   assert.equal(readFileSync(file,'utf8'),foreign);
   assert.equal(existsSync(log),false);
   assert.equal(existsSync(path.join(configDir,'remcp-agent-launcher')),false);
+});
+
+test('systemd launcher treats percent and dollar path characters literally', {skip:process.platform==='win32'}, t => {
+  const root=mkdtempSync(path.join(os.tmpdir(),'remcp-systemd-quote-'));
+  t.after(()=>rmSync(root,{recursive:true,force:true}));
+  const actual=path.join(root,'%u','$HOME','launcher');
+  mkdirSync(path.dirname(actual),{recursive:true});
+  writeFileSync(actual,'#!/bin/sh\nexit 0\n',{mode:0o700});
+  const quoted=quoteSystemd(actual);
+  assert.equal(quoted,':"'+actual.replaceAll('%','%%')+'"');
+  const unit='[Service]\nType=oneshot\nExecStart='+quoted+' start --service\n';
+  assert.equal(isManagedLinuxSystemUnit(unit,actual),true);
+  assert.equal(isManagedLinuxSystemUnit('[Service]\nExecStart="'+actual+'" start --service\n',actual),false);
+  if(process.platform!=='linux') return;
+  const file=path.join(root,'remcp-quote-test.service');
+  writeFileSync(file,unit);
+  const result=spawnSync('systemd-analyze',['verify',file],{encoding:'utf8',timeout:10000});
+  if(result.error?.code==='ENOENT') return t.skip('systemd-analyze unavailable');
+  assert.equal(result.status,0,result.stderr || result.error?.message);
+});
+
+test('installer verification binds loaded unit, effective argv and PID to the owned service', () => {
+  const file='/home/fixture/.config/systemd/user/remcp-agent.service';
+  const expected='/home/fixture/has space $/remcp-agent-launcher';
+  const owned={scope:'user',file,dev:1,ino:2};
+  const snapshot={LoadState:'loaded',ActiveState:'active',SubState:'running',FragmentPath:file,NeedDaemonReload:'no',MainPID:'91'};
+  const exec={type:'a(sasbttttuii)',data:[[expected,[expected,'start','--service'],false,0,0,0,0,91,0,0]]};
+  const run=(properties=snapshot, command=exec, discovery=()=>[owned])=>verifyLinuxService({
+    launcher:expected, discover:discovery,
+    runner:(bin,args)=>{
+      assert.equal(args[0],'--user');
+      return {status:0,stdout:bin==='systemctl'?
+        Object.entries(properties).map(([k,v])=>k+'='+v).join('\n')+'\n':JSON.stringify(command)};
+    },
+  });
+  assert.equal(run(),'user');
+  for (const override of [{FragmentPath:'/tmp/foreign.service'},{NeedDaemonReload:'yes'},{MainPID:'92'},{ActiveState:'inactive'},{SubState:'exited'}]) {
+    assert.throws(()=>run({...snapshot,...override}),/verified running service|owned ReMCP agent/);
+  }
+  for (const argv of [[expected,'update'],['/bin/false','start','--service'],[expected,'start','--service','--foreign']]) {
+    const wrong=structuredClone(exec);wrong.data[0][1]=argv;
+    assert.throws(()=>run(snapshot,wrong),/owned ReMCP agent/);
+  }
+  assert.throws(()=>run(snapshot,{...exec,data:[...exec.data,...exec.data]}),/owned ReMCP agent/);
+  assert.throws(()=>run(snapshot,exec,()=>[]),/No owned ReMCP/);
+  let discoveries=0;
+  assert.throws(()=>run(snapshot,exec,()=>[{...owned,ino:++discoveries}]),/changed during verification/);
+});
+
+test('Linux purge removes only generated launcher and complete PATH blocks', t => {
+  if (process.platform !== 'linux' || process.getuid() === 0) return t.skip('requires non-root Linux');
+  const root = mkdtempSync(path.join(os.tmpdir(), 'remcp-purge-'));
+  t.after(() => rmSync(root, {recursive:true,force:true}));
+  const shim = path.join(root, '.local', 'bin', 'remcp');
+  mkdirSync(path.dirname(shim), {recursive:true});
+  writeFileSync(shim, linuxCliShimText('/tmp/prefix/bin/remcp', '/usr/bin/node'));
+  const bash = path.join(root, '.bashrc');
+  const profile = path.join(root, '.profile');
+  writeFileSync(bash, 'export FOO=bar\n', {mode:0o640});
+  ensureLinuxCliInShellPath(root);
+  writeFileSync(profile, '# >>> ReMCP CLI PATH >>>\nuser-maintained\n');
+  removeLinuxCliCommand({homeDir:root});
+  assert.equal(existsSync(shim), false);
+  assert.equal(readFileSync(bash,'utf8'), 'export FOO=bar\n\n');
+  assert.equal(readFileSync(profile,'utf8'), '# >>> ReMCP CLI PATH >>>\nuser-maintained\n');
+  writeFileSync(shim, '#!/bin/sh\necho unrelated\n');
+  removeLinuxCliCommand({homeDir:root});
+  assert.equal(readFileSync(shim,'utf8'), '#!/bin/sh\necho unrelated\n');
+  rmSync(shim);
+  symlinkSync(bash, shim);
+  removeLinuxCliCommand({homeDir:root});
+  assert.equal(existsSync(shim), true);
 });

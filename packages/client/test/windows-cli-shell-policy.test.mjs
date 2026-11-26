@@ -28,6 +28,46 @@ test('private npm-generated PowerShell shim is pruned while .cmd remains usable'
   assert.equal(preferWindowsCmdShim(prefix), false, 'repeated cleanup is safe');
 });
 
+test('recognized PowerShell shim is never removed by mutable original pathname',t=>{
+  const prefix=fixture(t),ps=path.join(prefix,'remcp.ps1');
+  const originalUnlink=fs.unlinkSync;
+  let unlinkedOriginal=false;
+  fs.unlinkSync=function(candidate,...args){
+    if(candidate===ps){
+      unlinkedOriginal=true;
+      fs.renameSync(ps,ps+'.original');
+      fs.writeFileSync(ps,'Write-Output "USER SCRIPT"\n');
+    }
+    return originalUnlink(candidate,...args);
+  };
+  try{assert.equal(preferWindowsCmdShim(prefix),true);}
+  finally{fs.unlinkSync=originalUnlink;}
+  assert.equal(unlinkedOriginal,false,'never unlink a mutable original launcher path');
+  assert.equal(fs.existsSync(ps),false);
+});
+
+test('PowerShell cleanup preserves foreign script substituted during isolation',t=>{
+  const prefix=fixture(t),ps=path.join(prefix,'remcp.ps1');
+  const custom='Write-Output "USER SCRIPT"\n';
+  const rename=fs.renameSync;
+  let swapped=false;
+  fs.renameSync=function(source,target){
+    if(source===ps&&!swapped){
+      swapped=true;
+      rename(source,ps+'.original');
+      fs.writeFileSync(ps,custom);
+    }
+    return rename(source,target);
+  };
+  try{assert.throws(()=>preferWindowsCmdShim(prefix),/unknown|changed|non-npm|unsafe/i);}
+  finally{fs.renameSync=rename;}
+  assert.equal(swapped,true,'exercise substitute at rename boundary');
+  const staged=fs.readdirSync(prefix).filter(x=>x.startsWith('.remcp-shim-release-'));
+  assert.equal(staged.length,1,'preserve unexpected file in isolated directory');
+  assert.equal(fs.readFileSync(path.join(prefix,staged[0],'remcp.ps1'),'utf8'),custom);
+  assert.equal(fs.readFileSync(ps+'.original','utf8'),npmShim);
+});
+
 test('unexpected custom PowerShell shim must remain untouched', t => {
   const prefix = fixture(t, { powershell:'Write-Output "CUSTOM SCRIPT"\n' });
   assert.throws(() => preferWindowsCmdShim(prefix), /non-npm/);

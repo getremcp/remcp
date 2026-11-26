@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { normalizeRuntime } from '../runtime.mjs';
+import { replaceFileAtomically } from './atomic-file.mjs';
 
 import { configDir, configFile, machineIdFile, officialOrigin, runtimeConfigFile } from './env.mjs';
 
@@ -47,6 +48,11 @@ function configForWrite(value) {
   };
 }
 
+function isFutureConfig(value) {
+  const declared = Number(value?.configSchemaVersion || 0);
+  return Number.isSafeInteger(declared) && declared > CONFIG_SCHEMA_VERSION;
+}
+
 export function loadConfig(required = true) {
   if (!fs.existsSync(configFile)) {
     if (!required) return undefined;
@@ -64,8 +70,7 @@ export function loadConfig(required = true) {
 export function saveConfig(value) {
   const persisted = configForWrite(value);
   fs.mkdirSync(configDir, { recursive: true, mode: 0o700 });
-  fs.writeFileSync(configFile, JSON.stringify(persisted, null, 2) + '\n', { mode: 0o600 });
-  fs.chmodSync(configFile, 0o600);
+  replaceFileAtomically(configFile, JSON.stringify(persisted, null, 2) + '\n', { mode: 0o600 });
 }
 
 export function readJsonFile(file) {
@@ -74,8 +79,7 @@ export function readJsonFile(file) {
 
 export function writeJsonFile(file, value) {
   fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
-  fs.writeFileSync(file, JSON.stringify(value, null, 2) + '\n', { mode: 0o600 });
-  fs.chmodSync(file, 0o600);
+  replaceFileAtomically(file, JSON.stringify(value, null, 2) + '\n', { mode: 0o600 });
 }
 
 export function autoUpdateEnabled(config) {
@@ -114,11 +118,29 @@ export function telemetryState() {
   };
 }
 
+// Mutations may initialize missing files, but must never replace unreadable or
+// malformed files. Read both before writing either one.
+function readJsonForMutation(file) {
+  let raw;
+  try { raw = fs.readFileSync(file, 'utf8'); }
+  catch (error) {
+    if (error?.code === 'ENOENT') return {};
+    throw error;
+  }
+  let value;
+  try { value = JSON.parse(raw); }
+  catch { throw new Error('ReMCP configuration is not valid JSON; no preferences were changed'); }
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error('ReMCP configuration must be a JSON object; no preferences were changed');
+  }
+  return value;
+}
+
 export function setTelemetry(enabled) {
-  const client = readJsonFile(configFile);
+  const client = readJsonForMutation(configFile);
+  const runtime = readJsonForMutation(runtimeConfigFile);
   client.telemetryEnabled = enabled;
   writeJsonFile(configFile, client);
-  const runtime = readJsonFile(runtimeConfigFile);
   runtime.telemetryEnabled = enabled;
   writeJsonFile(runtimeConfigFile, runtime);
   return telemetryState();
@@ -134,4 +156,41 @@ export function ensureMachineId() {
   fs.writeFileSync(machineIdFile, value + '\n', { mode: 0o600 });
   fs.chmodSync(machineIdFile, 0o600);
   return value;
+}
+
+// An older CLI can display basic local metadata and change familiar opt-out
+// switches without interpreting the newer runtime or invoking its supervisor.
+// No credentials, runtime payloads, or server requests belong in this path.
+export function handleFutureConfigCommand(command, action, version) {
+  if (!['status', 'doctor', 'auto-update', 'telemetry', 'godmode', 'unrestricted'].includes(command)) return false;
+  const value = readJsonForMutation(configFile);
+  if (!isFutureConfig(value)) return false;
+  const warning = 'Newer ReMCP configuration schema; use a compatible client to inspect or restart the agent.';
+  if (command === 'status' || command === 'doctor') {
+    console.log(JSON.stringify({
+      version, configured: Boolean(value.deviceId && value.deviceToken),
+      configSchemaVersion: Number(value.configSchemaVersion), supportedConfigSchemaVersion: CONFIG_SCHEMA_VERSION,
+      autoUpdate: autoUpdateEnabled(value), telemetry: {enabled:telemetryState().enabled},
+      diagnosis: {verdict:'unsupported-config-schema', message:warning},
+    }, null, 2));
+    if (command === 'doctor') process.exitCode = 1;
+    return true;
+  }
+  const mode = String(action || 'status').toLowerCase();
+  if (command === 'godmode' || command === 'unrestricted') {
+    if (mode === 'status') return false;
+    throw new Error(warning + ' Unrestricted mode was not changed.');
+  }
+  if (mode === 'status') {
+    console.log(JSON.stringify(command === 'auto-update'
+      ? {autoUpdate:autoUpdateEnabled(value), warning}
+      : {...telemetryState(), warning}, null, 2));
+    return true;
+  }
+  if (!['on','enable','off','disable'].includes(mode)) throw new Error('Usage: remcp ' + command + ' [status|on|off]');
+  const enabled = mode === 'on' || mode === 'enable';
+  if (command === 'auto-update') saveConfig({...value, autoUpdate:enabled});
+  else console.log(JSON.stringify(setTelemetry(enabled), null, 2));
+  console.log('Preference saved. Agent was not restarted. ' + warning);
+  return true;
 }

@@ -17,10 +17,17 @@ export async function manageDesktopMedia(action='status',flags={}){
     restartPersistentServiceIfInstalled(cfg,{deferLinux:true,deferWindows:true});return;
   }
   if(action!=='install')throw new Error('Usage: remcp desktop [status|install --python <absolute path>|off]');
-  const profile=await installDesktopMedia({python:flags.python,runtimeEntry:localRuntimeEntry(cfg.runtime),directory:configDir});
-  const latest=loadConfig();
-  if(latest.deviceId!==cfg.deviceId||latest.deviceToken!==cfg.deviceToken)throw new Error('Pairing changed during media installation');
-  saveConfig({...latest,desktopMedia:profile});
+  let latest;
+  await installDesktopMedia({python:flags.python,runtimeEntry:localRuntimeEntry(cfg.runtime),directory:configDir,previous:cfg.desktopMedia,
+    prepareCommit:profile=>{
+      latest=loadConfig();
+      if(latest.deviceId!==cfg.deviceId||latest.deviceToken!==cfg.deviceToken)
+        throw new Error('Pairing changed during media installation');
+      if(JSON.stringify(latest.desktopMedia)!==JSON.stringify(cfg.desktopMedia)||
+          JSON.stringify(latest.runtime)!==JSON.stringify(cfg.runtime))
+        throw new Error('Media or runtime configuration changed during installation; retry explicitly');
+      return ()=>saveConfig({...latest,desktopMedia:profile});
+    }});
   console.log('Optional screen media installed. Capture still requires explicit Start and OS permission.');
   restartPersistentServiceIfInstalled(latest,{deferLinux:true,deferWindows:true});
 }

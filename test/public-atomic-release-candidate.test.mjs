@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, unlinkSync, symlinkSync, chmodSync, rmSync, readFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, unlinkSync, symlinkSync, chmodSync, rmSync, readFileSync, linkSync, renameSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { test } from 'node:test';
@@ -112,6 +112,41 @@ test('rejects symlinked asset even with exactly seven release names', t => {
   writeFileSync(target, original);
   symlinkSync(target, path);
   assert.throws(() => check(), /invalid staged release asset/);
+});
+
+test('rejects externally linked or writable staged files', t => {
+  const {root,check} = candidate(t);
+  const target = join(root,payloadNames[0]);
+  const outside = mkdtempSync(join(tmpdir(),'remcp-linked-asset-'));
+  t.after(() => rmSync(outside,{recursive:true,force:true}));
+  linkSync(target,join(outside,'linked'));
+  assert.throws(() => check(),/invalid staged release asset/);
+  unlinkSync(join(outside,'linked'));
+  chmodSync(target,0o666);
+  assert.throws(() => check(),/invalid staged release asset/);
+});
+
+test('rejects same-byte inode replacement while verifying', t => {
+  const {root,check} = candidate(t);
+  const target = join(root,payloadNames[0]);
+  assert.throws(() => check({onVerify:() => {
+    const replacement = join(root,'replacement');
+    writeFileSync(replacement,readFileSync(target));
+    renameSync(replacement,target);
+  }}),/changed during verification/);
+});
+
+test('rejects a FIFO without blocking on a writer', {skip:process.platform==='win32'}, t => {
+  const {root} = candidate(t);
+  const target = join(root,payloadNames[0]);
+  unlinkSync(target);
+  assert.equal(spawnSync('mkfifo',[target]).status,0);
+  const script = resolve('scripts/verify-public-atomic-release-candidate.mjs');
+  const env = {...process.env,GITHUB_REPOSITORY:REPO,GITHUB_REF:'refs/tags/'+TAG,
+    GITHUB_SHA:SHA,GITHUB_EVENT_NAME:'push'};
+  const result = spawnSync(process.execPath,[script,'--directory',root,'--tag',TAG,'--source-sha',SHA],{env,encoding:'utf8',timeout:5000});
+  assert.equal(result.status,2);
+  assert.equal(result.stderr.trim(),'public_signed_candidate=blocked');
 });
 
 test('rejects checksum line reordering and duplicate entries', t => {

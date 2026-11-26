@@ -40,8 +40,87 @@ export function jsonResult(value) {
   return structured(value);
 }
 
+// Recording must observe MCP cancellation and wait for child exit before
+// removing staging files. In particular GJS needs its own sender to Stop.
+async function runRecordingFile(file,args,options,timeout){
+  options.signal?.throwIfAborted();
+  return new Promise((resolve,reject)=>{
+    // A recorder owns a separate POSIX process group. Cancellation must
+    // reach its wrapper/children, never the calling runtime's own group.
+    const group=process.platform!=='win32';
+    const child=spawn(file,args.map(String),{
+      cwd:options.cwd,env:options.env||process.env,windowsHide:true,
+      detached:group,stdio:['ignore','pipe','pipe'],
+    });
+    const stdout=[],stderr=[];
+    const max=clamp(options.maxBuffer,MAX_BUFFER,1024,64*1024*1024);
+    let bytes=0,failure=null,escalation=null,drain=null,exited=false,settled=false;
+    const label=options.label||file;
+    const sendSignal=signal=>{
+      // Never signal a recycled group identifier after observing leader exit.
+      if(exited||child.exitCode!==null||child.signalCode!==null||!child.pid)return;
+      try{if(group)process.kill(-child.pid,signal);else child.kill(signal);}
+      catch{failure||=new ToolError(label+' could not signal the recording process');}
+    };
+    const stop=reason=>{
+      if(failure)return;
+      failure=new ToolError(label+' '+reason);
+      // Give GJS its bounded D-Bus Stop call and GNU timeout its cleanup.
+      sendSignal('SIGTERM');
+      escalation=setTimeout(()=>sendSignal('SIGKILL'),22_000);
+      escalation.unref?.();
+    };
+    const onAbort=()=>stop('cancelled');
+    const timer=setTimeout(()=>stop('timed out'),timeout);
+    const collect=target=>chunk=>{
+      if(failure)return;
+      bytes+=chunk.length;
+      if(bytes>max){stop('exceeded its output limit');return;}
+      target.push(chunk);
+    };
+    child.stdout.on('data',collect(stdout));
+    child.stderr.on('data',collect(stderr));
+    const cleanup=()=>{
+      clearTimeout(timer);
+      clearTimeout(escalation);
+      clearTimeout(drain);
+      options.signal?.removeEventListener('abort',onAbort);
+    };
+    child.once('error',()=>{failure||=new ToolError(label+' could not start or stop');});
+    child.once('exit',()=>{
+      exited=true;
+      clearTimeout(escalation);
+      // Node's close event waits for inherited stdio. A descendant can
+      // retain a pipe after the actual recorder exited. Do not wait forever
+      // or report a successful recording with unconfirmed output ownership.
+      drain=setTimeout(()=>{
+        if(settled)return;
+        settled=true;
+        cleanup();
+        child.stdout.destroy();
+        child.stderr.destroy();
+        reject(failure||new ToolError(label+' output streams did not close after recorder exit'));
+      },1000);
+    });
+    child.once('close',(code,signal)=>{
+      if(settled)return;
+      settled=true;
+      cleanup();
+      if(failure)return reject(failure);
+      if(signal||!Number.isInteger(code))return reject(new ToolError(label+' terminated without a valid exit code'));
+      const result={stdout:Buffer.concat(stdout).toString('utf8'),stderr:Buffer.concat(stderr).toString('utf8'),code};
+      if(code===0||options.allowFailure)return resolve(result);
+      reject(new ToolError(label+' failed: '+(result.stderr.trim().slice(0,2000)||'exit '+code)));
+    });
+    options.signal?.addEventListener('abort',onAbort,{once:true});
+    if(options.signal?.aborted)onAbort();
+  });
+}
+
 export async function runFile(file, args = [], options = {}) {
-  const timeout = clamp(options.timeout, 15_000, 100, 120_000);
+  // Only trusted internal callers may opt into a bounded finalization margin.
+  const timeout = clamp(options.timeout, 15_000, 100, options.recordingFinalization===true?150_000:120_000);
+  if(options.recordingFinalization===true)return runRecordingFile(file,args,options,timeout);
   try {
     const result = await execFileAsync(file, args.map(String), {
       cwd: options.cwd,

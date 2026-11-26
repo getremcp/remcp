@@ -1,4 +1,4 @@
-// Serializes writes to one Windows npm global prefix across manual and agent updates.
+// Serializes mutations of an npm global prefix across manual and agent updates.
 // The lock exists outside the npm-managed package/shim trees and is held through rollback.
 import fs from 'node:fs';
 import path from 'node:path';
@@ -7,6 +7,7 @@ import process from 'node:process';
 
 const LOCK_NAME = '.remcp-update-lock';
 const OWNER_NAME = 'owner.json';
+const REPAIR_LOCK_NAME = '.remcp-update-repair-lock';
 
 function lockOwnerFile(directory) {
   return path.join(directory, OWNER_NAME);
@@ -43,51 +44,63 @@ function removeOwnedLock(directory, token) {
 
 // Explicit local repair only. Preserve evidence rather than deleting an interrupted
 // transaction. A failed/denied PID query is not proof that the owner exited.
-export function recoverWindowsUpdateLock(prefix) {
-  if (!path.isAbsolute(prefix)) throw new Error('Windows repair requires an absolute npm prefix.');
+export function recoverWindowsUpdateLock(prefix, platform = 'Windows') {
+  if (!path.isAbsolute(prefix)) throw new Error(platform+' repair requires an absolute npm prefix.');
   const directory = path.join(prefix, LOCK_NAME);
+  // Serialize repair callers separately. Otherwise two readers of a dead
+  // owner's token could archive a new live lock after the first rename.
+  try { fs.lstatSync(directory); }
+  catch (error) { if (error.code === 'ENOENT') return null; throw error; }
+  return withPrefixLock(prefix, () => archiveInterruptedLock(prefix, directory, platform), platform, REPAIR_LOCK_NAME);
+}
+
+function archiveInterruptedLock(prefix, directory, platform) {
   let stat;
   try { stat = fs.lstatSync(directory); }
   catch (error) { if (error.code === 'ENOENT') return null; throw error; }
-  if (!stat.isDirectory() || stat.isSymbolicLink()) throw new Error('Unsafe Windows update lock metadata.');
+  if (!stat.isDirectory() || stat.isSymbolicLink()) throw new Error('Unsafe '+platform+' update lock metadata.');
   const entries = fs.readdirSync(directory);
-  if (entries.length !== 1 || entries[0] !== OWNER_NAME) throw new Error('Unexpected Windows update lock contents; manual review required.');
+  if (entries.length !== 1 || entries[0] !== OWNER_NAME) throw new Error('Unexpected '+platform+' update lock contents; manual review required.');
   const file = lockOwnerFile(directory);
   const metadata = fs.lstatSync(file);
-  if (!metadata.isFile() || metadata.isSymbolicLink() || metadata.size > 4096) throw new Error('Unsafe Windows update owner metadata.');
+  if (!metadata.isFile() || metadata.isSymbolicLink() || metadata.size > 4096) throw new Error('Unsafe '+platform+' update owner metadata.');
   const raw = fs.readFileSync(file, 'utf8');
   let owner;
-  try { owner = JSON.parse(raw); } catch { throw new Error('Invalid Windows update owner metadata.'); }
+  try { owner = JSON.parse(raw); } catch { throw new Error('Invalid '+platform+' update owner metadata.'); }
   if (!Number.isSafeInteger(owner.pid) || owner.pid <= 0 || typeof owner.token !== 'string' ||
-      !owner.token || !Number.isFinite(owner.startedAt)) throw new Error('Invalid Windows update owner metadata.');
+      !owner.token || !Number.isFinite(owner.startedAt)) throw new Error('Invalid '+platform+' update owner metadata.');
   try {
     process.kill(owner.pid, 0);
-    throw new Error('Windows update owner is still active; repair refused.');
+    throw new Error(platform+' update owner is still active; repair refused.');
   } catch (error) {
     if (error.code !== 'ESRCH') throw error;
   }
   // Fail closed if another actor changed ownership while it was inspected.
   if (fs.readFileSync(file, 'utf8') !== raw || fs.readdirSync(directory).length !== 1) {
-    throw new Error('Windows update owner changed during repair.');
+    throw new Error(platform+' update owner changed during repair.');
   }
   const archived = path.join(prefix, '.remcp-update-lock-recovered-' + crypto.randomUUID());
   fs.renameSync(directory, archived);
   return archived;
 }
 
-export function withWindowsUpdateLock(prefix, operation) {
-  if (!path.isAbsolute(prefix)) throw new Error('Windows update lock requires an absolute npm prefix.');
-  if (typeof operation !== 'function') throw new TypeError('Windows update operation is required.');
+export function withWindowsUpdateLock(prefix, operation, platform = 'Windows') {
+  return withPrefixLock(prefix, operation, platform, LOCK_NAME);
+}
+
+function withPrefixLock(prefix, operation, platform, lockName) {
+  if (!path.isAbsolute(prefix)) throw new Error(platform+' update lock requires an absolute npm prefix.');
+  if (typeof operation !== 'function') throw new TypeError(platform+' update operation is required.');
   fs.mkdirSync(prefix, { recursive:true });
-  const directory = path.join(prefix, LOCK_NAME);
+  const directory = path.join(prefix, lockName);
   try {
     fs.mkdirSync(directory, { mode:0o700 });
   } catch (error) {
     if (error?.code !== 'EEXIST') throw error;
     const stale = !ownerIsLive(directory);
     throw new Error(stale
-      ? 'ReMCP previous Windows update exited without releasing its lock; repair the stale update lock before retrying.'
-      : 'ReMCP update already in progress for this Windows npm prefix; retry after it finishes.');
+      ? 'ReMCP previous '+platform+' update exited without releasing its lock; repair the stale update lock before retrying.'
+      : 'ReMCP update already in progress for this '+platform+' npm prefix; retry after it finishes.');
   }
 
   const token = crypto.randomUUID();
