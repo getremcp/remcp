@@ -94,6 +94,7 @@ export function createDesktopWebRtcBridge({
     const frozenTree=platform==='win32'&&Boolean(env.REMCP_WEBRTC_FROZEN_WORKER);
     child=null;current=null;active=false;inputEnabled=false;stdout='';
     rejectWaits();
+    if(target)void control.retire().catch(()=>{});
     if(!target)return pendingExit?.promise??Promise.resolve(false);
     let confirmExit;
     const exited=new Promise(resolve=>{confirmExit=resolve;});
@@ -310,6 +311,9 @@ export function createDesktopWebRtcBridge({
          Buffer.byteLength(answer.sdp)>MAX_SDP||expired())
         throw new Error('Invalid WebRTC worker answer');
       active=true;seen=now();
+      // Compile the restricted Windows input helper while the browser is
+      // negotiating video, only after this capture's explicit input consent.
+      try{control.prepare();}catch{/* No input was sent; the first action can report readiness. */}
       return jsonResult({sessionId:sid,type:'answer',sdp:answer.sdp,
         ...(typeof answer.cursorEmbedded==='boolean'?{cursorEmbedded:answer.cursorEmbedded}:{})});
     }catch(error){
@@ -335,21 +339,23 @@ export function createDesktopWebRtcBridge({
   async function stopCore(sid){
     if(!UUID.test(String(sid)))
       throw new Error('WebRTC viewer session not found');
-    // The native peer may close first; an observed child exit confirms its
-    // media peer is gone. Only that exact completed session can be ACKed.
-    if(!child&&current===null&&!pendingExit&&!control.pending&&lastExitedSession===sid)
-      return jsonResult({ok:true,sessionId:sid});
-    if(sid!==current||!child)
-      throw new Error('WebRTC viewer session not found');
-    inputStopping=true;
-    try{
-      const reply=await send('stop',sid,{},4000);
-      if(reply.sessionId!==sid)throw new Error('Invalid WebRTC stop acknowledgement');
-    }catch{
-      // The peer may close before Stop reaches its worker. A missing stdio
-      // acknowledgement cannot override subsequent verified native exit.
-    }
-    const exited=shutdown();
+    // Retry an exact session whose media worker is already closing or closed;
+    // input retirement is a separate fence and must also complete.
+    let exited;
+    if(sid===current&&child){
+      inputStopping=true;
+      try{
+        const reply=await send('stop',sid,{},4000);
+        if(reply.sessionId!==sid)throw new Error('Invalid WebRTC stop acknowledgement');
+      }catch{
+        // Native exit, not the stdio acknowledgement, proves media Stop.
+      }
+      exited=shutdown();
+    }else if(!child&&current===null&&
+      (pendingExit?.session===sid||(!pendingExit&&lastExitedSession===sid))){
+      inputStopping=true;
+      exited=pendingExit?.promise??Promise.resolve(true);
+    }else throw new Error('WebRTC viewer session not found');
     let timer;
     // PyInstaller onefile owns a bootstrapper plus a native media child.
     // Give bounded Windows taskkill /T escalation time to close the pipes;

@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.274 — 2026-11-26
+
+**Persistent consent-bound Windows native input and adaptive remote video quality.**
+
+- Use a consent-bound persistent Windows native pointer/keyboard worker and verify the active desktop before delivery.
+- Acknowledge native mouse delivery and expire delayed paste after clipboard acknowledgement.
+- Adapt frame rate and resolution to RTCP feedback without reconnect; bound frame/input backlogs.
+
 ## 0.2.273 — 2026-11-26
 
 - Durable Redis AOF fsync receipt for WebRTC Open admission.

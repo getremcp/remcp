@@ -1,9 +1,9 @@
 {
-  "version": "0.2.273",
-  "title": "Bound WebRTC offer admission and Redis durability with immutable AFSync receipts.",
+  "version": "0.2.274",
+  "title": "Persistent consent-bound Windows native input and adaptive remote video quality.",
   "changes": [
-    "Require a durable Redis AOF fsync receipt before native WebRTC Open admission.",
-    "Bind MCP transport and durability audits to the active Redis endpoint.",
-    "Preserve specialized rollout preflight and plugin ZIP integrity checks."
+    "Use a consent-bound persistent Windows native pointer/keyboard worker and verify the active desktop before delivery.",
+    "Acknowledge native mouse delivery and expire delayed paste after clipboard acknowledgement.",
+    "Adapt frame rate and resolution to RTCP feedback without reconnect; bound frame/input backlogs."
   ]
 }

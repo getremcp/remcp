@@ -165,3 +165,86 @@ test('input submitted without consent cannot become valid while waiting in the q
   await assert.rejects(call,/session unavailable|session ended/);
   assert.equal(f.calls.length,0);
 });
+
+// The Windows fast path must retain the existing capture and sequence fence.
+test('fast input is session-bound, never falls back, and retirement blocks reuse until worker close',async()=>{
+ let active={sessionId:sid,epoch:'fast',active:true,inputEnabled:true,stopping:false};
+ let release,closed=0,dispatched=0,fallback=0;
+ const closedGate=new Promise(resolve=>{release=resolve;});
+ const fastInput={supports:input=>input.kind==='pointer',
+   async dispatch(input){dispatched++;if(input.seq===2)throw Error('uncertain native input');},
+   async close(){closed++;await closedGate;}};
+ const control=createWebRtcSessionControl({state:()=>active,fastInput,handlers:{
+   pointer:async()=>{fallback++;return result({ok:true});},
+   display_inventory:async()=>{fallback++;return result([{primary:true,x:0,y:0,width:800,height:600}]);},
+ }});
+ const move=seq=>({session_id:sid,input:{seq,kind:'pointer',op:'move',x:0.5,y:0.5}});
+ await control(move(1));
+ await assert.rejects(control(move(2)),/uncertain native input/);
+ await assert.rejects(control(move(2)),/sequence replay/);
+ assert.equal(dispatched,2);assert.equal(fallback,0);
+ active={...active,active:false,stopping:true};
+ const retired=control.retire();
+ await Promise.resolve();
+ assert.equal(control.pending,1);
+ await assert.rejects(control(move(3)),/session unavailable/);
+ release();await retired;
+ assert.equal(closed,1);assert.equal(control.pending,0);
+});
+
+test('fast input prewarming requires active, explicitly input-enabled capture',async()=>{
+ let value={sessionId:sid,epoch:'warm',active:false,inputEnabled:false,stopping:false};
+ let prepared=0;
+ const fastInput={supports:()=>false,prepare(){prepared++;},async close(){}};
+ const control=createWebRtcSessionControl({state:()=>value,fastInput,handlers:{}});
+ control.prepare();
+ value={...value,active:true};control.prepare();
+ value={...value,inputEnabled:true};control.prepare();
+ assert.equal(prepared,1);
+ value={...value,stopping:true};control.prepare();
+ assert.equal(prepared,1);
+ await control.retire();
+});
+
+test('agent drops delayed actions across platforms and consumes expired sequence',async()=>{
+ let time=0,release,entered;
+ const gate=new Promise(r=>{release=r;}),started=new Promise(r=>{entered=r;});
+ const calls=[];
+ const state={sessionId:sid,epoch:'fresh',active:true,inputEnabled:true,stopping:false};
+ const control=createWebRtcSessionControl({state:()=>state,now:()=>time,handlers:{
+  type_text:async args=>{calls.push(args.text);if(args.text==='first'){entered();await gate;}return result({ok:true});}
+ }});
+ const first=control({session_id:sid,input:{seq:1,kind:'text',text:'first'}});
+ await started;
+ const stale=control({session_id:sid,input:{seq:2,kind:'text',text:'stale'}});
+ time=2501;release();await first;
+ await assert.rejects(stale,/expired before native dispatch/);
+ await assert.rejects(control({session_id:sid,input:{seq:2,kind:'text',text:'replay'}}),/sequence replay/);
+ await control({session_id:sid,input:{seq:3,kind:'text',text:'fresh'}});
+ assert.deepEqual(calls,['first','fresh']);
+});
+
+test('agent drops pointer after slow display discovery',async()=>{
+ let time=0,dispatched=0;
+ const state={sessionId:sid,epoch:'fresh',active:true,inputEnabled:true,stopping:false};
+ const control=createWebRtcSessionControl({state:()=>state,now:()=>time,handlers:{
+  display_inventory:async()=>{time=351;return result([{primary:true,x:0,y:0,width:800,height:600}]);},
+  pointer:async()=>{dispatched++;return result({ok:true});}
+ }});
+ await assert.rejects(control({session_id:sid,input:{seq:1,kind:'pointer',op:'move',x:.5,y:.5}}),/expired before native dispatch/);
+ assert.equal(dispatched,0);
+ await control({session_id:sid,input:{seq:2,kind:'pointer',op:'click',button:'left',x:.5,y:.5}});
+ assert.equal(dispatched,1);
+});
+
+test('agent limits pending operations before they enter the native queue',async()=>{
+ let release,entered;
+ const gate=new Promise(r=>{release=r;}),started=new Promise(r=>{entered=r;});
+ const f=fixture({type_text:async()=>{entered();await gate;return result({ok:true});}});
+ const call=seq=>f.control({session_id:sid,input:{seq,kind:'text',text:'test'}});
+ const first=call(1);await started;
+ const rest=Array.from({length:15},(_,i)=>call(i+2));
+ await assert.rejects(call(17),/queue full/);
+ assert.equal(f.control.pending,16);
+ release();await Promise.all([first,...rest]);assert.equal(f.control.pending,0);
+});
