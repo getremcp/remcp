@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.2.273 — 2026-11-26
+
+- Durable Redis AOF fsync receipt for WebRTC Open admission.
 ## 0.2.272 — 2026-11-26
 
 **Harden Linux service updates, encrypted client enrollment and release verification.**

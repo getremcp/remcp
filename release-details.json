@@ -1,9 +1,9 @@
 {
-  "version": "0.2.272",
-  "title": "Harden Linux service updates, encrypted client enrollment and release verification.",
+  "version": "0.2.273",
+  "title": "Bound WebRTC offer admission and Redis durability with immutable AFSync receipts.",
   "changes": [
-    "Stage Linux systemd unit updates before promotion, retain verified original identity and restrictive permissions, and refuse concurrent creation or detected replacement.",
-    "Require explicit local AI client code comparison and authenticated encrypted read-only proof before persisting a new device pin; retain recovery evidence on uncertain cancellation.",
-    "Use the production Redis TLS and mounted password policy for read-only WebRTC lease census; preserve native Stop and rollout admission requirements."
+    "Require a durable Redis AOF fsync receipt before native WebRTC Open admission.",
+    "Bind MCP transport and durability audits to the active Redis endpoint.",
+    "Preserve specialized rollout preflight and plugin ZIP integrity checks."
   ]
 }
